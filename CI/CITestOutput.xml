@@ -1,190 +1,100 @@
 <?xml version="1.0" encoding="utf-8"?>
-<test-run id="2" testcasecount="27" result="Passed" total="27" passed="27" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.2105137">
-  <test-suite type="TestSuite" id="1000" name="FluentPlayableApi" fullname="FluentPlayableApi" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.210514" total="27" passed="27" failed="0" inconclusive="0" skipped="0" asserts="0">
+<test-run id="2" testcasecount="13" result="Passed" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.1369115">
+  <test-suite type="TestSuite" id="1000" name="CascadeEngine" fullname="CascadeEngine" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.136912" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
     <properties>
       <property name="platform" value="EditMode" />
     </properties>
-    <test-suite type="Assembly" id="1031" name="FluentPlayableApi.Editor.Tests.dll" fullname="C:/Users/admin/Documents/UnityProjects/FluentPlayableApi/FluentPlayableApi/Library/ScriptAssemblies/FluentPlayableApi.Editor.Tests.dll" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.198356" total="27" passed="27" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <test-suite type="Assembly" id="1015" name="Tests.dll" fullname="C:/Users/admin/Documents/UnityProjects/CascadeEngine/Library/ScriptAssemblies/Tests.dll" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.129774" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
       <properties>
-        <property name="_PID" value="200172" />
+        <property name="_PID" value="249752" />
         <property name="_APPDOMAIN" value="Unity Child Domain" />
         <property name="platform" value="EditMode" />
         <property name="EditorOnly" value="True" />
       </properties>
-      <test-suite type="TestSuite" id="1032" name="FluentPlayableApi" fullname="FluentPlayableApi" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.197133" total="27" passed="27" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestSuite" id="1016" name="CascadeEngineApi" fullname="CascadeEngineApi" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.129340" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-suite type="TestSuite" id="1033" name="Tests" fullname="FluentPlayableApi.Tests" runstate="Runnable" testcasecount="27" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.196651" total="27" passed="27" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <test-suite type="TestSuite" id="1017" name="Tests" fullname="CascadeEngineApi.Tests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.129155" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
           <properties />
-          <test-suite type="TestFixture" id="1001" name="ExampleTest" fullname="FluentPlayableApi.Tests.ExampleTest" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.136473" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1001" name="HestiaGameCascadeTests" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.127814" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1010" name="AddInputExpandsMixerAndNamesNewIndex" fullname="FluentPlayableApi.Tests.ExampleTest.AddInputExpandsMixerAndNamesNewIndex" methodname="AddInputExpandsMixerAndNamesNewIndex" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="1765849050" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.067163" asserts="0">
+            <test-case id="1003" name="AmmoEmptyTransitionDirtiesIconAndAudio" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.AmmoEmptyTransitionDirtiesIconAndAudio" methodname="AmmoEmptyTransitionDirtiesIconAndAudio" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1414387115" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.024700" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1011" name="AddInputRollsBackInputCountWhenNameIsRejected" fullname="FluentPlayableApi.Tests.ExampleTest.AddInputRollsBackInputCountWhenNameIsRejected" methodname="AddInputRollsBackInputCountWhenNameIsRejected" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="919139014" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000772" asserts="0">
+            <test-case id="1002" name="AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty" methodname="AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="348048992" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.001042" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1012" name="ClipPausedParameterControlsInitialPlayState" fullname="FluentPlayableApi.Tests.ExampleTest.ClipPausedParameterControlsInitialPlayState" methodname="ClipPausedParameterControlsInitialPlayState" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="351325340" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.001460" asserts="0">
+            <test-case id="1013" name="CoreCommitClearsDestroyedEntityWithoutCommitter" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.CoreCommitClearsDestroyedEntityWithoutCommitter" methodname="CoreCommitClearsDestroyedEntityWithoutCommitter" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="107706884" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.001263" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1005" name="DisposeClearsBuilderWithoutDestroyingGraph" fullname="FluentPlayableApi.Tests.ExampleTest.DisposeClearsBuilderWithoutDestroyingGraph" methodname="DisposeClearsBuilderWithoutDestroyingGraph" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="521673478" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.012886" asserts="0">
+            <test-case id="1012" name="CoreCommitRequiresRegisteredPropertyCommitter" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.CoreCommitRequiresRegisteredPropertyCommitter" methodname="CoreCommitRequiresRegisteredPropertyCommitter" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1999215107" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.009634" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1007" name="DuplicateNodePathThrowsImmediately" fullname="FluentPlayableApi.Tests.ExampleTest.DuplicateNodePathThrowsImmediately" methodname="DuplicateNodePathThrowsImmediately" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="926911803" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000504" asserts="0">
+            <test-case id="1014" name="DestroyedEntityFactsDoNotRunReducersOrStopTick" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.DestroyedEntityFactsDoNotRunReducersOrStopTick" methodname="DestroyedEntityFactsDoNotRunReducersOrStopTick" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="2128700806" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000907" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1008" name="DuplicateSourceOutputThrows" fullname="FluentPlayableApi.Tests.ExampleTest.DuplicateSourceOutputThrows" methodname="DuplicateSourceOutputThrows" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="155875611" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.001350" asserts="0">
+            <test-case id="1007" name="DuplicateFireFactsRunReducerForEachFactAndCommitOnce" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.DuplicateFireFactsRunReducerForEachFactAndCommitOnce" methodname="DuplicateFireFactsRunReducerForEachFactAndCommitOnce" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1767222133" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000827" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1013" name="GenericOutputFactorySupportsScriptPlayableOutput" fullname="FluentPlayableApi.Tests.ExampleTest.GenericOutputFactorySupportsScriptPlayableOutput" methodname="GenericOutputFactorySupportsScriptPlayableOutput" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="2057084086" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.008717" asserts="0">
+            <test-case id="1006" name="FactReducerRunsOnlyTouchedEntityWork" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.FactReducerRunsOnlyTouchedEntityWork" methodname="FactReducerRunsOnlyTouchedEntityWork" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="358492934" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.068003" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1014" name="GenericOutputInputSupportsAudioPlayableOutput" fullname="FluentPlayableApi.Tests.ExampleTest.GenericOutputInputSupportsAudioPlayableOutput" methodname="GenericOutputInputSupportsAudioPlayableOutput" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="1894339009" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.008374" asserts="0">
+            <test-case id="1004" name="MovementPositionDirtiesOnlyCharacterMotorConsumer" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.MovementPositionDirtiesOnlyCharacterMotorConsumer" methodname="MovementPositionDirtiesOnlyCharacterMotorConsumer" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1038150893" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.002413" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1006" name="InputValidationRejectsBoundsAndUnconsumedPendingInputs" fullname="FluentPlayableApi.Tests.ExampleTest.InputValidationRejectsBoundsAndUnconsumedPendingInputs" methodname="InputValidationRejectsBoundsAndUnconsumedPendingInputs" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="1013638592" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000994" asserts="0">
+            <test-case id="1005" name="NonRelevantCueDoesNotProduceFactOrConsumerWork" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.NonRelevantCueDoesNotProduceFactOrConsumerWork" methodname="NonRelevantCueDoesNotProduceFactOrConsumerWork" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="664020521" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000680" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1009" name="ScopeLookupRequiresExactPathWhenShortNameIsAmbiguous" fullname="FluentPlayableApi.Tests.ExampleTest.ScopeLookupRequiresExactPathWhenShortNameIsAmbiguous" methodname="ScopeLookupRequiresExactPathWhenShortNameIsAmbiguous" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="1233104538" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.003993" asserts="0">
+            <test-case id="1011" name="PropertyCommitMapFailsUnknownProperty" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.PropertyCommitMapFailsUnknownProperty" methodname="PropertyCommitMapFailsUnknownProperty" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="858460435" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000384" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1002" name="VerifyCreatesReachableGraphAndRegistersLookup" fullname="FluentPlayableApi.Tests.ExampleTest.VerifyCreatesReachableGraphAndRegistersLookup" methodname="VerifyCreatesReachableGraphAndRegistersLookup" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="992506176" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.003581" asserts="0">
+            <test-case id="1010" name="PropertyCommitMapRejectsDuplicateProperty" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.PropertyCommitMapRejectsDuplicateProperty" methodname="PropertyCommitMapRejectsDuplicateProperty" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="446129906" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000348" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1004" name="VerifyRejectsAuthoredOutputWithoutSource" fullname="FluentPlayableApi.Tests.ExampleTest.VerifyRejectsAuthoredOutputWithoutSource" methodname="VerifyRejectsAuthoredOutputWithoutSource" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="1767063892" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000899" asserts="0">
+            <test-case id="1009" name="ReducerMapFailsUnknownFactKind" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.ReducerMapFailsUnknownFactKind" methodname="ReducerMapFailsUnknownFactKind" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="829989033" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000300" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1003" name="VerifyReturnsGraphWithoutStartingPlayback" fullname="FluentPlayableApi.Tests.ExampleTest.VerifyReturnsGraphWithoutStartingPlayback" methodname="VerifyReturnsGraphWithoutStartingPlayback" classname="FluentPlayableApi.Tests.ExampleTest" runstate="Runnable" seed="1868057846" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000745" asserts="0">
+            <test-case id="1008" name="ReducerMapRejectsDuplicateFactKind" fullname="CascadeEngineApi.Tests.HestiaGameCascadeTests.ReducerMapRejectsDuplicateFactKind" methodname="ReducerMapRejectsDuplicateFactKind" classname="CascadeEngineApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="925237112" result="Passed" start-time="2026-06-10 21:40:49Z" end-time="2026-06-10 21:40:49Z" duration="0.000400" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
-            </test-case>
-          </test-suite>
-          <test-suite type="TestFixture" id="1015" name="HestiaGameCascadeTests" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.043245" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
-            <properties />
-            <test-case id="1017" name="AmmoEmptyTransitionDirtiesIconAndAudio" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.AmmoEmptyTransitionDirtiesIconAndAudio" methodname="AmmoEmptyTransitionDirtiesIconAndAudio" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="234225437" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.013272" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1016" name="AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty" methodname="AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1189820711" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.001447" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1027" name="CoreCommitClearsDestroyedEntityWithoutCommitter" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.CoreCommitClearsDestroyedEntityWithoutCommitter" methodname="CoreCommitClearsDestroyedEntityWithoutCommitter" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="763917035" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.001779" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1026" name="CoreCommitRequiresRegisteredPropertyCommitter" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.CoreCommitRequiresRegisteredPropertyCommitter" methodname="CoreCommitRequiresRegisteredPropertyCommitter" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1381602148" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000783" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1028" name="DestroyedEntityFactsDoNotRunReducersOrStopTick" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.DestroyedEntityFactsDoNotRunReducersOrStopTick" methodname="DestroyedEntityFactsDoNotRunReducersOrStopTick" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="568132263" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000969" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1021" name="DuplicateFireFactsRunReducerForEachFactAndCommitOnce" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.DuplicateFireFactsRunReducerForEachFactAndCommitOnce" methodname="DuplicateFireFactsRunReducerForEachFactAndCommitOnce" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1421821369" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000863" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1020" name="FactReducerRunsOnlyTouchedEntityWork" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.FactReducerRunsOnlyTouchedEntityWork" methodname="FactReducerRunsOnlyTouchedEntityWork" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1020098191" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.012515" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1018" name="MovementPositionDirtiesOnlyCharacterMotorConsumer" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.MovementPositionDirtiesOnlyCharacterMotorConsumer" methodname="MovementPositionDirtiesOnlyCharacterMotorConsumer" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="359425735" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.003985" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1019" name="NonRelevantCueDoesNotProduceFactOrConsumerWork" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.NonRelevantCueDoesNotProduceFactOrConsumerWork" methodname="NonRelevantCueDoesNotProduceFactOrConsumerWork" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="548307691" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.001373" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1025" name="PropertyCommitMapFailsUnknownProperty" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.PropertyCommitMapFailsUnknownProperty" methodname="PropertyCommitMapFailsUnknownProperty" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="345310986" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000555" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1024" name="PropertyCommitMapRejectsDuplicateProperty" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.PropertyCommitMapRejectsDuplicateProperty" methodname="PropertyCommitMapRejectsDuplicateProperty" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1049547063" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000570" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1023" name="ReducerMapFailsUnknownFactKind" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.ReducerMapFailsUnknownFactKind" methodname="ReducerMapFailsUnknownFactKind" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="1865550108" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000614" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-            <test-case id="1022" name="ReducerMapRejectsDuplicateFactKind" fullname="FluentPlayableApi.Tests.HestiaGameCascadeTests.ReducerMapRejectsDuplicateFactKind" methodname="ReducerMapRejectsDuplicateFactKind" classname="FluentPlayableApi.Tests.HestiaGameCascadeTests" runstate="Runnable" seed="499059267" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.000573" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-            </test-case>
-          </test-suite>
-          <test-suite type="TestFixture" id="1029" name="LocomotionTopologyExtensionsTest" fullname="FluentPlayableApi.Tests.LocomotionTopologyExtensionsTest" classname="FluentPlayableApi.Tests.LocomotionTopologyExtensionsTest" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.014546" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
-            <properties />
-            <test-case id="1030" name="WithLocomotionTopologyBuildsScopedPlayableTree" fullname="FluentPlayableApi.Tests.LocomotionTopologyExtensionsTest.WithLocomotionTopologyBuildsScopedPlayableTree" methodname="WithLocomotionTopologyBuildsScopedPlayableTree" classname="FluentPlayableApi.Tests.LocomotionTopologyExtensionsTest" runstate="Runnable" seed="1375508743" result="Passed" start-time="2026-06-10 20:53:37Z" end-time="2026-06-10 20:53:37Z" duration="0.013659" asserts="0">
-              <properties>
-                <property name="retryIteration" value="0" />
-                <property name="repeatIteration" value="0" />
-              </properties>
-              <output><![CDATA[Saving results to: C:/Users/admin/AppData/LocalLow/DefaultCompany/FluentPlayableApi\TestResults.xml
+              <output><![CDATA[Saving results to: C:/Users/admin/AppData/LocalLow/DefaultCompany/CascadeEngine\TestResults.xml
 ]]></output>
             </test-case>
           </test-suite>
