@@ -1,0 +1,223 @@
+#nullable enable
+
+using System;
+using Hestia;
+using NUnit.Framework;
+
+namespace CascadeEngineApi.Tests
+{
+    public sealed class HestiaGameCascadeTests
+    {
+        [Test]
+        public void AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(3);
+            cascade.SetInitialAmmo(entityId, ammo: 2);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            Assert.AreEqual(1, cascade.GetAmmo(entityId));
+            Assert.IsFalse(cascade.IsAmmoEmpty(entityId));
+            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+        }
+
+        [Test]
+        public void AmmoEmptyTransitionDirtiesIconAndAudio()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(3);
+            cascade.SetInitialAmmo(entityId, ammo: 1);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            Assert.AreEqual(0, cascade.GetAmmo(entityId));
+            Assert.IsTrue(cascade.IsAmmoEmpty(entityId));
+            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
+            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+            Assert.AreEqual(2, cascade.LastCounters.ProducedFacts);
+            Assert.AreEqual(2, cascade.LastCounters.ReducerRuns);
+            Assert.AreEqual(1, cascade.LastCounters.TouchedEntities);
+
+            cascade.RunTick();
+
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+        }
+
+        [Test]
+        public void MovementPositionDirtiesOnlyCharacterMotorConsumer()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(5);
+
+            cascade.InputMove(entityId, desiredPosition: 12.5f);
+            cascade.RunTick();
+
+            Assert.AreEqual(12.5f, cascade.GetPosition(entityId), 0.0001f);
+            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.CharacterMotor));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+        }
+
+        [Test]
+        public void NonRelevantCueDoesNotProduceFactOrConsumerWork()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(5);
+
+            cascade.InputFootstepCue(entityId, isRelevant: false);
+            cascade.RunTick();
+
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+            Assert.AreEqual(0, cascade.LastCounters.ProducedFacts);
+            Assert.AreEqual(0, cascade.LastCounters.ReducerRuns);
+            Assert.AreEqual(1, cascade.LastCounters.SkippedNonRelevant);
+            Assert.AreEqual(0, cascade.LastCounters.TouchedEntities);
+        }
+
+        [Test]
+        public void FactReducerRunsOnlyTouchedEntityWork()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 1000);
+            var entityId = new CascadeEntityId(777);
+            cascade.SetInitialAmmo(entityId, ammo: 2);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            Assert.AreEqual(1, cascade.LastCounters.ReducerRuns);
+            Assert.AreEqual(1, cascade.LastCounters.TouchedEntities);
+            Assert.AreEqual(1, cascade.GetAmmo(entityId));
+            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+        }
+
+        [Test]
+        public void DuplicateFireFactsRunReducerForEachFactAndCommitOnce()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(3);
+            cascade.SetInitialAmmo(entityId, ammo: 5);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            Assert.AreEqual(3, cascade.GetAmmo(entityId));
+            Assert.AreEqual(2, cascade.LastCounters.ProducedFacts);
+            Assert.AreEqual(2, cascade.LastCounters.ProcessedFacts);
+            Assert.AreEqual(2, cascade.LastCounters.ReducerRuns);
+            Assert.AreEqual(4, cascade.LastCounters.RegisteredReducers);
+            Assert.AreEqual(1, cascade.LastCounters.TouchedEntities);
+        }
+
+        [Test]
+        public void ReducerMapRejectsDuplicateFactKind()
+        {
+            var reducers = new CascadeReducerMap<object>();
+            var factKind = new CascadeFactKey(31, "DuplicateTestFact");
+
+            reducers.Register(factKind, NoopReducer);
+
+            Assert.Throws<InvalidOperationException>(() => reducers.Register(factKind, NoopReducer));
+        }
+
+        [Test]
+        public void ReducerMapFailsUnknownFactKind()
+        {
+            var reducers = new CascadeReducerMap<object>();
+            var factKind = new CascadeFactKey(32, "UnknownTestFact");
+
+            Assert.Throws<InvalidOperationException>(() => reducers.GetRequired(factKind));
+        }
+
+        [Test]
+        public void PropertyCommitMapRejectsDuplicateProperty()
+        {
+            var committers = new CascadePropertyCommitMap();
+            var property = new CascadePropertyKey(33, "DuplicateTestProperty");
+
+            committers.Register(property, NoopCommitter);
+
+            Assert.Throws<InvalidOperationException>(() => committers.Register(property, NoopCommitter));
+        }
+
+        [Test]
+        public void PropertyCommitMapFailsUnknownProperty()
+        {
+            var committers = new CascadePropertyCommitMap();
+            var property = new CascadePropertyKey(34, "UnknownTestProperty");
+
+            Assert.Throws<InvalidOperationException>(() => committers.GetRequired(property));
+        }
+
+        [Test]
+        public void CoreCommitRequiresRegisteredPropertyCommitter()
+        {
+            var entityId = new CascadeEntityId(1);
+            var property = new CascadePropertyKey(35, "RequiredCommitterProperty");
+            var entities = new CascadeEntityStateStore(entityCapacity: 4);
+            var touched = new CascadeTouchedEntitySet(entityCapacity: 4);
+            var dirtyConsumers = new CascadeDirtyConsumerSet();
+            var committers = new CascadePropertyCommitMap();
+
+            entities.Get(entityId).Stage(property, ReducerPayload.From(7));
+            touched.Mark(entityId);
+
+            Assert.Throws<InvalidOperationException>(() => entities.CommitTouched(touched, committers, dirtyConsumers));
+            Assert.AreEqual(0, entities.Get(entityId).GetCommittedOrDefault<int>(property));
+        }
+
+        [Test]
+        public void CoreCommitClearsDestroyedEntityWithoutCommitter()
+        {
+            var entityId = new CascadeEntityId(1);
+            var property = new CascadePropertyKey(36, "DestroyedEntityProperty");
+            var entities = new CascadeEntityStateStore(entityCapacity: 4);
+            var touched = new CascadeTouchedEntitySet(entityCapacity: 4);
+            var dirtyConsumers = new CascadeDirtyConsumerSet();
+            var committers = new CascadePropertyCommitMap();
+
+            entities.Get(entityId).Stage(property, ReducerPayload.From(7));
+            touched.Mark(entityId);
+            entities.Destroy(entityId);
+
+            Assert.DoesNotThrow(() => entities.CommitTouched(touched, committers, dirtyConsumers));
+            Assert.AreEqual(0, entities.Get(entityId).StagedPropertyCount);
+            Assert.AreEqual(0, dirtyConsumers.Count);
+        }
+
+        [Test]
+        public void DestroyedEntityFactsDoNotRunReducersOrStopTick()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(3);
+            cascade.SetInitialAmmo(entityId, ammo: 2);
+            cascade.DestroyEntity(entityId);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            Assert.AreEqual(1, cascade.LastCounters.ProducedFacts);
+            Assert.AreEqual(1, cascade.LastCounters.ProcessedFacts);
+            Assert.AreEqual(0, cascade.LastCounters.ReducerRuns);
+            Assert.AreEqual(0, cascade.GetAmmo(entityId));
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+        }
+
+        private static void NoopReducer(object context, CascadeFact fact)
+        {
+        }
+
+        private static void NoopCommitter(CascadePropertyCommitContext context)
+        {
+        }
+    }
+}

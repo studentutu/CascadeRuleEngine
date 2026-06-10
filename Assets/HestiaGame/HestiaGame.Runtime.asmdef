@@ -1,0 +1,16 @@
+{
+    "name": "HestiaGame.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "GUID:e0b4d4b799b31eb44bc35ccdc170dd5d"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
