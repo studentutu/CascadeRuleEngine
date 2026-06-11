@@ -2,29 +2,36 @@
 
 ## Purpose
 
-Need a good minimal and coherent package core, so that we can pick one folder and drop into any other project ready to be used.
-
-Take inspiration from Virtual-DOM and React for the minimal and coherent package core and good set of primitives.
-
-What it really is about:
-
-Replace ECS-style hidden execution order with a small fact-reduction-mutation pipeline.
+Cascade is a small fact-reduction pipeline. Its job is not to own UI, audio,
+replication, or host after-pass dispatch. Its job is to take facts, run explicit
+reducers, stage entity-local state, commit touched entities, and report which
+entity properties mutated.
 
 ```text
-input/events -> facts -> reducer functions -> entity staged state -> commit touched entities -> published properties
+input/events
+  -> facts
+  -> reducer functions
+  -> entity staged state
+  -> commit touched entities
+  -> mutated entity-property pairs
 ```
 
-The engine should be easy to explain:
+That is the package boundary. Project code can use the mutation output to drive
+UI, audio, networking, ECS bridges, or any other after-pass, but Cascade core
+does not track or schedule those systems.
+
+## Core Rules
 
 ```text
-Reducers do not mutate published state.
+Reducers do not mutate committed state.
 Reducers receive context + fact.
-Reducers stage state inside the target entity or produce more facts.
-Entities commit staged state once.
-Committed property changes publish entity-property pairs.
+Reducers stage state inside the bound entity or produce more facts.
+Entities commit staged state once per tick.
+Commit functions decide whether staged values become committed values.
+Committed changes record mutated entity-property pairs.
 ```
 
-This is the generational improvement over ECS:
+This replaces ECS-style hidden execution order:
 
 ```text
 old ECS:
@@ -33,64 +40,15 @@ old ECS:
 cascade:
   facts map to reducer functions explicitly
   reducers stage changes on one entity context
-  one entity commit publishes staged values once
+  one entity commit applies staged values once
+  mutation output is explicit and inspectable
 ```
-
-### Usability
-
-We need a good set of primitives and clear and rigid pipeline and intuitive usage:
-
-1. Simple enough to understand and walk through the any reducer/consumer/properties/fact and clean mutation of the state.
-2. Extendable to add custom reducers/consumers.
-3. We need all major feature parity to ecs: entity and per entity state, queryable entity state from reducers/consumers, zero-allocation in the hot path, performant for 500+ entities.
-4. Easy enough to drop cascade package in and start using instead of ecs:
-
-```text
-old ECS system -> input/event -> Fact
--> cascade engine Tick
--> published property -> old ECS/world/unity-ui consumer
-```
-
----
-
-## Core Pipeline
-
-This is the core concept and core package.
-
-```text
-Tick
-  -> input/events create facts with payloads
-  -> process unhandled facts through ReducerMap
-  -> reducers stage state inside entities or append more facts
-  -> commit touched entities once
-  -> committers publish changed properties
-  -> subscription map fans published properties out to dirty consumers
-  -> run only dirty consumers for affected entities
-```
-
-Compact form:
-
-```text
-Input
-  -> fact_1
-  -> ReducerMap[fact_1] -> reducer_A(context, fact_1)
-  -> fact_2
-  -> ReducerMap[fact_2] -> reducer_B(context, fact_2)
-  -> fact_3
-  -> no more unprocessed facts
-  -> commit touched entities
-  -> dirty consumers
-```
-
-Everything else is extension and usage on top of it.
-
----
 
 ## Minimal Terms
 
 ### Entity State
 
-Committed gameplay data.
+Committed and staged gameplay data for one dense entity id.
 
 Examples:
 
@@ -99,52 +57,16 @@ Entity_17.Resources.Ammo.Current
 Entity_17.Resources.Stamina.Band
 Entity_17.Mobility.Position
 Entity_17.Mobility.Grounded
-Entity_17.Computed.MovementPermissions
-Player_12.Entity_17.Published.Hud.AmmoText
 ```
-
-### Dirty Reducer
-
-A reducer scheduled because input, events, or facts changed something it cares about.
-
-Reducers read:
-
-```text
-committed state
-current tick facts
-request/cue entities
-```
-
-Reducers write:
-
-```text
-facts
-entity-local staged state
-```
-
-Reducers do not write final state. Reducers do not call consumers.
-
-### Input Fact
-
-The first item in the reduction pipeline is a normal fact with payload.
-
-```text
-input/event
-  -> Fact(EntityId, FactKey, TargetProperty, Payload)
-  -> ReducerMap resolves FactKey to reducer function
-```
-
-This keeps input handling out of reducers. Input does not call reducers directly and does not mutate final state.
 
 ### Fact
 
-A tick-local statement that wants to affect a state property or another reducer.
+A tick-local statement that wants reducer work.
 
 ```text
 FactKey
 TargetProperty
 EntityId
-SourceEntityId
 Priority, optional and property-local
 Payload
 ```
@@ -154,56 +76,51 @@ Examples:
 ```text
 AmmoSpendRequested(Entity_17, amount: 1)
 DesiredPosition(Entity_17, value)
-FootstepCue(Player_12, CueEntity_9001)
-DryFireCue(Player_12)
-MovementPermissionInput(Entity_17, CanSprint=true)
+FootstepCue(Entity_17)
+DryFireCue(Entity_17)
 ```
 
-### Target Property
+### Reducer
 
-The exact property a fact wants to affect.
+A function registered by `FactKey`.
+
+Reducers read:
 
 ```text
-Entity_17.Resources.Ammo.Current
-Entity_17.Computed.MovementPermissions
-Player_12.Entity_17.Published.Hud.AmmoIcon
+committed entity state
+the current fact payload
+tick-local facts through explicit context APIs
 ```
 
-All conflict resolution happens per target property.
-
-### Priority
-
-No global priority bands.
-
-Priority exists only when several facts target the same property in the same commit. The target property owns the priority comparison.
-
-Bad:
+Reducers write:
 
 ```text
-one global priority scale shared by every property
-feature priority numbers that mean different things for different properties
+new facts
+entity-local staged state
 ```
 
-Good:
+Reducers do not call Unity objects, UI, audio, networking, or after-pass code.
+
+### Property Commit Function
+
+A function registered by `CascadePropertyKey`.
+
+Commit functions are the only place staged values become committed values. They
+own per-property rules like exact compare, epsilon compare, priority acceptance,
+or marker-style mutation output.
+
+### Property Mutation
+
+The only core output after a successful tick.
 
 ```text
-Property: Entity.Mobility.Position
-Policy: ServerCorrection > MovementSolverPrediction
-
-Property: Entity.Computed.MovementPermissions
-Policy: DeathLock > StunLock > RootLock > InputIntent
-
-Property: Player.Published.Hud.AmmoIcon
-Policy: entity-local staged value wins unless this property explicitly supports priority
+CascadePropertyMutation(EntityId, Property)
 ```
 
-Most properties should not need priority. They should have one owner fact type. Add priority only where multiple facts can legitimately target the same property.
-
----
+The mutation list is deduplicated per entity-property pair and stays available
+until the next `RunTick` or explicit `ClearMutations`.
 
 ## Reduction Loop
-
-The loop is simple:
 
 ```text
 facts = facts produced by input/events
@@ -217,228 +134,90 @@ while unprocessed fact exists:
   reducer may append more facts
 
 commit touched entities once
+record mutated entity-property pairs
+clear tick-local facts and staged state
 ```
 
-Reducer order must not matter because reducers write only entity-local staged state or append facts. Published state changes only during commit.
+Reducer order must not matter because reducers write only staged state or append
+facts. Committed state changes only during commit.
 
 Required guards:
 
 ```text
-max_reduction_rounds
+max_reducer_runs_per_tick
 max_facts_per_tick
-max_facts_per_entity
-max_fact_rewrites_per_property
-cycle_trace
+cycle diagnostics for fact production
 ```
 
 Guard failure policy:
 
 ```text
-authoritative truth: stop tick, no commit
-player-scoped projection: use previous committed state or continue next tick
-debug/presentation-only cue: drop
+stop tick
+do not commit partial staged state
+clear tick-local state
+surface the error
 ```
 
 No silent partial commits.
 
----
-
 ## Commit
 
-Commit is the only place staged entity state becomes published state.
+Commit is the only place staged entity state becomes committed state.
 
 ```text
 for each touched entity:
-  resolve staged values already held by that entity
-  write committed value if changed
-mark changed properties dirty
-mark mapped published slices dirty
-queue mapped consumers
+  validate every staged property has a commit function
+  for each staged property:
+    run PropertyCommitMap[property]
+    if committed value changed:
+      record CascadePropertyMutation(entity, property)
 ```
 
-Property policy examples:
+Committer examples:
 
 ```text
 single owner:
-  accept the only fact
+  accept the staged value if changed
 
-latest:
-  accept latest tick-local fact
+float epsilon:
+  accept only if abs(previous - next) exceeds the property epsilon
 
-highest priority wins:
-  sort by property-local priority
-  accept first
-
-ordered fold:
-  sort by property-local priority
-  apply fold from highest to lowest
-
-set union:
-  merge all unique values
-
-min/max:
-  choose min/max
+marker/cue:
+  record a mutation even if the committed marker value is unchanged
 ```
 
 Priority belongs to the property policy, not to a project-wide enum.
 
----
-
-## Dirty Consumers
-
-Consumers react because committed properties are dirty.
-
-```text
-fact commit changed property
-  -> DirtyPropertyKey
-  -> DirtyPublishedSlice, if property is published
-  -> FieldMask
-  -> Version++
-  -> mapped (EntityId, ConsumerKey) queued
-```
-
-Runtime data:
-
-```text
-DirtyPropertyMask[entityId]
-DirtyPublishedMask[playerContextId][entityId]
-DirtyFieldMask[playerContextId][entityId][sliceId]
-PublishedVersion[playerContextId][entityId][sliceId]
-ConsumerQueue
-ConsumerQueueItem(EntityId, ConsumerKey)
-```
-
-Consumer map:
-
-```text
-Published.Hud.AmmoText
-  -> HudAmmoTextConsumer
-
-Published.Hud.AmmoIcon
-  -> HudAmmoIconConsumer
-
-Published.CharacterMotor
-  -> CharacterMotorConsumer
-
-Published.AudioCues
-  -> AudioCueConsumer
-
-Published.VfxCues
-  -> VfxCueConsumer
-
-Published.Replication.Transform
-  -> ReplicationConsumer
-```
-
-Consumers receive the affected entity id and read committed published state from that entity.
-No consumer reads facts.
-
----
-
-## Canonical Fact Table
-
-Keep one human-authored table.
-One place to see all facts and their reducers.
-
-```text
-FactKey
-  -> reducer function
-  -> target properties
-  -> dirty published slices
-  -> consumers
-```
-
-Do not scatter declarations across feature files. This can be done per-project or even per context, but we need to concentrate and actual usage example.
-
-Example:
-
-```text
-AmmoSpendRequested:
-  reducer function:
-    ReduceAmmoSpendRequested
-  target properties:
-    Entity.Resources.Ammo.Current
-    Player.Published.Hud.AmmoText
-  dirty published slices:
-    Published.Hud.AmmoText
-  consumers:
-    HudAmmoTextConsumer
-
-DryFireCue:
-  reducer function:
-    ReduceAudioCue
-  target properties:
-    Published.AudioCues
-  consumers:
-    AudioCueConsumer
-
-DesiredPosition:
-  reducer function:
-    ReduceDesiredPosition
-  target properties:
-    Entity.Mobility.Position
-    Entity.VisibleSnapshot.Position
-    Player.Published.VisibleSnapshot.Position
-    Player.Published.Replication.Transform
-  consumers:
-    CharacterMotorConsumer
-    ReplicationConsumer
-```
-
-Validation:
-
-```text
-every FactKey has one row
-unknown FactKey fails
-duplicate consumer in a row fails
-duplicate dirty slice in a row fails
-cycles are traced
-fanout is counted
-```
-
----
-
 ## Relevance
 
-This is built in performance/budgeting stage.
-Use one relevance condition:
+Relevance is a project decision before fact production.
 
 ```text
 if work changes authoritative truth:
-  run it
-else if entity is relevant to player context:
-  run it
+  enqueue the fact
+else if entity is relevant to the local projection:
+  enqueue the fact
 else:
-  do not produce facts
-  do not queue consumers
+  skip before producing a fact
 ```
 
-Predicted player is always first.
-Nearby/relevant players follow.
-Future replacement can use occlusion/PVS.
+Core tracks skipped input with counters, but it does not own visibility,
+interest management, UI routing, or network fanout.
 
 Performance target:
 
 ```text
-O(input/events + processed facts + touched entities + dirty properties + queued consumers)
-```
-
-Needed cases:
-
-```text
-consumer should be able to poll source state
-reduction should be able to query/add facts to multiple entities
-entity can be created at runtime or destroyed
+O(input/events + processed facts + touched entities + mutated properties)
 ```
 
 Failure cases:
 
 ```text
-non-relevant entities still producing facts
-giant HudDirty or MovementDirty flag
+non-relevant entities still producing projection-only facts
 unbounded fact production loop
-multiple systems writing Position
-culling input fact impossible to implement cleanly via reductions
+multiple systems writing Position directly
+commit policies hidden outside the property table
+after-pass routing moved back into the core package
 ```
 
 Required counters:
@@ -448,111 +227,13 @@ produced_facts
 processed_facts
 reducer_runs
 registered_reducers
-fact_rewrites_per_property
-dirty_properties
-dirty_published_slices
-queued_consumers
+mutated_properties
 skipped_non_relevant
-allocations_bytes
+touched_entities
+allocations_bytes, when measured by the host project
 ```
 
----
-
-## Real usage example
-
-Small team have game with over 1500 systems and 500 components with scattered state/hidden execution flow and frequent clean-ups before critical use which constantly breaks gameplay feature.
-
-We need alternative to ECS.
-
-### Movement Case
-
-Current writers:
-
-```text
-Gravity
-Collision
-Physics
-Inertia
-ActualPIDMovementController
-```
-
-They all affect `Position`. Do not let them all write `Position`.
-
-Correct pipeline:
-
-```text
-InputMove
-  -> DesiredPosition fact(payload: target)
-  -> ReducerMap[DesiredPosition]
-  -> ReduceDesiredPosition(context, fact)
-
-Movement reducer context reads:
-  Gravity facts
-  Collision facts
-  Physics query facts
-  Inertia facts
-  PID facts
-  committed movement state
-
-Movement reducer stages on entity:
-  Position
-  Velocity
-  Grounded
-```
-
-Commit:
-
-```text
-entity staged Position
-  -> Entity.Mobility.Position
-  -> Entity.VisibleSnapshot.Position
-  -> Player.Published.VisibleSnapshot.Position
-  -> Player.Published.Replication.Transform
-  -> CharacterMotorConsumer
-  -> ReplicationConsumer
-```
-
-Only `MovementSolverReducer` owns final movement facts. Unity physics can be a query service or a consumer, not a second gameplay owner of `Position`.
-
----
-
-### Request And Cue Entities
-
-One-shot requests and cues are entities.
-
-```text
-DamageRequestEntity
-TrapTriggerRequestEntity
-FootstepCueEntity
-WeaponFireCueEntity
-DryFireCueEntity
-DeathCueEntity
-```
-
-Fields:
-
-```text
-EntityId
-SubjectEntityId
-SourceEntityId
-FactKey
-PayloadId
-ExpireTick
-PredictionKey
-```
-
-Non-relevant players do not project cue entities.
-
-```text
-Movement step
-  -> FootstepCueEntity
-  -> relevant Player_12 gets Published.AudioCues dirty
-  -> non-relevant Player_88 gets nothing
-```
-
----
-
-### Reusable Minimal Core
+## Reusable Minimal Core
 
 Keep the reusable engine core small. If a class mentions ammo, movement, HUD,
 audio, weapons, or character state, it is not core.
@@ -560,39 +241,35 @@ audio, weapons, or character state, it is not core.
 The reusable folder boundary is:
 
 ```text
-Runtime/CascadeEngine/Core
+Assets/CascadeEngine
 ```
 
 That folder must be liftable into another Unity project without copying the
-Hestia sample. `Assets/HestiaGame` is project/domain code that
-proves the rules and is allowed to mention ammo, movement, HUD, and cues.
+Hestia sample. `Assets/HestiaGame` is project/domain code that proves the rules
+and is allowed to mention ammo, movement, HUD, and cues.
 
 Core pieces:
 
 ```text
-CascadeEntityId             typed dense entity id
-CascadeConsumerKey          typed unbounded consumer key
-CascadeEntityFlagKey        typed bit-addressable entity filter flag key
-CascadeFactKey              typed fact kind
-CascadePropertyKey          typed target property key
-CascadeValue                generic value wrapper for facts, staged state, and committed state
-CascadeFact                 immutable tick-local statement
-CascadeFactBuffer           preallocated fact storage
-CascadeEngine<TContext>     core tick runner for facts, commits, dirty consumers, and cleanup
-CascadeEntityState          core committed/staged property slots
-CascadeEntityStateStore     dense core entity state store
-CascadeReducerContext       core reducer context for fact production and staging
-CascadeReducerMap<TContext> explicit FactKey -> reducer function table
-CascadePropertyCommitMap    explicit PropertyKey -> commit function table
+CascadeEntityId              typed dense entity id
+CascadeEntityFlagKey         typed bit-addressable entity filter flag key
+CascadeFactKey               typed fact kind
+CascadePropertyKey           typed target property key
+CascadeValue                 generic value wrapper for facts, staged state, and committed state
+CascadeFact                  immutable tick-local statement
+CascadeFactBuffer            preallocated fact storage
+CascadeEngine<TContext>      core tick runner for facts, commits, mutation output, and cleanup
+CascadeEntityState           core committed/staged property slots
+CascadeEntityStateStore      dense core entity state store
+CascadeReducerContext        core reducer context for fact production and staging
+CascadeReducerMap<TContext>  explicit FactKey -> reducer function table
+CascadePropertyCommitMap     explicit PropertyKey -> commit function table
 CascadePropertyCommitContext context passed to property commit functions
-CascadePublishedPropertyChange entity-property pair published by commit
-CascadePublishedPropertySet deduplicated property publish queue
-CascadeConsumerSubscriptionMap explicit PropertyKey -> consumer fanout table
-CascadeConsumerWorkItem     exact entity-consumer pair queued by subscription fanout
-Bitmask512                  reusable 512-bit mask for dirty/registered keys
-CascadeDirtyConsumerSet     unbounded entity-scoped dirty consumer work queue
-CascadeTouchedEntitySet     touched entity list for commit/cleanup
-CascadeTickCounters         instrumentation and budget assertions
+CascadePropertyMutation      committed entity-property mutation output
+CascadePropertyMutationSet   deduplicated mutation output list
+CascadeTouchedEntitySet      touched entity list for commit/cleanup
+CascadeTickCounters          instrumentation and budget assertions
+Bitmask512                   reusable 512-bit mask for flags and fixed key checks
 ```
 
 Not core:
@@ -603,24 +280,27 @@ movement state
 audio cue state
 feature reducers
 feature commit policies
-feature consumer mappings
+UI dispatch
+audio dispatch
+network replication
+Unity object binding
 feature entity property bags
 ```
 
-Those live in a project schema and a project facade.
+Those live in a project schema, facade, or after-pass.
 
-### Hestia Sample Code
+## Hestia Sample Code
 
 The executable Hestia sample proves the core shape without pretending to be the
 final framework. Domain names are declared in one schema file.
 
-See [HestiaGame folder](Assets/HestiaGame).
-To test it use tests under [Package and domain tests](Assets/Tests/HestiaGameCascadeTests.cs)
+See [HestiaGame folder](../HestiaGame).
+Tests live under [Package and domain tests](../Tests/HestiaGameCascadeTests.cs).
 
-Fact-to-commit shape:
+Ammo shape:
 
 ```text
-InputFireWeapon(player)
+InputFireWeapon(entity)
   -> AmmoSpendRequested fact(payload: amount=1)
   -> ReducerMap[AmmoSpendRequested]
   -> ReduceAmmoSpendRequested(context, fact)
@@ -628,37 +308,35 @@ InputFireWeapon(player)
   -> context stages AmmoCurrent and AmmoEmpty properties in core entity state
   -> optional DryFireCue fact
   -> commit touched entity once
-  -> PropertyCommitMap[AmmoCurrent] publishes AmmoCurrent if changed
-  -> PropertyCommitMap[AmmoEmpty] publishes AmmoEmpty if changed
-  -> ConsumerSubscriptionMap fans published properties out to relevant entity-scoped consumers
+  -> PropertyCommitMap[AmmoCurrent] commits AmmoCurrent if changed
+  -> PropertyCommitMap[AmmoEmpty] commits AmmoEmpty if changed
+  -> mutation output contains exact changed entity-property pairs
 ```
 
 Movement shape:
 
 ```text
-InputMove(player, desired)
+InputMove(entity, desired)
   -> DesiredPosition fact(payload: desired)
   -> ReducerMap[DesiredPosition]
   -> context stages Position property in core entity state
   -> commit touched entity once
-  -> PropertyCommitMap[Position] publishes Position if changed
-  -> ConsumerSubscriptionMap fans Position out to CharacterMotor and Replication when relevant
+  -> PropertyCommitMap[Position] commits Position if changed
+  -> mutation output contains (entity, Position)
 ```
 
 What this proves:
 
 ```text
-input creates fact with payload first
+input creates facts with payload first
 fact kind maps explicitly to a reducer function
 reducers receive context + fact
 core entity state owns staged values
 core commit applies touched entities once
 property keys map explicitly to commit functions
-Bitmask512 backs dirty consumer checks
-ammo spend dirties ammo text, not ammo icon, while ammo remains non-empty
-empty transition dirties ammo icon
+ammo spend mutates AmmoCurrent while ammo remains non-empty
+empty transition mutates AmmoCurrent, AmmoEmpty, and PublishedAudioCues
 Position has one owner
-consumers queue from dirty committed properties
 buffers are reused after construction
 ```
 
@@ -666,12 +344,12 @@ What this does not include:
 
 ```text
 generic property policies
-Unity object consumers
+host after-pass registration
+dirty after-pass queues
+Unity object routing
 ```
 
-Those are next-step additions only after this slice is proven.
-
----
+Those are host-project after-passes, not core package primitives.
 
 ## Reality Check
 
@@ -683,9 +361,9 @@ facts are stored in preallocated buffers
 fact keys resolve through an explicit reducer map
 commit touches only entities with staged properties
 destroyed touched entities are cleared and skipped before commit
-destroyed touched entities are omitted from the reducer passes (ideally dirty entity is cleared/returned to pool/removed cleanly from the pipeline)
-consumers are queued from published properties through a subscription map, not invoked as events
-non-relevant player-scoped work is skipped before facts are produced
+destroyed entities are omitted from reducer passes
+after-pass routing reads mutation output instead of being owned by core
+non-relevant projection work is skipped before facts are produced
 ```
 
 This is not realistic if it becomes:
@@ -701,22 +379,27 @@ fact produced
   -> event bus
   -> arbitrary listeners
   -> more state writes
+
+or:
+
+mutated property
+  -> core-owned UI/audio/network routing
 ```
 
 Hestia usage verifies:
 
 ```text
-Ammo spend dirties text but not icon while ammo remains non-empty.
-Empty transition dirties icon and audio.
-Movement Position dirties CharacterMotor only.
-Non-relevant cue work produces no facts and no consumer work.
+Ammo spend mutates current ammo but not empty while ammo remains non-empty.
+Empty transition mutates current ammo, empty state, and audio cue marker.
+Movement mutates only Position.
+Non-relevant cue work produces no facts and no mutations.
 A 1000-entity world with one ammo input runs one reducer.
 Two fire facts run two reducer functions and still commit once.
-Unknown property committers fail before silent publish.
+Unknown property committers fail before silent commit.
 Destroyed entities with staged work are cleared and do not stop the tick.
 ```
 
-### Compared To Cached Sparse-Set ECS
+## Compared To Cached Sparse-Set ECS
 
 Sparse-set ECS with cached queries is already good when:
 
@@ -725,63 +408,31 @@ systems are few
 component ownership is clean
 query membership changes are cheap
 systems do not fight over the same output
-change/request components/markers are not cleared until used by the target system (which inherently leaks)
-there is a strict temporal state for entity (meaning, state resolution may happen in a few ticks) 
 ```
 
-Cascade is better only for the failure modes:
+Cascade is better only for these failure modes:
 
 ```text
 many systems want to affect the same property
 execution order became gameplay
-presentation consumes too much broad state
-non-relevant player work should not exist (instead of adding to all systems, skip is part of the pipeline)
-debugging needs "why did this property change?"
-all temporal gameplay changes become always become single cascade resolution tick (no more wait next tick to do x)
-```
-
-Cached ECS query cost:
-
-```text
-system wakes
-query gives matching entities
-system checks/updates component state
-multiple systems may write same component
-consumer still poll broad state
-adding new "core" component suddenly needs to update hundreds of systems and will break if at least one place is missing (example Potential-Visible-Set in addition to the Culling-Visibility)
-initialization of system is not free and often spikes on all entities
+non-relevant projection work should not exist
+debugging needs "which fact changed which property?"
+temporal gameplay changes should resolve in one cascade tick
 ```
 
 Cascade cost:
 
 ```text
-input/event creates fact with payload for target entity or broadly
-ReducerMap resolves fact kind to one reducer function (can generate next fact on a single or multiple entities)
+input/event creates fact with payload for a target entity
+ReducerMap resolves fact kind to one reducer function
 reducer stages properties through the context
 PropertyCommitMap resolves each staged property to one commit function
-core commit publishes touched entities once
-dirty property queues exact entity-scoped consumers
+core commit applies touched entities once
+mutation output exposes exact changed entity-property pairs
 ```
 
-Performance can be worse than ECS if facts are overproduced (reduction passes must be minimized).
-Performance is better only if the fact table and relevance gates keep fanout small.
-
-Required benchmark:
-
-```text
-Cascade baseline:
-  reducer functions executed
-  skipped non-relevant reduction
-  facts processed
-  facts produced
-  touched entities committed
-  consumers queued
-  skipped non-relevant work
-```
-
-If Cascade runs more reducers/facts than ECS visits entities, it loses. The design is useful because it makes that failure measurable early.
-
----
+Performance can be worse than ECS if facts are overproduced. The design is
+useful because the counters make that failure measurable early.
 
 ## Test Cases
 
@@ -791,28 +442,21 @@ If Cascade runs more reducers/facts than ECS visits entities, it loses. The desi
 FireWeapon
   -> AmmoSpendRequested fact(payload: amount)
   -> ReduceAmmoSpendRequested(context, fact)
-  -> context stages Ammo.Current
-  -> PropertyCommitMap[Ammo.Current]
-  -> commit touched entity
-  -> dirty Published.Hud.AmmoText
-  -> HudAmmoTextConsumer
-
-if ammo crossed empty/non-empty:
-  -> context stages Ammo.Empty
-  -> PropertyCommitMap[Ammo.Empty]
-  -> DryFireCue fact if empty
+  -> context stages AmmoCurrent
+  -> optional context stages AmmoEmpty
+  -> optional DryFireCue fact if ammo crossed empty
   -> ReduceAudioCue(context, fact)
-  -> dirty Published.Hud.AmmoIcon
-  -> HudAmmoIconConsumer
+  -> commit touched entity
+  -> mutation output reports changed properties
 ```
 
 Pass:
 
 ```text
-Ammo spend does not dirty movement.
-Ammo spend does not dirty ammo icon while ammo remains non-empty.
-Empty transition dirties ammo icon.
-Ammo icon consumer is not queued every shot.
+Ammo spend does not mutate movement.
+Ammo spend does not mutate AmmoEmpty while ammo remains non-empty.
+Empty transition mutates AmmoEmpty.
+Audio cue marker can mutate on repeated cue ticks.
 ```
 
 ### Movement
@@ -824,8 +468,7 @@ InputMove
   -> context stages Position
   -> PropertyCommitMap[Position]
   -> commit touched entity
-  -> dirty Published.VisibleSnapshot.Position
-  -> CharacterMotorConsumer
+  -> mutation output reports Position when changed
 ```
 
 Pass:
@@ -833,32 +476,7 @@ Pass:
 ```text
 Gravity/Collision/Physics/Inertia/PID never write Position directly.
 MovementSolverReducer is the only final movement owner.
-Position dirties only movement/visibility/replication consumers.
-```
-
-### Death
-
-```text
-DamageRequestEntity
-  -> DamageRequested fact
-  -> ReduceDamageRequested(context, fact)
-  -> context stages HealthValue
-  -> Death fact
-  -> ReduceMovementPermissions(context, fact)
-  -> context stages MovementPermissions
-  -> DeathCueEntity
-  -> commit touched entity
-  -> CharacterMotorConsumer
-  -> AudioCueConsumer if relevant
-  -> VfxCueConsumer if relevant
-```
-
-Pass:
-
-```text
-Death truth runs even when source is occluded.
-Death VFX/audio only project to relevant players.
-No consumer reads partial health state.
+Position mutations are exact and inspectable.
 ```
 
 ### Fact Loop
@@ -872,6 +490,7 @@ Input
   -> fact_3
   -> no more unprocessed facts
   -> commit touched entities
+  -> mutations
 ```
 
 Pass:
@@ -880,72 +499,41 @@ Pass:
 Reducer order does not affect committed state.
 Touched entities are committed once.
 Cycle guard catches infinite fact loops.
-Cycle trace shows responsible fact types and reducers.
+Cycle diagnostics show responsible fact types.
 ```
-
----
-
-## Selling Points
-
-```text
-Feature impact is visible in one fact table.
-Reducers do not mutate final state.
-Facts resolve same-property conflicts explicitly.
-State commits once.
-Consumers react only to exact dirty properties.
-Non-relevant work is not produced.
-Movement has one final owner.
-One-shot cues stay ECS-friendly as entities.
-Debugging becomes: which fact dirtied which property and consumer?
-```
-
-Pitch:
-
-```text
-ECS let every feature write shared state.
-Cascade makes features produce facts.
-Commit resolves facts once per property.
-Dirty properties wake exact entity-scoped consumers.
-```
-
----
 
 ## Red Flags
 
 ```text
-reducer writes final state directly
+reducer writes committed state directly
 feature declares fact mappings outside the canonical domain table
 global priority bands return
-generic Add/Multiply/Override/enum primitives becomes the main stacking model
-non-relevant entities still produce player-scoped facts
-giant HudDirty or MovementDirty flag appears
-Gravity/Collision/Physics/Inertia/PID writes Position directly
-fact production loop has no guard or cycle trace
-one-shot cue is a raw event instead of an entity
+generic Add/Multiply/Override/enum primitives become the main stacking model
+non-relevant entities still produce projection-only facts
+Gravity/Collision/Physics/Inertia/PID writes Position or the same fact directly
+fact production loop has no guard or diagnostics
+one-shot cue is a raw event instead of explicit publishable change (state, marker mutation or some form of publish-queue)
+core package starts tracking consumer (UI/audio/network routes again)
 ```
-
----
 
 ## First Slice
 
 ```text
-ammo text/icon
-stamina sprint
-movement solver staged position
-one footstep cue entity
-one dry-fire cue entity
-canonical fact table validator
-dirty property -> consumer dispatch
+ammo current/empty
+movement staged position
+one footstep cue marker
+one dry-fire cue marker
+canonical fact table
+mutation output after commit
 ```
 
 Success:
 
 ```text
-predicted player processed first
 non-relevant cue work skipped
-ammo text and ammo icon dirty independently
+ammo current and empty mutate independently
 movement position has one owner
-consumers queue from dirty properties only
+mutated properties are enough output for host after-passes
 fact loop diagnostics visible
 zero hot-path allocations after warmup
 ```

@@ -152,6 +152,9 @@ namespace CascadeEngineApi
             _stagedPriorities[property.Index] = priority;
         }
 
+        /// <summary>
+        /// Range: property index 0-511. Condition: reducer stages competing values. Output: true if value becomes the staged candidate.
+        /// </summary>
         public bool StageIfPriorityAtLeast(CascadePropertyKey property, CascadeValue value, int priority)
         {
             if (IsDestroyed)
@@ -171,7 +174,7 @@ namespace CascadeEngineApi
         /// <summary>
         /// Range: staged property slot. Condition: commit policy accepts staged value. Output: committed value is changed only when staged differs.
         /// </summary>
-        public bool PublishStagedIfChanged(CascadePropertyKey property)
+        public bool CommitStagedIfChanged(CascadePropertyKey property)
         {
             var staged = _staged[property.Index];
             if (staged == null)

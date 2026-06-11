@@ -5,7 +5,7 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Core Cascade tick runner for fact reduction, touched-entity commit, dirty consumers, and cleanup.
+    /// Core Cascade tick runner for fact reduction, touched-entity commit, mutation output, and cleanup.
     /// </summary>
     public abstract class CascadeEngine<TContext>
         where TContext : CascadeReducerContext
@@ -13,9 +13,7 @@ namespace CascadeEngineApi
         private readonly CascadeFactBuffer _facts;
         private readonly CascadeReducerMap<TContext> _reducers = new CascadeReducerMap<TContext>();
         private readonly CascadePropertyCommitMap _committers = new CascadePropertyCommitMap();
-        private readonly CascadeConsumerSubscriptionMap _consumerSubscriptions = new CascadeConsumerSubscriptionMap();
-        private readonly CascadePublishedPropertySet _publishedProperties = new CascadePublishedPropertySet();
-        private readonly CascadeDirtyConsumerSet _dirtyConsumers;
+        private readonly CascadePropertyMutationSet _mutations = new CascadePropertyMutationSet();
         private readonly CascadeTouchedEntitySet _touchedEntities;
         private readonly TContext _reducerContext;
         private readonly int _maxReducerRunsPerTick;
@@ -28,8 +26,7 @@ namespace CascadeEngineApi
             int maxReducerRunsPerTick,
             Func<CascadeEntityStateStore, CascadeFactBuffer, CascadeTouchedEntitySet, TContext> createReducerContext,
             Action<CascadeReducerMap<TContext>> registerReducers,
-            Action<CascadePropertyCommitMap> registerPropertyCommitters,
-            Action<CascadeConsumerSubscriptionMap> registerConsumerSubscriptions)
+            Action<CascadePropertyCommitMap> registerPropertyCommitters)
         {
             if (entityCapacity <= 0)
             {
@@ -61,21 +58,14 @@ namespace CascadeEngineApi
                 throw new ArgumentNullException(nameof(registerPropertyCommitters));
             }
 
-            if (registerConsumerSubscriptions == null)
-            {
-                throw new ArgumentNullException(nameof(registerConsumerSubscriptions));
-            }
-
             Entities = new CascadeEntityStateStore(entityCapacity);
             _facts = new CascadeFactBuffer(factCapacity);
-            _dirtyConsumers = new CascadeDirtyConsumerSet(entityCapacity);
             _touchedEntities = new CascadeTouchedEntitySet(entityCapacity);
             _reducerContext = createReducerContext(Entities, _facts, _touchedEntities);
             _maxReducerRunsPerTick = maxReducerRunsPerTick;
 
             registerReducers(_reducers);
             registerPropertyCommitters(_committers);
-            registerConsumerSubscriptions(_consumerSubscriptions);
         }
 
         public CascadeTickCounters LastCounters { get; private set; }
@@ -83,67 +73,43 @@ namespace CascadeEngineApi
         protected CascadeEntityStateStore Entities { get; }
 
         /// <summary>
-        /// Range: dirty work from the last successful tick. Condition: quick aggregate consumer check. Output: true if any entity dirtied the consumer.
+        /// Range: mutations from the last successful tick. Condition: caller needs output size. Output: number of changed entity-property pairs.
         /// </summary>
-        public bool IsConsumerDirty(CascadeConsumerKey consumer)
-            => _dirtyConsumers.Contains(consumer);
+        public int MutationCount
+            => _mutations.Count;
 
         /// <summary>
-        /// Range: dirty work from the last successful tick. Condition: entity-scoped consumer check. Output: true if the exact entity-consumer pair is dirty.
+        /// Range: mutation index from the last successful tick. Condition: caller drains changed properties. Output: exact entity-property mutation.
         /// </summary>
-        public bool IsConsumerDirty(CascadeEntityId entityId, CascadeConsumerKey consumer)
-            => _dirtyConsumers.Contains(entityId, consumer);
+        public CascadePropertyMutation GetMutation(int index)
+            => _mutations[index];
 
         /// <summary>
-        /// Count of entities with at least one dirty consumer after the last successful tick.
+        /// Range: mutations from the last successful tick. Condition: aggregate property check. Output: true if any entity mutated the property.
         /// </summary>
-        public int DirtyConsumerEntityCount
-            => _dirtyConsumers.EntityCount;
+        public bool WasPropertyMutated(CascadePropertyKey property)
+            => _mutations.Contains(property);
 
         /// <summary>
-        /// Count of exact entity-consumer work items after the last successful tick.
+        /// Range: mutations from the last successful tick. Condition: exact entity-property check. Output: true if that pair mutated.
         /// </summary>
-        public int DirtyConsumerWorkCount
-            => _dirtyConsumers.Count;
+        public bool WasPropertyMutated(CascadeEntityId entityId, CascadePropertyKey property)
+            => _mutations.Contains(entityId, property);
 
         /// <summary>
-        /// Range: dirty entity index from the last successful tick. Condition: entity-level consumer scan. Output: entity id with at least one dirty consumer.
+        /// Range: mutations from the last successful tick. Condition: caller consumed output. Output: clears mutation output only.
         /// </summary>
-        public CascadeEntityId GetDirtyConsumerEntityId(int index)
-            => _dirtyConsumers.GetEntity(index);
-
-        /// <summary>
-        /// Range: dirty entity index from the last successful tick. Condition: consumer needs committed state. Output: committed entity with at least one dirty consumer.
-        /// </summary>
-        public CascadeEntityState GetDirtyConsumerEntity(int index)
-            => Entities.Get(GetDirtyConsumerEntityId(index));
-
-        /// <summary>
-        /// Range: dirty work index from the last successful tick. Condition: consumer drain after RunTick. Output: exact entity-consumer refresh item.
-        /// </summary>
-        public CascadeConsumerWorkItem GetDirtyConsumerWorkItem(int index)
-            => _dirtyConsumers.GetWorkItem(index);
-
-        /// <summary>
-        /// Range: dirty work index from the last successful tick. Condition: consumer needs committed state. Output: committed entity for that work item.
-        /// </summary>
-        public CascadeEntityState GetDirtyConsumerWorkEntity(int index)
-            => Entities.Get(GetDirtyConsumerWorkItem(index).EntityId);
-
-        /// <summary>
-        /// Range: dirty work from the last successful tick. Condition: consumers are drained or intentionally discarded. Output: clears dirty consumer work only.
-        /// </summary>
-        public void ClearDirtyConsumers()
+        public void ClearMutations()
         {
-            _dirtyConsumers.Clear();
+            _mutations.Clear();
         }
 
         /// <summary>
-        /// [INTEGRATION] Range: queued facts this tick. Condition: reducers stage properties or produce facts. Output: committed state, published properties, and dirty consumers.
+        /// [INTEGRATION] Range: queued facts this tick. Condition: reducers stage properties or produce facts. Output: committed state and changed entity-property pairs.
         /// </summary>
         public void RunTick()
         {
-            _dirtyConsumers.Clear();
+            _mutations.Clear();
 
             var processedFacts = 0;
             var reducerRuns = 0;
@@ -174,21 +140,20 @@ namespace CascadeEngineApi
                 }
 
                 var touchedEntities = _touchedEntities.Count;
-                Entities.CommitTouched(_touchedEntities, _committers, _publishedProperties);
-                _consumerSubscriptions.Publish(_publishedProperties, Entities, _dirtyConsumers);
+                Entities.CommitTouched(_touchedEntities, _committers, _mutations);
 
                 LastCounters = new CascadeTickCounters(
                     _facts.Count,
                     processedFacts,
                     reducerRuns,
-                    _dirtyConsumers.Count,
+                    _mutations.Count,
                     _skippedNonRelevant,
                     _reducers.Count,
                     touchedEntities);
             }
             catch
             {
-                _dirtyConsumers.Clear();
+                _mutations.Clear();
                 ClearTickState();
                 throw;
             }
@@ -251,7 +216,6 @@ namespace CascadeEngineApi
             Entities.ClearTouched(_touchedEntities);
             _touchedEntities.Clear();
             _facts.Clear();
-            _publishedProperties.Clear();
             _skippedNonRelevant = 0;
         }
     }

@@ -1,8 +1,6 @@
 #nullable enable
 
 using CascadeEngineApi;
-using System;
-using System.Collections.Generic;
 
 namespace Hestia
 {
@@ -22,8 +20,7 @@ namespace Hestia
                 maxReducerRunsPerTick,
                 CreateReducerContext,
                 HestiaGameCascadeSchema.RegisterReducers,
-                HestiaGameCascadeSchema.RegisterPropertyCommitters,
-                HestiaGameCascadeSchema.RegisterConsumerSubscriptions)
+                HestiaGameCascadeSchema.RegisterPropertyCommitters)
         {
         }
 
@@ -92,72 +89,6 @@ namespace Hestia
                 HestiaGameCascadeSchema.Facts.FootstepCue,
                 HestiaGameCascadeSchema.Properties.PublishedAudioCues,
                 CascadeValue.Empty);
-        }
-
-        /// <summary>
-        /// [INTEGRATION] Range: dirty work from the last tick. Condition: consumers read committed values only. Output: dirty work is dispatched and cleared.
-        /// </summary>
-        public void DrainDirtyConsumers(IHestiaGameCascadeConsumer consumer)
-        {
-            if (consumer == null)
-            {
-                throw new ArgumentNullException(nameof(consumer));
-            }
-
-            List<Exception>? failures = null;
-            var workCount = DirtyConsumerWorkCount;
-            try
-            {
-                for (var i = 0; i < workCount; i++)
-                {
-                    var workItem = GetDirtyConsumerWorkItem(i);
-                    try
-                    {
-                        DispatchDirtyConsumer(consumer, workItem);
-                    }
-                    catch (Exception exception)
-                    {
-                        failures ??= new List<Exception>();
-                        failures.Add(exception);
-                    }
-                }
-            }
-            finally
-            {
-                ClearDirtyConsumers();
-            }
-
-            if (failures != null)
-            {
-                throw new AggregateException("One or more Hestia Cascade consumers failed.", failures);
-            }
-        }
-
-        private void DispatchDirtyConsumer(
-            IHestiaGameCascadeConsumer consumer,
-            CascadeConsumerWorkItem workItem)
-        {
-            // TODO: This is not designed properly, this is a bad design!
-            switch (HestiaGameCascadeSchema.Consumers.ResolveRoute(workItem.Consumer))
-            {
-                case HestiaGameCascadeConsumerRoute.HudAmmoText:
-                    consumer.RefreshHudAmmoText(workItem.EntityId, GetAmmo(workItem.EntityId));
-                    return;
-                case HestiaGameCascadeConsumerRoute.HudAmmoIcon:
-                    consumer.RefreshHudAmmoIcon(workItem.EntityId, IsAmmoEmpty(workItem.EntityId));
-                    return;
-                case HestiaGameCascadeConsumerRoute.CharacterMotor:
-                    consumer.RefreshCharacterMotor(workItem.EntityId, GetPosition(workItem.EntityId));
-                    return;
-                case HestiaGameCascadeConsumerRoute.Replication:
-                    consumer.RefreshReplication(workItem.EntityId, GetPosition(workItem.EntityId));
-                    return;
-                case HestiaGameCascadeConsumerRoute.AudioCue:
-                    consumer.PlayAudioCue(workItem.EntityId);
-                    return;
-                default:
-                    throw new InvalidOperationException($"Unknown Hestia dirty consumer '{workItem.Consumer.Name}'.");
-            }
         }
 
         private static CascadeReducerContext CreateReducerContext(

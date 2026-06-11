@@ -9,41 +9,9 @@ namespace Hestia
     /// </summary>
     public static class HestiaGameCascadeSchema
     {
-        public static class Consumers
-        {
-            public static readonly CascadeConsumerKey HudAmmoText = new CascadeConsumerKey(0, "HudAmmoText");
-            public static readonly CascadeConsumerKey HudAmmoIcon = new CascadeConsumerKey(1, "HudAmmoIcon");
-            public static readonly CascadeConsumerKey CharacterMotor = new CascadeConsumerKey(2, "CharacterMotor");
-            public static readonly CascadeConsumerKey Replication = new CascadeConsumerKey(3, "Replication");
-            public static readonly CascadeConsumerKey AudioCue = new CascadeConsumerKey(4, "AudioCue");
-
-            private static readonly HestiaGameCascadeConsumerRoute[] RoutesByConsumerIndex =
-            {
-                HestiaGameCascadeConsumerRoute.HudAmmoText,
-                HestiaGameCascadeConsumerRoute.HudAmmoIcon,
-                HestiaGameCascadeConsumerRoute.CharacterMotor,
-                HestiaGameCascadeConsumerRoute.Replication,
-                HestiaGameCascadeConsumerRoute.AudioCue
-            };
-
-            internal static HestiaGameCascadeConsumerRoute ResolveRoute(CascadeConsumerKey consumer)
-            {
-                if ((uint)consumer.Index >= RoutesByConsumerIndex.Length)
-                {
-                    throw new System.InvalidOperationException($"Unknown Hestia dirty consumer '{consumer.Name}'.");
-                }
-
-                return RoutesByConsumerIndex[consumer.Index];
-            }
-        }
-
         public static class EntityFlags
         {
             public static readonly CascadeEntityFlagKey AcceptsAmmoInput = new CascadeEntityFlagKey(0, "AcceptsAmmoInput");
-            public static readonly CascadeEntityFlagKey PublishesHudAmmo = new CascadeEntityFlagKey(1, "PublishesHudAmmo");
-            public static readonly CascadeEntityFlagKey PublishesCharacterMotor = new CascadeEntityFlagKey(2, "PublishesCharacterMotor");
-            public static readonly CascadeEntityFlagKey PublishesAudioCues = new CascadeEntityFlagKey(3, "PublishesAudioCues");
-            public static readonly CascadeEntityFlagKey PublishesReplication = new CascadeEntityFlagKey(4, "PublishesReplication");
         }
 
         public static class Facts
@@ -74,21 +42,11 @@ namespace Hestia
 
         internal static void RegisterPropertyCommitters(CascadePropertyCommitMap committers)
         {
-            // Canonical Hestia property table: PropertyKey -> commit function -> exact consumers.
-            // TODO: Conceptual question: do we even need commit phase/stage/complexity? All we really needed Input -> Fact-> Reduction Loop -> Notify Consumer.
+            // Canonical Hestia property table: PropertyKey -> commit function.
             committers.Register(Properties.AmmoCurrent, CommitAmmoCurrent);
             committers.Register(Properties.AmmoEmpty, CommitAmmoEmpty);
             committers.Register(Properties.Position, CommitPosition);
             committers.Register(Properties.PublishedAudioCues, CommitAudioCue);
-        }
-
-        internal static void RegisterConsumerSubscriptions(CascadeConsumerSubscriptionMap subscriptions)
-        {
-            subscriptions.Register(Properties.AmmoCurrent, Consumers.HudAmmoText, IsHudAmmoPublished);
-            subscriptions.Register(Properties.AmmoEmpty, Consumers.HudAmmoIcon, IsHudAmmoPublished);
-            subscriptions.Register(Properties.Position, Consumers.CharacterMotor, IsCharacterMotorPublished);
-            subscriptions.Register(Properties.Position, Consumers.Replication, IsReplicationPublished);
-            subscriptions.Register(Properties.PublishedAudioCues, Consumers.AudioCue, IsAudioCuesPublished);
         }
 
         /// <summary>
@@ -157,18 +115,12 @@ namespace Hestia
 
         private static void CommitAmmoCurrent(CascadePropertyCommitContext context)
         {
-            if (context.PublishStagedIfChanged())
-            {
-                context.PublishProperty();
-            }
+            context.CommitStagedIfChanged();
         }
 
         private static void CommitAmmoEmpty(CascadePropertyCommitContext context)
         {
-            if (context.PublishStagedIfChanged())
-            {
-                context.PublishProperty();
-            }
+            context.CommitStagedIfChanged();
         }
 
         private static void CommitPosition(CascadePropertyCommitContext context)
@@ -180,25 +132,15 @@ namespace Hestia
                 return;
             }
 
-            context.PublishStagedIfChanged();
-            context.PublishProperty();
+            context.CommitStagedIfChanged();
         }
 
         private static void CommitAudioCue(CascadePropertyCommitContext context)
         {
-            context.PublishProperty();
+            if (!context.CommitStagedIfChanged())
+            {
+                context.MarkMutated();
+            }
         }
-
-        private static bool IsHudAmmoPublished(CascadeEntityState entity)
-            => entity.HasFlag(EntityFlags.PublishesHudAmmo);
-
-        private static bool IsCharacterMotorPublished(CascadeEntityState entity)
-            => entity.HasFlag(EntityFlags.PublishesCharacterMotor);
-
-        private static bool IsReplicationPublished(CascadeEntityState entity)
-            => entity.HasFlag(EntityFlags.PublishesReplication);
-
-        private static bool IsAudioCuesPublished(CascadeEntityState entity)
-            => entity.HasFlag(EntityFlags.PublishesAudioCues);
     }
 }

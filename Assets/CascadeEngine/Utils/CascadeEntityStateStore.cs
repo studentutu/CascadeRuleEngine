@@ -56,17 +56,17 @@ namespace CascadeEngineApi
         }
 
         /// <summary>
-        /// [INTEGRATION] Range: touched live entities only. Condition: staged properties have commit functions. Output: committed state and published properties.
+        /// [INTEGRATION] Range: touched live entities only. Condition: staged properties have commit functions. Output: committed state and property mutations.
         /// </summary>
         public void CommitTouched(
             CascadeTouchedEntitySet touchedEntities,
             CascadePropertyCommitMap committers,
-            CascadePublishedPropertySet publishedProperties)
+            CascadePropertyMutationSet mutations)
         {
             ClearDestroyedEntities(touchedEntities);
             ValidateCommitters(touchedEntities, committers);
 
-            var context = new CascadePropertyCommitContext(publishedProperties);
+            var context = new CascadePropertyCommitContext(mutations);
             for (var i = 0; i < touchedEntities.Count; i++)
             {
                 var entityId = touchedEntities[i];
