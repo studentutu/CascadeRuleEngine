@@ -7,6 +7,7 @@ namespace Hestia
         HudAmmoText,
         HudAmmoIcon,
         CharacterMotor,
+        Replication,
         AudioCue
     }
 }

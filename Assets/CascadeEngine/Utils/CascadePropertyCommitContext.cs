@@ -3,15 +3,15 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Context passed to property commit functions.
+    /// Context passed to property commit functions for publishing staged state and property changes.
     /// </summary>
     public sealed class CascadePropertyCommitContext
     {
-        private readonly CascadeDirtyConsumerSet _dirtyConsumers;
+        private readonly CascadePublishedPropertySet _publishedProperties;
 
-        internal CascadePropertyCommitContext(CascadeDirtyConsumerSet dirtyConsumers)
+        internal CascadePropertyCommitContext(CascadePublishedPropertySet publishedProperties)
         {
-            _dirtyConsumers = dirtyConsumers;
+            _publishedProperties = publishedProperties;
         }
 
         public CascadeEntityId EntityId { get; private set; }
@@ -58,11 +58,11 @@ namespace CascadeEngineApi
         }
 
         /// <summary>
-        /// Range: bound entity. Condition: committed change is relevant to a consumer. Output: queues exact entity-consumer dirty work.
+        /// Range: bound entity property. Condition: commit policy exposes property to subscribers. Output: queues entity-property publish work.
         /// </summary>
-        public void MarkDirty(CascadeConsumerKey consumer)
+        public void PublishProperty()
         {
-            _dirtyConsumers.Mark(consumer, EntityId);
+            _publishedProperties.Publish(EntityId, Property);
         }
     }
 }

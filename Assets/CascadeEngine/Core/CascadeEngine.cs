@@ -13,6 +13,8 @@ namespace CascadeEngineApi
         private readonly CascadeFactBuffer _facts;
         private readonly CascadeReducerMap<TContext> _reducers = new CascadeReducerMap<TContext>();
         private readonly CascadePropertyCommitMap _committers = new CascadePropertyCommitMap();
+        private readonly CascadeConsumerSubscriptionMap _consumerSubscriptions = new CascadeConsumerSubscriptionMap();
+        private readonly CascadePublishedPropertySet _publishedProperties = new CascadePublishedPropertySet();
         private readonly CascadeDirtyConsumerSet _dirtyConsumers;
         private readonly CascadeTouchedEntitySet _touchedEntities;
         private readonly TContext _reducerContext;
@@ -27,7 +29,7 @@ namespace CascadeEngineApi
             Func<CascadeEntityStateStore, CascadeFactBuffer, CascadeTouchedEntitySet, TContext> createReducerContext,
             Action<CascadeReducerMap<TContext>> registerReducers,
             Action<CascadePropertyCommitMap> registerPropertyCommitters,
-            int dirtyConsumerCapacity = Bitmask512.BitCount)
+            Action<CascadeConsumerSubscriptionMap> registerConsumerSubscriptions)
         {
             if (entityCapacity <= 0)
             {
@@ -42,11 +44,6 @@ namespace CascadeEngineApi
             if (maxReducerRunsPerTick <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(maxReducerRunsPerTick));
-            }
-
-            if (dirtyConsumerCapacity <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(dirtyConsumerCapacity));
             }
 
             if (createReducerContext == null)
@@ -64,15 +61,21 @@ namespace CascadeEngineApi
                 throw new ArgumentNullException(nameof(registerPropertyCommitters));
             }
 
+            if (registerConsumerSubscriptions == null)
+            {
+                throw new ArgumentNullException(nameof(registerConsumerSubscriptions));
+            }
+
             Entities = new CascadeEntityStateStore(entityCapacity);
             _facts = new CascadeFactBuffer(factCapacity);
-            _dirtyConsumers = new CascadeDirtyConsumerSet(entityCapacity, dirtyConsumerCapacity);
+            _dirtyConsumers = new CascadeDirtyConsumerSet(entityCapacity);
             _touchedEntities = new CascadeTouchedEntitySet(entityCapacity);
             _reducerContext = createReducerContext(Entities, _facts, _touchedEntities);
             _maxReducerRunsPerTick = maxReducerRunsPerTick;
 
             registerReducers(_reducers);
             registerPropertyCommitters(_committers);
+            registerConsumerSubscriptions(_consumerSubscriptions);
         }
 
         public CascadeTickCounters LastCounters { get; private set; }
@@ -136,7 +139,7 @@ namespace CascadeEngineApi
         }
 
         /// <summary>
-        /// [INTEGRATION] Range: queued facts this tick. Condition: reducers stage properties or produce facts. Output: committed touched entities and dirty consumers.
+        /// [INTEGRATION] Range: queued facts this tick. Condition: reducers stage properties or produce facts. Output: committed state, published properties, and dirty consumers.
         /// </summary>
         public void RunTick()
         {
@@ -171,7 +174,8 @@ namespace CascadeEngineApi
                 }
 
                 var touchedEntities = _touchedEntities.Count;
-                Entities.CommitTouched(_touchedEntities, _committers, _dirtyConsumers);
+                Entities.CommitTouched(_touchedEntities, _committers, _publishedProperties);
+                _consumerSubscriptions.Publish(_publishedProperties, Entities, _dirtyConsumers);
 
                 LastCounters = new CascadeTickCounters(
                     _facts.Count,
@@ -247,6 +251,7 @@ namespace CascadeEngineApi
             Entities.ClearTouched(_touchedEntities);
             _touchedEntities.Clear();
             _facts.Clear();
+            _publishedProperties.Clear();
             _skippedNonRelevant = 0;
         }
     }

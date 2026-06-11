@@ -12,6 +12,7 @@ namespace Hestia
         void RefreshHudAmmoText(CascadeEntityId entityId, int ammo);
         void RefreshHudAmmoIcon(CascadeEntityId entityId, bool isAmmoEmpty);
         void RefreshCharacterMotor(CascadeEntityId entityId, float position);
+        void RefreshReplication(CascadeEntityId entityId, float position);
         void PlayAudioCue(CascadeEntityId entityId);
     }
 }

@@ -11,7 +11,7 @@ What it really is about:
 Replace ECS-style hidden execution order with a small fact pipeline.
 
 ```text
-input/events -> facts -> reducer functions -> entity staged state -> commit touched entities -> dirty consumers
+input/events -> facts -> reducer functions -> entity staged state -> commit touched entities -> published properties -> dirty consumers
 ```
 
 The engine should be easy to explain:
@@ -21,7 +21,7 @@ Reducers do not mutate published state.
 Reducers receive context + fact.
 Reducers stage state inside the target entity or produce more facts.
 Entities commit staged state once.
-Committed property changes mark exact entity-scoped consumers dirty.
+Committed property changes publish entity-property pairs, then subscriptions mark exact entity-scoped consumers dirty.
 ```
 
 This is the generational improvement over ECS:
@@ -63,9 +63,10 @@ Tick
   -> input/events create facts with payloads
   -> process unhandled facts through ReducerMap
   -> reducers stage state inside entities or append more facts
-  -> commit touched entities once (same as mark changed properties dirty and apply mutation)
-  -> mark exact properties/published slices dirty (part of the commit)
-  -> run only consumers mapped to dirty properties for the affected entities
+  -> commit touched entities once
+  -> committers publish changed properties
+  -> subscription map fans published properties out to dirty consumers
+  -> run only dirty consumers for affected entities
 ```
 
 Compact form:
@@ -571,7 +572,7 @@ Core pieces:
 
 ```text
 CascadeEntityId             typed dense entity id
-CascadeConsumerKey          typed bit-addressable consumer key
+CascadeConsumerKey          typed unbounded consumer key
 CascadeEntityFlagKey        typed bit-addressable entity filter flag key
 CascadeFactKey              typed fact kind
 CascadePropertyKey          typed target property key
@@ -585,9 +586,12 @@ CascadeReducerContext       core reducer context for fact production and staging
 CascadeReducerMap<TContext> explicit FactKey -> reducer function table
 CascadePropertyCommitMap    explicit PropertyKey -> commit function table
 CascadePropertyCommitContext context passed to property commit functions
-CascadeConsumerWorkItem     exact entity-consumer pair queued by commit
+CascadePublishedPropertyChange entity-property pair published by commit
+CascadePublishedPropertySet deduplicated property publish queue
+CascadeConsumerSubscriptionMap explicit PropertyKey -> consumer fanout table
+CascadeConsumerWorkItem     exact entity-consumer pair queued by subscription fanout
 Bitmask512                  reusable 512-bit mask for dirty/registered keys
-CascadeDirtyConsumerSet     entity-scoped dirty consumer work backed by per-entity masks
+CascadeDirtyConsumerSet     unbounded entity-scoped dirty consumer work queue
 CascadeTouchedEntitySet     touched entity list for commit/cleanup
 CascadeTickCounters         instrumentation and budget assertions
 ```
@@ -624,10 +628,10 @@ InputFireWeapon(player)
   -> reducer checks entity flag AcceptsAmmoInput
   -> context stages AmmoCurrent and AmmoEmpty properties in core entity state
   -> optional DryFireCue fact
-  -> PropertyCommitMap[AmmoCurrent] -> HudAmmoText dirty for player if value changed and PublishesHudAmmo is set
-  -> PropertyCommitMap[AmmoEmpty] -> HudAmmoIcon dirty for player if value changed and PublishesHudAmmo is set
   -> commit touched entity once
-  -> exact entity-scoped dirty consumers
+  -> PropertyCommitMap[AmmoCurrent] publishes AmmoCurrent if changed
+  -> PropertyCommitMap[AmmoEmpty] publishes AmmoEmpty if changed
+  -> ConsumerSubscriptionMap fans published properties out to relevant entity-scoped consumers
 ```
 
 Movement shape:
@@ -637,9 +641,9 @@ InputMove(player, desired)
   -> DesiredPosition fact(payload: desired)
   -> ReducerMap[DesiredPosition]
   -> context stages Position property in core entity state
-  -> PropertyCommitMap[Position] -> CharacterMotor dirty if committed value changed
   -> commit touched entity once
-  -> CharacterMotor dirty only if Position changed
+  -> PropertyCommitMap[Position] publishes Position if changed
+  -> ConsumerSubscriptionMap fans Position out to CharacterMotor and Replication when relevant
 ```
 
 What this proves:
@@ -681,7 +685,7 @@ fact keys resolve through an explicit reducer map
 commit touches only entities with staged properties
 destroyed touched entities are cleared and skipped before commit
 destroyed touched entities are omitted from the reducer passes (ideally dirty entity is cleared/returned to pool/removed cleanly from the pipeline)
-consumers are queued from dirty properties (avoid subscription based events)
+consumers are queued from published properties through a subscription map, not invoked as events
 non-relevant player-scoped work is skipped before facts are produced
 ```
 

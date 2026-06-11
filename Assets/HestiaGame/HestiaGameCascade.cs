@@ -2,6 +2,7 @@
 
 using CascadeEngineApi;
 using System;
+using System.Collections.Generic;
 
 namespace Hestia
 {
@@ -14,8 +15,7 @@ namespace Hestia
         public HestiaGameCascade(
             int entityCapacity,
             int factCapacity = 128,
-            int maxReducerRunsPerTick = 64,
-            int dirtyConsumerCapacity = 128)
+            int maxReducerRunsPerTick = 64)
             : base(
                 entityCapacity,
                 factCapacity,
@@ -23,7 +23,7 @@ namespace Hestia
                 CreateReducerContext,
                 HestiaGameCascadeSchema.RegisterReducers,
                 HestiaGameCascadeSchema.RegisterPropertyCommitters,
-                dirtyConsumerCapacity)
+                HestiaGameCascadeSchema.RegisterConsumerSubscriptions)
         {
         }
 
@@ -97,8 +97,6 @@ namespace Hestia
         /// <summary>
         /// [INTEGRATION] Range: dirty work from the last tick. Condition: consumers read committed values only. Output: dirty work is dispatched and cleared.
         /// </summary>
-        // TODO: This is a obscure design, as we already already handle full pipeline except clearing dirty consumers!
-        //  - we need a publish queue/dictionary that will be filled and can be consumed separately by the target Unity/UI/domain objects.
         public void DrainDirtyConsumers(IHestiaGameCascadeConsumer consumer)
         {
             if (consumer == null)
@@ -106,14 +104,33 @@ namespace Hestia
                 throw new ArgumentNullException(nameof(consumer));
             }
 
+            List<Exception>? failures = null;
             var workCount = DirtyConsumerWorkCount;
-            for (var i = 0; i < workCount; i++)
+            try
             {
-                var workItem = GetDirtyConsumerWorkItem(i);
-                DispatchDirtyConsumer(consumer, workItem);
+                for (var i = 0; i < workCount; i++)
+                {
+                    var workItem = GetDirtyConsumerWorkItem(i);
+                    try
+                    {
+                        DispatchDirtyConsumer(consumer, workItem);
+                    }
+                    catch (Exception exception)
+                    {
+                        failures ??= new List<Exception>();
+                        failures.Add(exception);
+                    }
+                }
+            }
+            finally
+            {
+                ClearDirtyConsumers();
             }
 
-            ClearDirtyConsumers();
+            if (failures != null)
+            {
+                throw new AggregateException("One or more Hestia Cascade consumers failed.", failures);
+            }
         }
 
         private void DispatchDirtyConsumer(
@@ -131,6 +148,9 @@ namespace Hestia
                     return;
                 case HestiaGameCascadeConsumerRoute.CharacterMotor:
                     consumer.RefreshCharacterMotor(workItem.EntityId, GetPosition(workItem.EntityId));
+                    return;
+                case HestiaGameCascadeConsumerRoute.Replication:
+                    consumer.RefreshReplication(workItem.EntityId, GetPosition(workItem.EntityId));
                     return;
                 case HestiaGameCascadeConsumerRoute.AudioCue:
                     consumer.PlayAudioCue(workItem.EntityId);

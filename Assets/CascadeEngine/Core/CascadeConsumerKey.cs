@@ -5,13 +5,13 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Identifies one consumer and its bit in the dirty consumer mask.
+    /// Identifies one consumer by stable non-negative index.
     /// </summary>
     public readonly struct CascadeConsumerKey : IEquatable<CascadeConsumerKey>
     {
         public CascadeConsumerKey(int index, string name)
         {
-            if (index < 0 || index >= Bitmask512.BitCount)
+            if (index < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(index));
             }
