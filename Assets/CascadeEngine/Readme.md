@@ -8,10 +8,10 @@ Take inspiration from Virtual-DOM and React for the minimal and coherent package
 
 What it really is about:
 
-Replace ECS-style hidden execution order with a small fact pipeline.
+Replace ECS-style hidden execution order with a small fact-reduction-mutation pipeline.
 
 ```text
-input/events -> facts -> reducer functions -> entity staged state -> commit touched entities -> published properties -> dirty consumers
+input/events -> facts -> reducer functions -> entity staged state -> commit touched entities -> published properties
 ```
 
 The engine should be easy to explain:
@@ -21,7 +21,7 @@ Reducers do not mutate published state.
 Reducers receive context + fact.
 Reducers stage state inside the target entity or produce more facts.
 Entities commit staged state once.
-Committed property changes publish entity-property pairs, then subscriptions mark exact entity-scoped consumers dirty.
+Committed property changes publish entity-property pairs.
 ```
 
 This is the generational improvement over ECS:
@@ -34,7 +34,6 @@ cascade:
   facts map to reducer functions explicitly
   reducers stage changes on one entity context
   one entity commit publishes staged values once
-  consumers react only to dirty properties
 ```
 
 ### Usability

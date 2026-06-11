@@ -2,6 +2,27 @@
 
 This file provides guidance to agents when working with code in this repository.
 
+## Purpose
+
+Need a good minimal and coherent package cascade core, so that we can pick one folder and drop into any other project ready to be used as is.
+
+Take inspiration from Virtual-DOM and React for the minimal and coherent package core and good set of primitives.
+
+Goal: Replace ECS-style hidden execution order with a small fact-reduction-mutation pipeline.
+
+We need a good set of primitives and clear and rigid pipeline with intuitive usage:
+
+1. Simple enough to understand and walk through the any reducer/properties/fact and clean mutation of the state.
+2. Extendable to add custom reducers/consumers.
+3. We need all major feature parity to ecs: entity and per entity state, queryable entity state from reducers/consumers, zero-allocation in the hot path, performant for 500+ entities.
+4. Easy enough to drop cascade package in and start using instead of ecs:
+
+```text
+old ECS system -> input/event -> Fact
+-> cascade engine Tick
+-> published property -> old ECS/world/unity-ui consumer
+```
+
 ## Keep in mind
 
 - Unreal, Unity, Godot, Web developer (C# Dotnet and Vue/Nextjs/Typescript/React/Vercel) experience.
