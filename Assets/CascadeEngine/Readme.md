@@ -575,7 +575,7 @@ CascadeConsumerKey          typed bit-addressable consumer key
 CascadeEntityFlagKey        typed bit-addressable entity filter flag key
 CascadeFactKey              typed fact kind
 CascadePropertyKey          typed target property key
-ReducerPayload              generic payload wrapper carried by facts
+CascadeValue                generic value wrapper for facts, staged state, and committed state
 CascadeFact                 immutable tick-local statement
 CascadeFactBuffer           preallocated fact storage
 CascadeEngine<TContext>     core tick runner for facts, commits, dirty consumers, and cleanup
@@ -585,6 +585,7 @@ CascadeReducerContext       core reducer context for fact production and staging
 CascadeReducerMap<TContext> explicit FactKey -> reducer function table
 CascadePropertyCommitMap    explicit PropertyKey -> commit function table
 CascadePropertyCommitContext context passed to property commit functions
+CascadeConsumerWorkItem     exact entity-consumer pair queued by commit
 Bitmask512                  reusable 512-bit mask for dirty/registered keys
 CascadeDirtyConsumerSet     entity-scoped dirty consumer work backed by per-entity masks
 CascadeTouchedEntitySet     touched entity list for commit/cleanup

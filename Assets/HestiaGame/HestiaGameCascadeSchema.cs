@@ -15,6 +15,24 @@ namespace Hestia
             public static readonly CascadeConsumerKey HudAmmoIcon = new CascadeConsumerKey(1, "HudAmmoIcon");
             public static readonly CascadeConsumerKey CharacterMotor = new CascadeConsumerKey(2, "CharacterMotor");
             public static readonly CascadeConsumerKey AudioCue = new CascadeConsumerKey(3, "AudioCue");
+
+            private static readonly HestiaGameCascadeConsumerRoute[] RoutesByConsumerIndex =
+            {
+                HestiaGameCascadeConsumerRoute.HudAmmoText,
+                HestiaGameCascadeConsumerRoute.HudAmmoIcon,
+                HestiaGameCascadeConsumerRoute.CharacterMotor,
+                HestiaGameCascadeConsumerRoute.AudioCue
+            };
+
+            internal static HestiaGameCascadeConsumerRoute ResolveRoute(CascadeConsumerKey consumer)
+            {
+                if ((uint)consumer.Index >= RoutesByConsumerIndex.Length)
+                {
+                    throw new System.InvalidOperationException($"Unknown Hestia dirty consumer '{consumer.Name}'.");
+                }
+
+                return RoutesByConsumerIndex[consumer.Index];
+            }
         }
 
         public static class EntityFlags
@@ -42,7 +60,7 @@ namespace Hestia
             public static readonly CascadePropertyKey PublishedAudioCues = new CascadePropertyKey(4, "PublishedAudioCues");
         }
 
-        internal static void RegisterReducers(CascadeReducerMap<HestiaGameCascadeReducerContext> reducers)
+        internal static void RegisterReducers(CascadeReducerMap<CascadeReducerContext> reducers)
         {
             // Canonical Hestia fact table: FactKind -> reducer function.
             reducers.Register(Facts.AmmoSpendRequested, ReduceAmmoSpendRequested);
@@ -54,13 +72,19 @@ namespace Hestia
         internal static void RegisterPropertyCommitters(CascadePropertyCommitMap committers)
         {
             // Canonical Hestia property table: PropertyKey -> commit function -> exact consumers.
+            // TODO: we should be able to register multiple consumers on the same property!
+            // TODO: Conceptual question: do we even need commit phase/stage/complexity? All we really needed Input -> Fact-> Reduction Loop -> Notify Consumer.
             committers.Register(Properties.AmmoCurrent, CommitAmmoCurrent);
             committers.Register(Properties.AmmoEmpty, CommitAmmoEmpty);
             committers.Register(Properties.Position, CommitPosition);
             committers.Register(Properties.PublishedAudioCues, CommitAudioCue);
         }
 
-        private static void ReduceAmmoSpendRequested(HestiaGameCascadeReducerContext context, CascadeFact fact)
+        /// <summary>
+        /// Example of reducer function that generates other facts.
+        /// </summary>
+        /// <remarks> Reducer function may live outside the schema, this is just an example </remarks>
+        private static void ReduceAmmoSpendRequested(CascadeReducerContext context, CascadeFact fact)
         {
             if (!context.Entity.HasFlag(EntityFlags.AcceptsAmmoInput))
             {
@@ -68,28 +92,56 @@ namespace Hestia
             }
 
             var amount = fact.Payload.Unwrap<int>();
-            var becameEmpty = context.StageAmmoSpend(amount);
+            var becameEmpty = StageAmmoSpend(context, amount);
             if (!becameEmpty)
             {
                 return;
             }
 
-            context.Produce(new CascadeFact(
-                context.EntityId,
+            context.Produce(
                 Facts.DryFireCue,
                 Properties.PublishedAudioCues,
-                ReducerPayload.Empty));
+                CascadeValue.Empty);
         }
 
-        private static void ReduceDesiredPosition(HestiaGameCascadeReducerContext context, CascadeFact fact)
+        /// <summary>
+        /// Example of reducer function that mutate property with data.
+        /// </summary>
+        /// <remarks> Reducer function may live outside the schema, this is just an example </remarks>
+        private static void ReduceDesiredPosition(CascadeReducerContext context, CascadeFact fact)
         {
             var desiredPosition = fact.Payload.Unwrap<float>();
-            context.StagePosition(desiredPosition, fact.Priority);
+            context.StageIfPriorityAtLeast(Properties.Position, desiredPosition, fact.Priority);
         }
 
-        private static void ReduceAudioCue(HestiaGameCascadeReducerContext context, CascadeFact fact)
+        /// <summary>
+        /// Example of reducer function that mutate property as marker.
+        /// </summary>
+        /// <remarks> Reducer function may live outside the schema, this is just an example </remarks>
+        private static void ReduceAudioCue(CascadeReducerContext context, CascadeFact fact)
         {
-            context.StageAudioCue();
+            context.Stage(Properties.PublishedAudioCues, CascadeValue.Empty);
+        }
+
+        /// <summary>
+        /// Hestia specific domain helper. 
+        /// </summary>
+        private static bool StageAmmoSpend(CascadeReducerContext context, int amount)
+        {
+            if (amount <= 0)
+            {
+                return false;
+            }
+
+            var previousEmpty = context.Read<bool>(Properties.AmmoEmpty);
+            var baseAmmo = context.Read<int>(Properties.AmmoCurrent);
+            var nextAmmo = System.Math.Max(0, baseAmmo - amount);
+            var nextEmpty = nextAmmo <= 0;
+
+            context.Stage(Properties.AmmoCurrent, nextAmmo);
+            context.Stage(Properties.AmmoEmpty, nextEmpty);
+
+            return nextEmpty && !previousEmpty;
         }
 
         private static void CommitAmmoCurrent(CascadePropertyCommitContext context)
@@ -110,7 +162,7 @@ namespace Hestia
 
         private static void CommitPosition(CascadePropertyCommitContext context)
         {
-            var previous = context.Entity.GetCommittedOrDefault<float>(context.Property);
+            var previous = context.GetCommittedOrDefault<float>();
             var next = context.GetStaged<float>();
             if (System.Math.Abs(previous - next) < 0.0001f)
             {

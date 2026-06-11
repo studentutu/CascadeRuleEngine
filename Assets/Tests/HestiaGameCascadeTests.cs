@@ -177,7 +177,7 @@ namespace CascadeEngineApi.Tests
             var dirtyConsumers = new CascadeDirtyConsumerSet();
             var committers = new CascadePropertyCommitMap();
 
-            entities.Get(entityId).Stage(property, ReducerPayload.From(7));
+            entities.Get(entityId).Stage(property, CascadeValue.From(7));
             touched.Mark(entityId);
 
             Assert.Throws<InvalidOperationException>(() => entities.CommitTouched(touched, committers, dirtyConsumers));
@@ -194,7 +194,7 @@ namespace CascadeEngineApi.Tests
             var dirtyConsumers = new CascadeDirtyConsumerSet();
             var committers = new CascadePropertyCommitMap();
 
-            entities.Get(entityId).Stage(property, ReducerPayload.From(7));
+            entities.Get(entityId).Stage(property, CascadeValue.From(7));
             touched.Mark(entityId);
             entities.Destroy(entityId);
 
@@ -308,6 +308,53 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(1, cascade.GetDirtyConsumerEntity(0).GetCommittedOrDefault<int>(HestiaGameCascadeSchema.Properties.AmmoCurrent));
         }
 
+        [Test]
+        public void DirtyConsumerWorkItemsDrainCommittedValues()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(3);
+            var consumer = new RecordingHestiaConsumer();
+            EnableAmmoHudEntity(cascade, entityId);
+            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesAudioCues);
+            cascade.SetInitialAmmo(entityId, ammo: 1);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            Assert.AreEqual(3, cascade.DirtyConsumerWorkCount);
+            Assert.AreEqual(HestiaGameCascadeSchema.Consumers.HudAmmoText, cascade.GetDirtyConsumerWorkItem(0).Consumer);
+            Assert.AreEqual(HestiaGameCascadeSchema.Consumers.HudAmmoIcon, cascade.GetDirtyConsumerWorkItem(1).Consumer);
+            Assert.AreEqual(HestiaGameCascadeSchema.Consumers.AudioCue, cascade.GetDirtyConsumerWorkItem(2).Consumer);
+
+            cascade.DrainDirtyConsumers(consumer);
+
+            Assert.AreEqual("AmmoText:3:0|AmmoIcon:3:True|Audio:3", consumer.Events);
+            Assert.AreEqual(0, cascade.DirtyConsumerWorkCount);
+            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+        }
+
+        [Test]
+        public void CommitPreflightDoesNotPublishAnyPropertyWhenACommitterIsMissing()
+        {
+            var entityId = new CascadeEntityId(1);
+            var committedProperty = new CascadePropertyKey(37, "CommittedProperty");
+            var missingProperty = new CascadePropertyKey(38, "MissingProperty");
+            var entities = new CascadeEntityStateStore(entityCapacity: 4);
+            var touched = new CascadeTouchedEntitySet(entityCapacity: 4);
+            var dirtyConsumers = new CascadeDirtyConsumerSet();
+            var committers = new CascadePropertyCommitMap();
+
+            entities.Get(entityId).Stage(committedProperty, CascadeValue.From(7));
+            entities.Get(entityId).Stage(missingProperty, CascadeValue.From(9));
+            touched.Mark(entityId);
+            committers.Register(committedProperty, PublishOnlyCommitter);
+
+            Assert.Throws<InvalidOperationException>(() => entities.CommitTouched(touched, committers, dirtyConsumers));
+            Assert.AreEqual(0, entities.Get(entityId).GetCommittedOrDefault<int>(committedProperty));
+            Assert.AreEqual(0, entities.Get(entityId).GetCommittedOrDefault<int>(missingProperty));
+            Assert.AreEqual(0, dirtyConsumers.Count);
+        }
+
         private static void NoopReducer(object context, CascadeFact fact)
         {
         }
@@ -316,10 +363,47 @@ namespace CascadeEngineApi.Tests
         {
         }
 
+        private static void PublishOnlyCommitter(CascadePropertyCommitContext context)
+        {
+            context.PublishStagedIfChanged();
+        }
+
         private static void EnableAmmoHudEntity(HestiaGameCascade cascade, CascadeEntityId entityId)
         {
             cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput);
             cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesHudAmmo);
+        }
+
+        private sealed class RecordingHestiaConsumer : IHestiaGameCascadeConsumer
+        {
+            public string Events { get; private set; } = string.Empty;
+
+            public void RefreshHudAmmoText(CascadeEntityId entityId, int ammo)
+            {
+                Append($"AmmoText:{entityId.Value}:{ammo}");
+            }
+
+            public void RefreshHudAmmoIcon(CascadeEntityId entityId, bool isAmmoEmpty)
+            {
+                Append($"AmmoIcon:{entityId.Value}:{isAmmoEmpty}");
+            }
+
+            public void RefreshCharacterMotor(CascadeEntityId entityId, float position)
+            {
+                Append($"Motor:{entityId.Value}:{position}");
+            }
+
+            public void PlayAudioCue(CascadeEntityId entityId)
+            {
+                Append($"Audio:{entityId.Value}");
+            }
+
+            private void Append(string value)
+            {
+                Events = Events.Length == 0
+                    ? value
+                    : Events + "|" + value;
+            }
         }
     }
 }

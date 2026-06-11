@@ -26,7 +26,8 @@ namespace CascadeEngineApi
             int maxReducerRunsPerTick,
             Func<CascadeEntityStateStore, CascadeFactBuffer, CascadeTouchedEntitySet, TContext> createReducerContext,
             Action<CascadeReducerMap<TContext>> registerReducers,
-            Action<CascadePropertyCommitMap> registerPropertyCommitters)
+            Action<CascadePropertyCommitMap> registerPropertyCommitters,
+            int dirtyConsumerCapacity = Bitmask512.BitCount)
         {
             if (entityCapacity <= 0)
             {
@@ -41,6 +42,11 @@ namespace CascadeEngineApi
             if (maxReducerRunsPerTick <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(maxReducerRunsPerTick));
+            }
+
+            if (dirtyConsumerCapacity <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(dirtyConsumerCapacity));
             }
 
             if (createReducerContext == null)
@@ -60,7 +66,7 @@ namespace CascadeEngineApi
 
             Entities = new CascadeEntityStateStore(entityCapacity);
             _facts = new CascadeFactBuffer(factCapacity);
-            _dirtyConsumers = new CascadeDirtyConsumerSet(entityCapacity);
+            _dirtyConsumers = new CascadeDirtyConsumerSet(entityCapacity, dirtyConsumerCapacity);
             _touchedEntities = new CascadeTouchedEntitySet(entityCapacity);
             _reducerContext = createReducerContext(Entities, _facts, _touchedEntities);
             _maxReducerRunsPerTick = maxReducerRunsPerTick;
@@ -73,20 +79,61 @@ namespace CascadeEngineApi
 
         protected CascadeEntityStateStore Entities { get; }
 
+        /// <summary>
+        /// Range: dirty work from the last successful tick. Condition: quick aggregate consumer check. Output: true if any entity dirtied the consumer.
+        /// </summary>
         public bool IsConsumerDirty(CascadeConsumerKey consumer)
             => _dirtyConsumers.Contains(consumer);
 
+        /// <summary>
+        /// Range: dirty work from the last successful tick. Condition: entity-scoped consumer check. Output: true if the exact entity-consumer pair is dirty.
+        /// </summary>
         public bool IsConsumerDirty(CascadeEntityId entityId, CascadeConsumerKey consumer)
             => _dirtyConsumers.Contains(entityId, consumer);
 
+        /// <summary>
+        /// Count of entities with at least one dirty consumer after the last successful tick.
+        /// </summary>
         public int DirtyConsumerEntityCount
             => _dirtyConsumers.EntityCount;
 
+        /// <summary>
+        /// Count of exact entity-consumer work items after the last successful tick.
+        /// </summary>
+        public int DirtyConsumerWorkCount
+            => _dirtyConsumers.Count;
+
+        /// <summary>
+        /// Range: dirty entity index from the last successful tick. Condition: entity-level consumer scan. Output: entity id with at least one dirty consumer.
+        /// </summary>
         public CascadeEntityId GetDirtyConsumerEntityId(int index)
             => _dirtyConsumers.GetEntity(index);
 
+        /// <summary>
+        /// Range: dirty entity index from the last successful tick. Condition: consumer needs committed state. Output: committed entity with at least one dirty consumer.
+        /// </summary>
         public CascadeEntityState GetDirtyConsumerEntity(int index)
             => Entities.Get(GetDirtyConsumerEntityId(index));
+
+        /// <summary>
+        /// Range: dirty work index from the last successful tick. Condition: consumer drain after RunTick. Output: exact entity-consumer refresh item.
+        /// </summary>
+        public CascadeConsumerWorkItem GetDirtyConsumerWorkItem(int index)
+            => _dirtyConsumers.GetWorkItem(index);
+
+        /// <summary>
+        /// Range: dirty work index from the last successful tick. Condition: consumer needs committed state. Output: committed entity for that work item.
+        /// </summary>
+        public CascadeEntityState GetDirtyConsumerWorkEntity(int index)
+            => Entities.Get(GetDirtyConsumerWorkItem(index).EntityId);
+
+        /// <summary>
+        /// Range: dirty work from the last successful tick. Condition: consumers are drained or intentionally discarded. Output: clears dirty consumer work only.
+        /// </summary>
+        public void ClearDirtyConsumers()
+        {
+            _dirtyConsumers.Clear();
+        }
 
         /// <summary>
         /// [INTEGRATION] Range: queued facts this tick. Condition: reducers stage properties or produce facts. Output: committed touched entities and dirty consumers.
@@ -137,6 +184,7 @@ namespace CascadeEngineApi
             }
             catch
             {
+                _dirtyConsumers.Clear();
                 ClearTickState();
                 throw;
             }
@@ -144,16 +192,51 @@ namespace CascadeEngineApi
             ClearTickState();
         }
 
+        /// <summary>
+        /// Range: current tick input queue. Condition: facade receives input/event fact before RunTick. Output: fact is queued for reduction.
+        /// </summary>
         protected void AddFact(CascadeFact fact)
         {
             _facts.Add(fact);
         }
 
+        /// <summary>
+        /// Range: current tick input queue. Condition: facade receives a fact for an entity. Output: fact is queued; no reducer runs until RunTick.
+        /// </summary>
+        protected void EnqueueFact(
+            CascadeEntityId entityId,
+            CascadeFactKey factKey,
+            CascadePropertyKey target,
+            CascadeValue payload,
+            int priority = 0)
+        {
+            AddFact(new CascadeFact(entityId, factKey, target, payload, priority));
+        }
+
+        /// <summary>
+        /// Range: current tick input queue. Condition: facade receives typed payload data. Output: payload is wrapped and queued as a fact.
+        /// </summary>
+        protected void EnqueueFact<T>(
+            CascadeEntityId entityId,
+            CascadeFactKey factKey,
+            CascadePropertyKey target,
+            T payload,
+            int priority = 0)
+        {
+            EnqueueFact(entityId, factKey, target, CascadeValue.From(payload), priority);
+        }
+
+        /// <summary>
+        /// Range: entity inside the store. Condition: facade or reducer owner decides the entity is dead. Output: committed/staged state and flags are cleared.
+        /// </summary>
         public void DestroyEntity(CascadeEntityId entityId)
         {
             Entities.Destroy(entityId);
         }
 
+        /// <summary>
+        /// Range: current tick instrumentation. Condition: facade rejects an input/event before fact creation. Output: increments skipped non-relevant counter.
+        /// </summary>
         protected void SkipNonRelevant()
         {
             _skippedNonRelevant++;

@@ -1,23 +1,29 @@
 #nullable enable
 
 using CascadeEngineApi;
+using System;
 
 namespace Hestia
 {
     /// <summary>
     /// [INTEGRATION] Hestia sample Cascade facade: input facts and project queries only.
-    /// Don't forget to execute 'RunTick' to actuly use the engine.
+    /// Don't forget to execute 'RunTick' to actually use the engine.
     /// </summary>
-    public sealed class HestiaGameCascade : CascadeEngine<HestiaGameCascadeReducerContext>
+    public sealed class HestiaGameCascade : CascadeEngine<CascadeReducerContext>
     {
-        public HestiaGameCascade(int entityCapacity, int factCapacity = 128, int maxReducerRunsPerTick = 64)
+        public HestiaGameCascade(
+            int entityCapacity,
+            int factCapacity = 128,
+            int maxReducerRunsPerTick = 64,
+            int dirtyConsumerCapacity = 128)
             : base(
                 entityCapacity,
                 factCapacity,
                 maxReducerRunsPerTick,
                 CreateReducerContext,
                 HestiaGameCascadeSchema.RegisterReducers,
-                HestiaGameCascadeSchema.RegisterPropertyCommitters)
+                HestiaGameCascadeSchema.RegisterPropertyCommitters,
+                dirtyConsumerCapacity)
         {
         }
 
@@ -51,26 +57,26 @@ namespace Hestia
         public void SetInitialAmmo(CascadeEntityId entityId, int ammo)
         {
             var entity = Entities.Get(entityId);
-            entity.SetCommitted(HestiaGameCascadeSchema.Properties.AmmoCurrent, ReducerPayload.From(ammo));
-            entity.SetCommitted(HestiaGameCascadeSchema.Properties.AmmoEmpty, ReducerPayload.From(ammo <= 0));
+            entity.SetCommitted(HestiaGameCascadeSchema.Properties.AmmoCurrent, CascadeValue.From(ammo));
+            entity.SetCommitted(HestiaGameCascadeSchema.Properties.AmmoEmpty, CascadeValue.From(ammo <= 0));
         }
 
         public void InputFireWeapon(CascadeEntityId entityId)
         {
-            AddFact(new CascadeFact(
+            EnqueueFact(
                 entityId,
                 HestiaGameCascadeSchema.Facts.AmmoSpendRequested,
                 HestiaGameCascadeSchema.Properties.AmmoCurrent,
-                ReducerPayload.From(1)));
+                1);
         }
 
         public void InputMove(CascadeEntityId entityId, float desiredPosition)
         {
-            AddFact(new CascadeFact(
+            EnqueueFact(
                 entityId,
                 HestiaGameCascadeSchema.Facts.DesiredPosition,
                 HestiaGameCascadeSchema.Properties.Position,
-                ReducerPayload.From(desiredPosition)));
+                desiredPosition);
         }
 
         public void InputFootstepCue(CascadeEntityId entityId, bool isRelevant)
@@ -81,17 +87,63 @@ namespace Hestia
                 return;
             }
 
-            AddFact(new CascadeFact(
+            EnqueueFact(
                 entityId,
                 HestiaGameCascadeSchema.Facts.FootstepCue,
                 HestiaGameCascadeSchema.Properties.PublishedAudioCues,
-                ReducerPayload.Empty));
+                CascadeValue.Empty);
         }
 
-        private static HestiaGameCascadeReducerContext CreateReducerContext(
+        /// <summary>
+        /// [INTEGRATION] Range: dirty work from the last tick. Condition: consumers read committed values only. Output: dirty work is dispatched and cleared.
+        /// </summary>
+        // TODO: This is a obscure design, as we already already handle full pipeline except clearing dirty consumers!
+        //  - we need a publish queue/dictionary that will be filled and can be consumed separately by the target Unity/UI/domain objects.
+        public void DrainDirtyConsumers(IHestiaGameCascadeConsumer consumer)
+        {
+            if (consumer == null)
+            {
+                throw new ArgumentNullException(nameof(consumer));
+            }
+
+            var workCount = DirtyConsumerWorkCount;
+            for (var i = 0; i < workCount; i++)
+            {
+                var workItem = GetDirtyConsumerWorkItem(i);
+                DispatchDirtyConsumer(consumer, workItem);
+            }
+
+            ClearDirtyConsumers();
+        }
+
+        private void DispatchDirtyConsumer(
+            IHestiaGameCascadeConsumer consumer,
+            CascadeConsumerWorkItem workItem)
+        {
+            // TODO: This is not designed properly, this is a bad design!
+            switch (HestiaGameCascadeSchema.Consumers.ResolveRoute(workItem.Consumer))
+            {
+                case HestiaGameCascadeConsumerRoute.HudAmmoText:
+                    consumer.RefreshHudAmmoText(workItem.EntityId, GetAmmo(workItem.EntityId));
+                    return;
+                case HestiaGameCascadeConsumerRoute.HudAmmoIcon:
+                    consumer.RefreshHudAmmoIcon(workItem.EntityId, IsAmmoEmpty(workItem.EntityId));
+                    return;
+                case HestiaGameCascadeConsumerRoute.CharacterMotor:
+                    consumer.RefreshCharacterMotor(workItem.EntityId, GetPosition(workItem.EntityId));
+                    return;
+                case HestiaGameCascadeConsumerRoute.AudioCue:
+                    consumer.PlayAudioCue(workItem.EntityId);
+                    return;
+                default:
+                    throw new InvalidOperationException($"Unknown Hestia dirty consumer '{workItem.Consumer.Name}'.");
+            }
+        }
+
+        private static CascadeReducerContext CreateReducerContext(
             CascadeEntityStateStore entities,
             CascadeFactBuffer facts,
             CascadeTouchedEntitySet touchedEntities)
-            => new HestiaGameCascadeReducerContext(entities, facts, touchedEntities);
+            => new CascadeReducerContext(entities, facts, touchedEntities);
     }
 }

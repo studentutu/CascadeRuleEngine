@@ -7,11 +7,14 @@ namespace CascadeEngineApi
     /// </summary>
     public readonly struct CascadeFact
     {
+        /// <summary>
+        /// Range: one entity and one fact kind. Condition: payload matches reducer expectations. Output: immutable tick-local fact.
+        /// </summary>
         public CascadeFact(
             CascadeEntityId entityId,
             CascadeFactKey key,
             CascadePropertyKey target,
-            ReducerPayload payload,
+            CascadeValue payload,
             int priority = 0)
         {
             EntityId = entityId;
@@ -24,7 +27,7 @@ namespace CascadeEngineApi
         public CascadeEntityId EntityId { get; }
         public CascadeFactKey Key { get; }
         public CascadePropertyKey Target { get; }
-        public ReducerPayload Payload { get; }
+        public CascadeValue Payload { get; }
         public int Priority { get; }
     }
 }

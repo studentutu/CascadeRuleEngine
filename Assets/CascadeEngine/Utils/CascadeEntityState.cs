@@ -9,8 +9,8 @@ namespace CascadeEngineApi
     /// </summary>
     public sealed class CascadeEntityState
     {
-        private readonly ReducerPayload?[] _committed = new ReducerPayload?[Bitmask512.BitCount];
-        private readonly ReducerPayload?[] _staged = new ReducerPayload?[Bitmask512.BitCount];
+        private readonly CascadeValue?[] _committed = new CascadeValue?[Bitmask512.BitCount];
+        private readonly CascadeValue?[] _staged = new CascadeValue?[Bitmask512.BitCount];
         private readonly int[] _stagedPriorities = new int[Bitmask512.BitCount];
         private readonly CascadePropertyKey[] _stagedProperties = new CascadePropertyKey[Bitmask512.BitCount];
         private Bitmask512 _flags;
@@ -19,6 +19,9 @@ namespace CascadeEngineApi
         public bool IsDestroyed { get; private set; }
         public int StagedPropertyCount { get; private set; }
 
+        /// <summary>
+        /// Range: staged property index. Condition: commit scans touched entity state. Output: property key staged once for commit.
+        /// </summary>
         public CascadePropertyKey GetStagedProperty(int index)
         {
             if ((uint)index >= StagedPropertyCount)
@@ -29,7 +32,10 @@ namespace CascadeEngineApi
             return _stagedProperties[index];
         }
 
-        public void SetCommitted(CascadePropertyKey property, ReducerPayload value)
+        /// <summary>
+        /// Range: live entity property. Condition: initialization or authoritative external load. Output: committed value is set and any staged value is cleared.
+        /// </summary>
+        public void SetCommitted(CascadePropertyKey property, CascadeValue value)
         {
             if (IsDestroyed)
             {
@@ -40,6 +46,9 @@ namespace CascadeEngineApi
             ClearStage(property);
         }
 
+        /// <summary>
+        /// Range: committed property slot. Condition: query needs to know whether value exists. Output: typed committed value and true, or default and false.
+        /// </summary>
         public bool TryGetCommitted<T>(CascadePropertyKey property, out T value)
         {
             var payload = _committed[property.Index];
@@ -53,9 +62,15 @@ namespace CascadeEngineApi
             return true;
         }
 
+        /// <summary>
+        /// Range: committed property slot. Condition: query accepts default for missing value. Output: typed committed value or default.
+        /// </summary>
         public T GetCommittedOrDefault<T>(CascadePropertyKey property)
             => TryGetCommitted<T>(property, out var value) ? value : default!;
 
+        /// <summary>
+        /// Range: staged property slot. Condition: query needs to know whether reducer staged a value. Output: typed staged value and true, or default and false.
+        /// </summary>
         public bool TryGetStaged<T>(CascadePropertyKey property, out T value)
         {
             var payload = _staged[property.Index];
@@ -69,11 +84,17 @@ namespace CascadeEngineApi
             return true;
         }
 
+        /// <summary>
+        /// Range: entity property slot. Condition: reducer reads current working value. Output: staged value wins, otherwise committed value or default.
+        /// </summary>
         public T GetStagedOrCommittedOrDefault<T>(CascadePropertyKey property)
             => TryGetStaged<T>(property, out var staged)
                 ? staged
                 : GetCommittedOrDefault<T>(property);
 
+        /// <summary>
+        /// Range: entity-local flag. Condition: reducer or commit policy filters work. Output: true when flag is set.
+        /// </summary>
         public bool HasFlag(CascadeEntityFlagKey flag)
             => _flags.IsSet(flag.Index);
 
@@ -87,6 +108,9 @@ namespace CascadeEngineApi
             _flags.SetDirty(flag.Index);
         }
 
+        /// <summary>
+        /// Range: flag index 0-511. Condition: live entity only. Output: entity filter flag is disabled.
+        /// </summary>
         public void ClearFlag(CascadeEntityFlagKey flag)
         {
             ThrowIfDestroyed("Destroyed entities cannot receive flags.");
@@ -94,6 +118,9 @@ namespace CascadeEngineApi
             _flags.Clear(flag.Index);
         }
 
+        /// <summary>
+        /// Range: flag index 0-511. Condition: live entity only. Output: entity filter flag matches enabled.
+        /// </summary>
         public void SetFlag(CascadeEntityFlagKey flag, bool enabled)
         {
             if (enabled)
@@ -108,7 +135,7 @@ namespace CascadeEngineApi
         /// <summary>
         /// Range: property index 0-511. Condition: reducer stages an entity-local value. Output: property is listed once for commit.
         /// </summary>
-        public void Stage(CascadePropertyKey property, ReducerPayload value, int priority = 0)
+        public void Stage(CascadePropertyKey property, CascadeValue value, int priority = 0)
         {
             if (IsDestroyed)
             {
@@ -125,7 +152,7 @@ namespace CascadeEngineApi
             _stagedPriorities[property.Index] = priority;
         }
 
-        public bool StageIfPriorityAtLeast(CascadePropertyKey property, ReducerPayload value, int priority)
+        public bool StageIfPriorityAtLeast(CascadePropertyKey property, CascadeValue value, int priority)
         {
             if (IsDestroyed)
             {
@@ -141,6 +168,9 @@ namespace CascadeEngineApi
             return true;
         }
 
+        /// <summary>
+        /// Range: staged property slot. Condition: commit policy accepts staged value. Output: committed value is changed only when staged differs.
+        /// </summary>
         public bool PublishStagedIfChanged(CascadePropertyKey property)
         {
             var staged = _staged[property.Index];
@@ -159,6 +189,9 @@ namespace CascadeEngineApi
             return true;
         }
 
+        /// <summary>
+        /// Range: staged property slot. Condition: commit policy requires staged value. Output: typed staged value or throws when missing.
+        /// </summary>
         public T GetStaged<T>(CascadePropertyKey property)
         {
             var staged = _staged[property.Index];
@@ -170,6 +203,9 @@ namespace CascadeEngineApi
             return staged.Unwrap<T>();
         }
 
+        /// <summary>
+        /// Range: all staged properties. Condition: tick cleanup or destroyed entity cleanup. Output: staged values and staged property list are cleared.
+        /// </summary>
         public void ClearStage()
         {
             for (var i = 0; i < StagedPropertyCount; i++)
@@ -181,6 +217,9 @@ namespace CascadeEngineApi
             StagedPropertyCount = 0;
         }
 
+        /// <summary>
+        /// Range: this entity state. Condition: entity lifetime ends. Output: committed values, staged values, and flags are cleared.
+        /// </summary>
         public void Destroy()
         {
             IsDestroyed = true;
