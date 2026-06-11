@@ -17,6 +17,14 @@ namespace Hestia
             public static readonly CascadeConsumerKey AudioCue = new CascadeConsumerKey(3, "AudioCue");
         }
 
+        public static class EntityFlags
+        {
+            public static readonly CascadeEntityFlagKey AcceptsAmmoInput = new CascadeEntityFlagKey(0, "AcceptsAmmoInput");
+            public static readonly CascadeEntityFlagKey PublishesHudAmmo = new CascadeEntityFlagKey(1, "PublishesHudAmmo");
+            public static readonly CascadeEntityFlagKey PublishesCharacterMotor = new CascadeEntityFlagKey(2, "PublishesCharacterMotor");
+            public static readonly CascadeEntityFlagKey PublishesAudioCues = new CascadeEntityFlagKey(3, "PublishesAudioCues");
+        }
+
         public static class Facts
         {
             public static readonly CascadeFactKey AmmoSpendRequested = new CascadeFactKey(0, "AmmoSpendRequested");
@@ -54,6 +62,11 @@ namespace Hestia
 
         private static void ReduceAmmoSpendRequested(HestiaGameCascadeReducerContext context, CascadeFact fact)
         {
+            if (!context.Entity.HasFlag(EntityFlags.AcceptsAmmoInput))
+            {
+                return;
+            }
+
             var amount = fact.Payload.Unwrap<int>();
             var becameEmpty = context.StageAmmoSpend(amount);
             if (!becameEmpty)
@@ -81,7 +94,7 @@ namespace Hestia
 
         private static void CommitAmmoCurrent(CascadePropertyCommitContext context)
         {
-            if (context.PublishStagedIfChanged())
+            if (context.PublishStagedIfChanged() && context.Entity.HasFlag(EntityFlags.PublishesHudAmmo))
             {
                 context.MarkDirty(Consumers.HudAmmoText);
             }
@@ -89,7 +102,7 @@ namespace Hestia
 
         private static void CommitAmmoEmpty(CascadePropertyCommitContext context)
         {
-            if (context.PublishStagedIfChanged())
+            if (context.PublishStagedIfChanged() && context.Entity.HasFlag(EntityFlags.PublishesHudAmmo))
             {
                 context.MarkDirty(Consumers.HudAmmoIcon);
             }
@@ -105,12 +118,18 @@ namespace Hestia
             }
 
             context.PublishStagedIfChanged();
-            context.MarkDirty(Consumers.CharacterMotor);
+            if (context.Entity.HasFlag(EntityFlags.PublishesCharacterMotor))
+            {
+                context.MarkDirty(Consumers.CharacterMotor);
+            }
         }
 
         private static void CommitAudioCue(CascadePropertyCommitContext context)
         {
-            context.MarkDirty(Consumers.AudioCue);
+            if (context.Entity.HasFlag(EntityFlags.PublishesAudioCues))
+            {
+                context.MarkDirty(Consumers.AudioCue);
+            }
         }
     }
 }

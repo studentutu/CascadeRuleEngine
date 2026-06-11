@@ -13,6 +13,7 @@ namespace CascadeEngineApi
         private readonly ReducerPayload?[] _staged = new ReducerPayload?[Bitmask512.BitCount];
         private readonly int[] _stagedPriorities = new int[Bitmask512.BitCount];
         private readonly CascadePropertyKey[] _stagedProperties = new CascadePropertyKey[Bitmask512.BitCount];
+        private Bitmask512 _flags;
         private Bitmask512 _stagedMask;
 
         public bool IsDestroyed { get; private set; }
@@ -72,6 +73,37 @@ namespace CascadeEngineApi
             => TryGetStaged<T>(property, out var staged)
                 ? staged
                 : GetCommittedOrDefault<T>(property);
+
+        public bool HasFlag(CascadeEntityFlagKey flag)
+            => _flags.IsSet(flag.Index);
+
+        /// <summary>
+        /// Range: flag index 0-511. Condition: live entity only. Output: entity filter flag is enabled.
+        /// </summary>
+        public void SetFlag(CascadeEntityFlagKey flag)
+        {
+            ThrowIfDestroyed("Destroyed entities cannot receive flags.");
+
+            _flags.SetDirty(flag.Index);
+        }
+
+        public void ClearFlag(CascadeEntityFlagKey flag)
+        {
+            ThrowIfDestroyed("Destroyed entities cannot receive flags.");
+
+            _flags.Clear(flag.Index);
+        }
+
+        public void SetFlag(CascadeEntityFlagKey flag, bool enabled)
+        {
+            if (enabled)
+            {
+                SetFlag(flag);
+                return;
+            }
+
+            ClearFlag(flag);
+        }
 
         /// <summary>
         /// Range: property index 0-511. Condition: reducer stages an entity-local value. Output: property is listed once for commit.
@@ -153,10 +185,19 @@ namespace CascadeEngineApi
         {
             IsDestroyed = true;
             ClearStage();
+            _flags.ClearAll();
 
             for (var i = 0; i < Bitmask512.BitCount; i++)
             {
                 _committed[i] = null;
+            }
+        }
+
+        private void ThrowIfDestroyed(string message)
+        {
+            if (IsDestroyed)
+            {
+                throw new InvalidOperationException(message);
             }
         }
 

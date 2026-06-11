@@ -13,7 +13,7 @@ namespace CascadeEngineApi
         private readonly CascadeFactBuffer _facts;
         private readonly CascadeReducerMap<TContext> _reducers = new CascadeReducerMap<TContext>();
         private readonly CascadePropertyCommitMap _committers = new CascadePropertyCommitMap();
-        private readonly CascadeDirtyConsumerSet _dirtyConsumers = new CascadeDirtyConsumerSet();
+        private readonly CascadeDirtyConsumerSet _dirtyConsumers;
         private readonly CascadeTouchedEntitySet _touchedEntities;
         private readonly TContext _reducerContext;
         private readonly int _maxReducerRunsPerTick;
@@ -60,6 +60,7 @@ namespace CascadeEngineApi
 
             Entities = new CascadeEntityStateStore(entityCapacity);
             _facts = new CascadeFactBuffer(factCapacity);
+            _dirtyConsumers = new CascadeDirtyConsumerSet(entityCapacity);
             _touchedEntities = new CascadeTouchedEntitySet(entityCapacity);
             _reducerContext = createReducerContext(Entities, _facts, _touchedEntities);
             _maxReducerRunsPerTick = maxReducerRunsPerTick;
@@ -74,6 +75,18 @@ namespace CascadeEngineApi
 
         public bool IsConsumerDirty(CascadeConsumerKey consumer)
             => _dirtyConsumers.Contains(consumer);
+
+        public bool IsConsumerDirty(CascadeEntityId entityId, CascadeConsumerKey consumer)
+            => _dirtyConsumers.Contains(entityId, consumer);
+
+        public int DirtyConsumerEntityCount
+            => _dirtyConsumers.EntityCount;
+
+        public CascadeEntityId GetDirtyConsumerEntityId(int index)
+            => _dirtyConsumers.GetEntity(index);
+
+        public CascadeEntityState GetDirtyConsumerEntity(int index)
+            => Entities.Get(GetDirtyConsumerEntityId(index));
 
         /// <summary>
         /// [INTEGRATION] Range: queued facts this tick. Condition: reducers stage properties or produce facts. Output: committed touched entities and dirty consumers.

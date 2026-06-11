@@ -30,6 +30,24 @@ namespace Hestia
         public float GetPosition(CascadeEntityId entityId)
             => Entities.Get(entityId).GetCommittedOrDefault<float>(HestiaGameCascadeSchema.Properties.Position);
 
+        public bool HasEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag)
+            => Entities.Get(entityId).HasFlag(flag);
+
+        public void SetEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag)
+        {
+            Entities.Get(entityId).SetFlag(flag);
+        }
+
+        public void ClearEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag)
+        {
+            Entities.Get(entityId).ClearFlag(flag);
+        }
+
+        public void SetEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag, bool enabled)
+        {
+            Entities.Get(entityId).SetFlag(flag, enabled);
+        }
+
         public void SetInitialAmmo(CascadeEntityId entityId, int ammo)
         {
             var entity = Entities.Get(entityId);

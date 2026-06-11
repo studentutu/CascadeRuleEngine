@@ -3,7 +3,8 @@
 ## Purpose
 
 Need a good minimal and coherent package core, so that we can pick one folder and drop into any other project ready to be used.
-We need a good set of primitives and clear and rigid pipeline and intuitive usage.
+
+Take inspiration from Virtual-DOM and React for the minimal and coherent package core and good set of primitives.
 
 What it really is about:
 
@@ -20,7 +21,7 @@ Reducers do not mutate published state.
 Reducers receive context + fact.
 Reducers stage state inside the target entity or produce more facts.
 Entities commit staged state once.
-Committed property changes mark exact consumers dirty.
+Committed property changes mark exact entity-scoped consumers dirty.
 ```
 
 This is the generational improvement over ECS:
@@ -36,9 +37,26 @@ cascade:
   consumers react only to dirty properties
 ```
 
+### Usability
+
+We need a good set of primitives and clear and rigid pipeline and intuitive usage:
+
+1. Simple enough to understand and walk through the any reducer/consumer/properties/fact and clean mutation of the state.
+2. Extendable to add custom reducers/consumers.
+3. We need all major feature parity to ecs: entity and per entity state, queryable entity state from reducers/consumers, zero-allocation in the hot path, performant for 500+ entities.
+4. Easy enough to drop cascade package in and start using instead of ecs:
+
+```text
+old ECS system -> input/event -> Fact
+-> cascade engine Tick
+-> published property -> old ECS/world/unity-ui consumer
+```
+
 ---
 
 ## Core Pipeline
+
+This is the core concept and core package.
 
 ```text
 Tick
@@ -47,7 +65,7 @@ Tick
   -> reducers stage state inside entities or append more facts
   -> commit touched entities once (same as mark changed properties dirty and apply mutation)
   -> mark exact properties/published slices dirty (part of the commit)
-  -> run only consumers mapped to dirty properties
+  -> run only consumers mapped to dirty properties for the affected entities
 ```
 
 Compact form:
@@ -64,7 +82,7 @@ Input
   -> dirty consumers
 ```
 
-This is the core. Everything else is implementation detail.
+Everything else is extension and usage on top of it.
 
 ---
 
@@ -183,38 +201,6 @@ Most properties should not need priority. They should have one owner fact type. 
 
 ---
 
-## Stable State Families
-
-Do not mirror 300+ ECS components as 300 Cascade branches. Group them:
-
-```text
-Entity
-  Inventory
-  VisibleSnapshot
-  Loadout
-  Movement
-  Damage
-  LiveStatusSnapshot
-  Vitality
-  Resources
-  Effects
-  Ability
-  Mobility
-  Computed
-  Published
-```
-
-No bridge layer is required for the core engine. If old ECS data must feed Cascade during migration, use a boring adapter outside the core loop:
-
-```text
-old ECS component -> input/event -> Fact
-published property -> old ECS/world consumer
-```
-
-Do not add a "bridge" abstraction until there is repeated integration code that needs a name.
-
----
-
 ## Reduction Loop
 
 The loop is simple:
@@ -308,7 +294,7 @@ fact commit changed property
   -> DirtyPublishedSlice, if property is published
   -> FieldMask
   -> Version++
-  -> mapped ConsumerKey queued
+  -> mapped (EntityId, ConsumerKey) queued
 ```
 
 Runtime data:
@@ -319,6 +305,7 @@ DirtyPublishedMask[playerContextId][entityId]
 DirtyFieldMask[playerContextId][entityId][sliceId]
 PublishedVersion[playerContextId][entityId][sliceId]
 ConsumerQueue
+ConsumerQueueItem(EntityId, ConsumerKey)
 ```
 
 Consumer map:
@@ -343,13 +330,15 @@ Published.Replication.Transform
   -> ReplicationConsumer
 ```
 
-Consumers read committed published state only. No consumer reads source state or facts.
+Consumers receive the affected entity id and read committed published state from that entity.
+No consumer reads facts.
 
 ---
 
 ## Canonical Fact Table
 
 Keep one human-authored table.
+One place to see all facts and their reducers.
 
 ```text
 FactKey
@@ -359,7 +348,7 @@ FactKey
   -> consumers
 ```
 
-Do not scatter declarations across feature files.
+Do not scatter declarations across feature files. This can be done per-project or even per context, but we need to concentrate and actual usage example.
 
 Example:
 
@@ -411,7 +400,8 @@ fanout is counted
 
 ## Relevance
 
-No lanes. Use one relevance condition:
+This is built in performance/budgeting stage.
+Use one relevance condition:
 
 ```text
 if work changes authoritative truth:
@@ -423,7 +413,9 @@ else:
   do not queue consumers
 ```
 
-Predicted player is always first. Nearby/relevant players follow. Future replacement can use occlusion/PVS.
+Predicted player is always first.
+Nearby/relevant players follow.
+Future replacement can use occlusion/PVS.
 
 Performance target:
 
@@ -431,14 +423,22 @@ Performance target:
 O(input/events + processed facts + touched entities + dirty properties + queued consumers)
 ```
 
+Needed cases:
+
+```text
+consumer should be able to poll source state
+reduction should be able to query/add facts to multiple entities
+entity can be created at runtime or destroyed
+```
+
 Failure cases:
 
 ```text
 non-relevant entities still producing facts
-consumer polling source state
 giant HudDirty or MovementDirty flag
 unbounded fact production loop
 multiple systems writing Position
+culling input fact impossible to implement cleanly via reductions
 ```
 
 Required counters:
@@ -458,7 +458,13 @@ allocations_bytes
 
 ---
 
-## Movement Case
+## Real usage example
+
+Small team have game with over 1500 systems and 500 components with scattered state/hidden execution flow and frequent clean-ups before critical use which constantly breaks gameplay feature.
+
+We need alternative to ECS.
+
+### Movement Case
 
 Current writers:
 
@@ -510,7 +516,7 @@ Only `MovementSolverReducer` owns final movement facts. Unity physics can be a q
 
 ---
 
-## Request And Cue Entities
+### Request And Cue Entities
 
 One-shot requests and cues are entities.
 
@@ -546,7 +552,7 @@ Movement step
 
 ---
 
-## Reusable Minimal Core
+### Reusable Minimal Core
 
 Keep the reusable engine core small. If a class mentions ammo, movement, HUD,
 audio, weapons, or character state, it is not core.
@@ -558,7 +564,7 @@ Runtime/CascadeEngine/Core
 ```
 
 That folder must be liftable into another Unity project without copying the
-Hestia sample. `Runtime/CascadeEngine/HestiaGame` is project/domain code that
+Hestia sample. `Assets/HestiaGame` is project/domain code that
 proves the rules and is allowed to mention ammo, movement, HUD, and cues.
 
 Core pieces:
@@ -566,7 +572,8 @@ Core pieces:
 ```text
 CascadeEntityId             typed dense entity id
 CascadeConsumerKey          typed bit-addressable consumer key
-CascadeFactKey             typed fact kind
+CascadeEntityFlagKey        typed bit-addressable entity filter flag key
+CascadeFactKey              typed fact kind
 CascadePropertyKey          typed target property key
 ReducerPayload              generic payload wrapper carried by facts
 CascadeFact                 immutable tick-local statement
@@ -579,7 +586,7 @@ CascadeReducerMap<TContext> explicit FactKey -> reducer function table
 CascadePropertyCommitMap    explicit PropertyKey -> commit function table
 CascadePropertyCommitContext context passed to property commit functions
 Bitmask512                  reusable 512-bit mask for dirty/registered keys
-CascadeDirtyConsumerSet     consumer dirty mask backed by Bitmask512
+CascadeDirtyConsumerSet     entity-scoped dirty consumer work backed by per-entity masks
 CascadeTouchedEntitySet     touched entity list for commit/cleanup
 CascadeTickCounters         instrumentation and budget assertions
 ```
@@ -598,122 +605,13 @@ feature entity property bags
 
 Those live in a project schema and a project facade.
 
-## Hestia Sample Code
+### Hestia Sample Code
 
 The executable Hestia sample proves the core shape without pretending to be the
 final framework. Domain names are declared in one schema file.
 
-Public facade:
-
-```csharp
-var cascade = new HestiaGameCascade(entityCapacity: 1000);
-var player = new CascadeEntityId(777);
-
-cascade.SetInitialAmmo(player, ammo: 2);
-cascade.InputFireWeapon(player); // emits AmmoSpendRequested fact with payload
-cascade.RunTick();
-
-var ammo = cascade.GetAmmo(player);
-var hudTextDirty = cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText);
-var iconDirty = cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon);
-var reducerRuns = cascade.LastCounters.ReducerRuns;
-```
-
-Reducer map:
-
-```csharp
-public sealed class CascadeReducerMap<TContext>
-{
-    private readonly CascadeReducerFunction<TContext>?[] _reducers =
-        new CascadeReducerFunction<TContext>?[Bitmask512.BitCount];
-    private Bitmask512 _registeredKinds;
-
-    public void Register(CascadeFactKey FactKey, CascadeReducerFunction<TContext> reducer)
-    {
-        if (!_registeredKinds.Set(FactKey.Index))
-            throw new InvalidOperationException("Reducer already registered.");
-
-        _reducers[FactKey.Index] = reducer;
-    }
-
-    public bool TryGet(CascadeFactKey FactKey, out CascadeReducerFunction<TContext> reducer)
-    {
-        if (!_registeredKinds.IsSet(FactKey.Index))
-        {
-            reducer = default!;
-            return false;
-        }
-
-        reducer = _reducers[FactKey.Index]!;
-        return true;
-    }
-
-    public CascadeReducerFunction<TContext> GetRequired(CascadeFactKey FactKey)
-    {
-        if (!TryGet(FactKey, out var reducer))
-            throw new InvalidOperationException($"No reducer registered for fact '{FactKey.Name}'.");
-
-        return reducer;
-    }
-}
-```
-
-Hestia schema:
-
-```csharp
-public static class HestiaGameCascadeSchema
-{
-    public static class Consumers
-    {
-        public static readonly CascadeConsumerKey HudAmmoText = new CascadeConsumerKey(0, "HudAmmoText");
-        public static readonly CascadeConsumerKey HudAmmoIcon = new CascadeConsumerKey(1, "HudAmmoIcon");
-        public static readonly CascadeConsumerKey CharacterMotor = new CascadeConsumerKey(2, "CharacterMotor");
-        public static readonly CascadeConsumerKey AudioCue = new CascadeConsumerKey(3, "AudioCue");
-    }
-
-    internal static class Facts
-    {
-        internal static readonly CascadeFactKey AmmoSpendRequested = new CascadeFactKey(0, "AmmoSpendRequested");
-        internal static readonly CascadeFactKey DesiredPosition = new CascadeFactKey(1, "DesiredPosition");
-        internal static readonly CascadeFactKey FootstepCue = new CascadeFactKey(2, "FootstepCue");
-        internal static readonly CascadeFactKey DryFireCue = new CascadeFactKey(3, "DryFireCue");
-    }
-
-    internal static void RegisterReducers(CascadeReducerMap<HestiaGameCascadeReducerContext> reducers)
-    {
-        reducers.Register(Facts.AmmoSpendRequested, ReduceAmmoSpendRequested);
-        reducers.Register(Facts.DesiredPosition, ReduceDesiredPosition);
-        reducers.Register(Facts.FootstepCue, ReduceAudioCue);
-        reducers.Register(Facts.DryFireCue, ReduceAudioCue);
-    }
-
-    internal static void RegisterPropertyCommitters(CascadePropertyCommitMap committers)
-    {
-        committers.Register(Properties.AmmoCurrent, CommitAmmoCurrent);
-        committers.Register(Properties.AmmoEmpty, CommitAmmoEmpty);
-        committers.Register(Properties.Position, CommitPosition);
-        committers.Register(Properties.PublishedAudioCues, CommitAudioCue);
-    }
-}
-```
-
-Reducer function:
-
-```csharp
-private static void ReduceAmmoSpendRequested(HestiaGameCascadeReducerContext context, CascadeFact fact)
-{
-    var amount = fact.Payload.Unwrap<int>();
-    var becameEmpty = context.StageAmmoSpend(amount);
-    if (!becameEmpty)
-        return;
-
-    context.Produce(new CascadeFact(
-        HestiaGameCascadeSchema.Facts.DryFireCue,
-        context.EntityId,
-        HestiaGameCascadeSchema.Properties.PublishedAudioCues,
-        ReducerPayload.Empty));
-}
-```
+See [HestiaGame folder](Assets/HestiaGame).
+To test it use tests under [Package and domain tests](Assets/Tests/HestiaGameCascadeTests.cs)
 
 Fact-to-commit shape:
 
@@ -722,12 +620,13 @@ InputFireWeapon(player)
   -> AmmoSpendRequested fact(payload: amount=1)
   -> ReducerMap[AmmoSpendRequested]
   -> ReduceAmmoSpendRequested(context, fact)
+  -> reducer checks entity flag AcceptsAmmoInput
   -> context stages AmmoCurrent and AmmoEmpty properties in core entity state
   -> optional DryFireCue fact
-  -> PropertyCommitMap[AmmoCurrent] -> HudAmmoText dirty if committed value changed
-  -> PropertyCommitMap[AmmoEmpty] -> HudAmmoIcon dirty if committed value changed
+  -> PropertyCommitMap[AmmoCurrent] -> HudAmmoText dirty for player if value changed and PublishesHudAmmo is set
+  -> PropertyCommitMap[AmmoEmpty] -> HudAmmoIcon dirty for player if value changed and PublishesHudAmmo is set
   -> commit touched entity once
-  -> exact dirty consumers
+  -> exact entity-scoped dirty consumers
 ```
 
 Movement shape:
@@ -759,14 +658,11 @@ consumers queue from dirty committed properties
 buffers are reused after construction
 ```
 
-What this does not include yet:
+What this does not include:
 
 ```text
-network prediction
-occlusion/PVS
 generic property policies
 Unity object consumers
-old ECS adapters
 ```
 
 Those are next-step additions only after this slice is proven.
@@ -780,10 +676,11 @@ This is realistic if the engine keeps these constraints:
 ```text
 reducers do not scan all entities
 facts are stored in preallocated buffers
-fact kinds resolve through an explicit reducer map
+fact keys resolve through an explicit reducer map
 commit touches only entities with staged properties
 destroyed touched entities are cleared and skipped before commit
-consumers are queued from dirty properties
+destroyed touched entities are omitted from the reducer passes (ideally dirty entity is cleared/returned to pool/removed cleanly from the pipeline)
+consumers are queued from dirty properties (avoid subscription based events)
 non-relevant player-scoped work is skipped before facts are produced
 ```
 
@@ -802,25 +699,7 @@ fact produced
   -> more state writes
 ```
 
-The Hestia sample exists in code here:
-
-```text
-Runtime/CascadeEngine/Core/CascadeEngine.cs
-Runtime/CascadeEngine/Core/CascadeDirtyConsumerSet.cs
-Runtime/CascadeEngine/Core/CascadeEntityState.cs
-Runtime/CascadeEngine/Core/CascadeEntityStateStore.cs
-Runtime/CascadeEngine/Core/CascadeFactBuffer.cs
-Runtime/CascadeEngine/Core/CascadePropertyCommitMap.cs
-Runtime/CascadeEngine/Core/CascadeReducerMap.cs
-Runtime/CascadeEngine/Core/CascadeReducerContext.cs
-Runtime/CascadeEngine/Core/ReducerPayload.cs
-Runtime/CascadeEngine/HestiaGame/HestiaGameCascade.cs
-Runtime/CascadeEngine/HestiaGame/HestiaGameCascadeSchema.cs
-Runtime/CascadeEngine/HestiaGame/HestiaGameCascadeReducerContext.cs
-Tests/Editor/HestiaGameCascadeTests.cs
-```
-
-It verifies:
+Hestia usage verifies:
 
 ```text
 Ammo spend dirties text but not icon while ammo remains non-empty.
@@ -842,16 +721,19 @@ systems are few
 component ownership is clean
 query membership changes are cheap
 systems do not fight over the same output
+change/request components/markers are not cleared until used by the target system (which inherently leaks)
+there is a strict temporal state for entity (meaning, state resolution may happen in a few ticks) 
 ```
 
-Cascade is better only for the current failure mode:
+Cascade is better only for the failure modes:
 
 ```text
 many systems want to affect the same property
 execution order became gameplay
 presentation consumes too much broad state
-non-relevant player work should not exist
+non-relevant player work should not exist (instead of adding to all systems, skip is part of the pipeline)
 debugging needs "why did this property change?"
+all temporal gameplay changes become always become single cascade resolution tick (no more wait next tick to do x)
 ```
 
 Cached ECS query cost:
@@ -861,33 +743,31 @@ system wakes
 query gives matching entities
 system checks/updates component state
 multiple systems may write same component
-consumer may still poll broad state
+consumer still poll broad state
+adding new "core" component suddenly needs to update hundreds of systems and will break if at least one place is missing (example Potential-Visible-Set in addition to the Culling-Visibility)
+initialization of system is not free and often spikes on all entities
 ```
 
 Cascade cost:
 
 ```text
-input/event creates fact with payload
-ReducerMap resolves fact kind to one reducer function
+input/event creates fact with payload for target entity or broadly
+ReducerMap resolves fact kind to one reducer function (can generate next fact on a single or multiple entities)
 reducer stages properties through the context
 PropertyCommitMap resolves each staged property to one commit function
 core commit publishes touched entities once
-dirty property queues exact consumers
+dirty property queues exact entity-scoped consumers
 ```
 
-Performance can be worse than ECS if facts are overproduced. Performance is better only if the fact table and relevance gates keep fanout small.
+Performance can be worse than ECS if facts are overproduced (reduction passes must be minimized).
+Performance is better only if the fact table and relevance gates keep fanout small.
 
 Required benchmark:
 
 ```text
-ECS cached-query baseline:
-  systems executed
-  matched entities visited
-  component writes
-  consumer calls
-
 Cascade baseline:
   reducer functions executed
+  skipped non-relevant reduction
   facts processed
   facts produced
   touched entities committed
@@ -1021,7 +901,7 @@ Pitch:
 ECS let every feature write shared state.
 Cascade makes features produce facts.
 Commit resolves facts once per property.
-Dirty properties wake exact consumers.
+Dirty properties wake exact entity-scoped consumers.
 ```
 
 ---
@@ -1029,11 +909,10 @@ Dirty properties wake exact consumers.
 ## Red Flags
 
 ```text
-consumer reads source state directly
 reducer writes final state directly
-feature declares fact mappings outside the canonical table
+feature declares fact mappings outside the canonical domain table
 global priority bands return
-generic Add/Multiply/Override enum becomes the main stacking model
+generic Add/Multiply/Override/enum primitives becomes the main stacking model
 non-relevant entities still produce player-scoped facts
 giant HudDirty or MovementDirty flag appears
 Gravity/Collision/Physics/Inertia/PID writes Position directly

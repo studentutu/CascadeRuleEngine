@@ -33,7 +33,7 @@ namespace CascadeEngineApi
 
         public void MarkDirty(CascadeConsumerKey consumer)
         {
-            _dirtyConsumers.Mark(consumer);
+            _dirtyConsumers.Mark(consumer, EntityId);
         }
     }
 }
