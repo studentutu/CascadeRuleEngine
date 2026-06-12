@@ -2,10 +2,9 @@
 
 ## Purpose
 
-Cascade is a small fact-reduction pipeline. Its job is not to own UI, audio,
-replication, or host after-pass dispatch. Its job is to take facts, run explicit
-reducers, stage entity-local state, commit touched entities, and report which
-entity properties mutated.
+Cascade is a small fact-reduction pipeline. Its job is not to own consumers. Its job is to take facts, run explicit
+reducers, run stage commit phase and commit touched entities, and report which
+entity is dirty.
 
 ```text
 input/events
@@ -13,12 +12,12 @@ input/events
   -> reducer functions
   -> entity staged state
   -> commit touched entities
-  -> mutated entity-property pairs
+  -> push into queue dirty entity
 ```
 
-That is the package boundary. Project code can use the mutation output to drive
+That is the package boundary. Project code can use the queue and dirty entity to drive consumers such as
 UI, audio, networking, ECS bridges, or any other after-pass, but Cascade core
-does not track or schedule those systems.
+does not track or schedule consumers.
 
 ## Core Rules
 
