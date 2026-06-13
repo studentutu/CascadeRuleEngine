@@ -31,11 +31,11 @@ namespace CascadeEngineApi
         public void Reindex(int index)
             => Output.Index = index;
 
-        public bool IsAffectedBy(IEntityFactView facts)
+        public bool IsAffectedBy(FactStore facts, EntityRef entity)
         {
             for (var i = 0; i < _affectedFacts.Length; i++)
             {
-                if (facts.Has(new FactType(_affectedFacts[i])))
+                if (facts.Has(entity, _affectedFacts[i]))
                 {
                     return true;
                 }

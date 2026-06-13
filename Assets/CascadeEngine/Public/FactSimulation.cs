@@ -13,8 +13,6 @@ namespace CascadeEngineApi
         IFactSimulation,
         ICommittedStateStore,
         IReduceContext,
-        ITransactionReduceContext,
-        IBatchReduceContext,
         ICommitContext,
         IEntityQuery
     {
@@ -200,7 +198,7 @@ namespace CascadeEngineApi
         /// <summary>
         /// [INTEGRATION] Range: live entity and registered output state. Condition: authoritative bootstrap/load. Output: committed state set without mutation output.
         /// </summary>
-        public void SetState<TState>(EntityRef entity, in TState state)
+        public void SetStateSilently<TState>(EntityRef entity, in TState state)
             where TState : struct, IOutputState
         {
             ThrowIfNotLive(entity);
@@ -452,11 +450,10 @@ namespace CascadeEngineApi
                     continue;
                 }
 
-                var facts = Facts(entity);
                 for (var outputIndex = 0; outputIndex < _registry.Outputs.Count; outputIndex++)
                 {
                     var output = _registry.Outputs[outputIndex];
-                    if (output.IsAffectedBy(facts))
+                    if (output.IsAffectedBy(_facts, entity))
                     {
                         var action = output.CreateCommitAction(this, entity);
                         if (action != null)

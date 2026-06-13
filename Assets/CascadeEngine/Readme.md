@@ -13,7 +13,8 @@ emit facts
 -> publish typed output mutations
 ```
 
-Core rule: 
+Core rule:
+
 - reducers never write durable state.
 - reducers only read committed state plus accumulated tick facts, then emit more facts. 
 - committers are the only code that writes `IOutputState`.
@@ -64,6 +65,15 @@ public sealed class GameplayFeature : FactFeature
 | `FactSimulation` | entity lifecycle, fact queue, reduction, commit, mutation routing |
 | `OutputState<TState>` | typed mutation stream descriptor |
 | `StateMutation<TState>` | create/update/delete diff for one output state |
+
+## Package Boundary
+
+Use `FactSimulation` as the concrete runtime entry point. Do not add a second public facade until there is a real host-facing capability to hide. `IFactSimulation` exists for adapters that only need entity lifecycle, fact emission, ticks, and mutation routing.
+
+Folder intent:
+
+- `Public`: public types normal package consumers directly uses.
+- `Internal`: rest of the package with core interfaces, implementation, utilities. These are package implementation details and should be hidden from sample gameplay code.
 
 ## Hestia Sample
 

@@ -9,8 +9,6 @@ namespace CascadeEngineApi
     /// </summary>
     public interface IEntityFactView
     {
-        bool Has(FactType factType);
-
         bool Has<TFact>()
             where TFact : struct, IFact;
 
@@ -19,7 +17,5 @@ namespace CascadeEngineApi
 
         ReadOnlySpan<TFact> All<TFact>()
             where TFact : struct, IFact;
-
-        bool HasAll(FactMask requiredFacts);
     }
 }

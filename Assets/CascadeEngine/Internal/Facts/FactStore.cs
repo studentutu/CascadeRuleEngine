@@ -202,6 +202,11 @@ namespace CascadeEngineApi
                 return 0;
             }
 
+            if (mode != BudgetMode.PriorityFirst)
+            {
+                throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported budget mode.");
+            }
+
             var bestIndex = 0;
             var bestPriority = _queue[0].Priority;
             var bestSequence = _queue[0].Sequence;

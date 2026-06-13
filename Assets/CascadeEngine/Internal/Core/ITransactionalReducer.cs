@@ -7,6 +7,6 @@ namespace CascadeEngineApi
     /// </summary>
     public interface ITransactionalReducer
     {
-        void Reduce(ITransactionReduceContext ctx, EntityRef entity);
+        void Reduce(IReduceContext ctx, EntityRef entity);
     }
 }

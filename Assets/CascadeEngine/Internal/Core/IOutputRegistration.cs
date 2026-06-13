@@ -14,7 +14,7 @@ namespace CascadeEngineApi
 
         void Reindex(int index);
 
-        bool IsAffectedBy(IEntityFactView facts);
+        bool IsAffectedBy(FactStore facts, EntityRef entity);
 
         ICommitAction? CreateCommitAction(FactSimulation simulation, EntityRef entity);
 

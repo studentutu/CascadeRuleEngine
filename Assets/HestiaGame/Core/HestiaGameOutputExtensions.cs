@@ -10,10 +10,10 @@ namespace Hestia
     public static class HestiaGameOutputExtensions
     {
         public static void SetInitialAmmo(this HestiaGameContext context, EntityRef entity, int ammo)
-            => context.Simulation.SetState(entity, new HestiaAmmoState(ammo));
+            => context.Simulation.SetStateSilently(entity, new HestiaAmmoState(ammo));
 
         public static void SetInitialPosition(this HestiaGameContext context, EntityRef entity, float position)
-            => context.Simulation.SetState(entity, new HestiaPositionState(position));
+            => context.Simulation.SetStateSilently(entity, new HestiaPositionState(position));
 
         public static HestiaAmmoState GetAmmo(this HestiaGameContext context, EntityRef entity)
             => context.Simulation.State.Get<HestiaAmmoState>(entity);

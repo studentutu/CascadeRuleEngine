@@ -9,6 +9,6 @@ namespace CascadeEngineApi
     /// </summary>
     public interface IBatchTransactionalReducer
     {
-        void ReduceBatch(IBatchReduceContext ctx, ReadOnlySpan<EntityRef> entities);
+        void ReduceBatch(IReduceContext ctx, ReadOnlySpan<EntityRef> entities);
     }
 }

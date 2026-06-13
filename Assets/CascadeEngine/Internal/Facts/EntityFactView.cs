@@ -23,9 +23,6 @@ namespace CascadeEngineApi
             return this;
         }
 
-        public bool Has(FactType factType)
-            => _facts.Has(_entity, factType.Type);
-
         public bool Has<TFact>()
             where TFact : struct, IFact
             => _facts.Has(_entity, typeof(TFact));
@@ -37,8 +34,5 @@ namespace CascadeEngineApi
         public ReadOnlySpan<TFact> All<TFact>()
             where TFact : struct, IFact
             => _facts.All<TFact>(_entity);
-
-        public bool HasAll(FactMask requiredFacts)
-            => _facts.HasAll(_entity, requiredFacts.FactTypes);
     }
 }
