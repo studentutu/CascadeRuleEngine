@@ -139,8 +139,10 @@ public sealed class GameSimulationLoop
             IncompleteCommitMode = IncompleteCommitMode.DoNotCommitIncompleteEntities
         });
 
+        // Remark: this is way to broad of an consumer example, prefer 'IDirtyEntityQueue.Consume<PositionState>()' instead in the actual production.
         foreach (DirtyEntity dirty in result.DirtyEntities)
         {
+            // TODO: mvp example, this is bad design choice for single consumer to look on all changes.
             if (dirty.HasChanged<PositionState>())
             {
                 PositionState position = _simulation.State.Get<PositionState>(dirty.Entity);
@@ -265,7 +267,7 @@ So no global system scan happens.
 
 ## 3. Facts versus output components
 
-### Facts are transient
+### Facts are transient (input/change)
 
 Facts exist only during reduction.
 
@@ -342,7 +344,7 @@ public readonly record struct InventoryMoveResolvedFact : IFact
 
 ---
 
-### Output components are durable
+### Output components are durable (state mutation)
 
 These are the things consumers poll.
 
@@ -1059,6 +1061,7 @@ public sealed class MovementStateCommitter : IOutputCommitter<MovementState>
         bool hasResolved = facts.Has<MoveResolvedFact>();
         bool hasBlocked = facts.Has<MoveBlockedFact>();
 
+        // TODO: this needs to be resolved by priority and only when priority is the same throw (with exception on the facts and their priority)!
         if (hasResolved && hasBlocked)
         {
             // Deterministic policy.
