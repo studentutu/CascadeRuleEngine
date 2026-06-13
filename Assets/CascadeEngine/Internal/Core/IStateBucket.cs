@@ -10,10 +10,14 @@ namespace CascadeEngineApi
     internal interface IStateBucket
     {
         Type StateType { get; }
+        int StateCapacityHint { get; }
+        int MutationCapacity { get; }
 
         bool Has(EntityRef entity);
 
         void Delete(EntityRef entity);
+
+        void EnsureCapacity(int stateCapacity, int mutationCapacity);
 
         void ClearMutations();
 

@@ -11,10 +11,13 @@ namespace CascadeEngineApi
     internal sealed class StateBucket<TState> : IStateBucket
         where TState : struct, IOutputState
     {
-        private readonly Dictionary<int, TState> _values = new Dictionary<int, TState>();
+        private Dictionary<int, TState> _values = new Dictionary<int, TState>();
         private readonly List<StateMutationRecord<TState>> _mutations = new List<StateMutationRecord<TState>>();
+        private int _stateCapacityHint;
 
         public Type StateType => typeof(TState);
+        public int StateCapacityHint => _stateCapacityHint;
+        public int MutationCapacity => _mutations.Capacity;
         public int MutationCount => _mutations.Count;
 
         public bool Has(EntityRef entity)
@@ -48,6 +51,7 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException("Global facts cannot own output state.");
             }
 
+            TrackStateCapacityUse(entity);
             if (_values.TryGetValue(entity.Value, out var previous))
             {
                 if (EqualityComparer<TState>.Default.Equals(previous, next))
@@ -75,6 +79,7 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException("Global facts cannot own output state.");
             }
 
+            TrackStateCapacityUse(entity);
             _values[entity.Value] = next;
         }
 
@@ -96,6 +101,26 @@ namespace CascadeEngineApi
                 new StateMutation<TState>(true, previous, false, default)));
         }
 
+        public void EnsureCapacity(int stateCapacity, int mutationCapacity)
+        {
+            if (stateCapacity > _stateCapacityHint)
+            {
+                var nextValues = new Dictionary<int, TState>(stateCapacity);
+                foreach (var pair in _values)
+                {
+                    nextValues.Add(pair.Key, pair.Value);
+                }
+
+                _values = nextValues;
+                _stateCapacityHint = stateCapacity;
+            }
+
+            if (_mutations.Capacity < mutationCapacity)
+            {
+                _mutations.Capacity = mutationCapacity;
+            }
+        }
+
         public void ClearMutations()
             => _mutations.Clear();
 
@@ -105,6 +130,15 @@ namespace CascadeEngineApi
             {
                 var mutation = _mutations[i].Mutation;
                 handler(_mutations[i].Entity, in mutation);
+            }
+        }
+
+        private void TrackStateCapacityUse(EntityRef entity)
+        {
+            var required = entity.Value + 1;
+            if (required > _stateCapacityHint)
+            {
+                _stateCapacityHint = required;
             }
         }
     }

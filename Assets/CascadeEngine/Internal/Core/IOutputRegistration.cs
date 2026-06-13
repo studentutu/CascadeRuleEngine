@@ -20,6 +20,8 @@ namespace CascadeEngineApi
 
         void DeleteState(FactSimulation simulation, EntityRef entity);
 
+        void Warmup(FactSimulation simulation, int stateCapacity, int mutationCapacity);
+
         void ClearMutations(FactSimulation simulation);
 
         int MutationCount(FactSimulation simulation);

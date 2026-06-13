@@ -63,6 +63,9 @@ namespace CascadeEngineApi
         public void DeleteState(FactSimulation simulation, EntityRef entity)
             => simulation.GetStateBucket<TState>().Delete(entity);
 
+        public void Warmup(FactSimulation simulation, int stateCapacity, int mutationCapacity)
+            => simulation.GetStateBucket<TState>().EnsureCapacity(stateCapacity, mutationCapacity);
+
         public void ClearMutations(FactSimulation simulation)
             => simulation.GetStateBucket<TState>().ClearMutations();
 

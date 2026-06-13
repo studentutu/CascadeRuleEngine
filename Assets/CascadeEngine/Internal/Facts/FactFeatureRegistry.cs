@@ -23,9 +23,12 @@ namespace CascadeEngineApi
         private readonly List<IBatchTransactionalRegistration> _batchTransactionalReducers =
             new List<IBatchTransactionalRegistration>();
 
+        private readonly FactTypeList _knownFactTypes = new FactTypeList();
+
         internal IReadOnlyList<IOutputRegistration> Outputs => _outputs;
         internal IReadOnlyList<ITransactionalRegistration> TransactionalReducers => _transactionalReducers;
         internal IReadOnlyList<IBatchTransactionalRegistration> BatchTransactionalReducers => _batchTransactionalReducers;
+        internal Type[] KnownFactTypes => _knownFactTypes.ToArray();
 
         internal void AddReducer<TFact, TReducer>()
             where TFact : struct, IFact
@@ -34,6 +37,7 @@ namespace CascadeEngineApi
             var reducer = Create<TReducer>();
             var invoker = new ReducerInvoker<TFact>(reducer);
             var factType = typeof(TFact);
+            _knownFactTypes.Add(factType);
 
             if (!_reducersByFact.TryGetValue(factType, out var reducers))
             {
@@ -49,6 +53,7 @@ namespace CascadeEngineApi
         {
             ValidateRequiredFacts(requiredFacts);
             var reducer = Create<TReducer>();
+            AddKnownFacts(requiredFacts);
             _transactionalReducers.Add(new TransactionalRegistration(
                 _transactionalReducers.Count,
                 ToTypes(requiredFacts),
@@ -60,6 +65,7 @@ namespace CascadeEngineApi
         {
             ValidateRequiredFacts(requiredFacts);
             var reducer = Create<TReducer>();
+            AddKnownFacts(requiredFacts);
             _batchTransactionalReducers.Add(new BatchTransactionalRegistration(
                 _batchTransactionalReducers.Count,
                 ToTypes(requiredFacts),
@@ -84,6 +90,7 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException($"Output state '{stateType.Name}' must declare at least one affected fact.");
             }
 
+            AddKnownFacts(affectedFacts);
             var output = new OutputState<TState>(_outputs.Count, name, conflictPolicy);
             var committer = Create<TCommitter>();
             var registration = new OutputRegistration<TState>(output, affectedFacts, committer);
@@ -117,6 +124,8 @@ namespace CascadeEngineApi
 
         internal void MergeFrom(FactFeatureRegistry other)
         {
+            AddKnownFacts(other._knownFactTypes.ToArray());
+
             foreach (var pair in other._reducersByFact)
             {
                 if (!_reducersByFact.TryGetValue(pair.Key, out var reducers))
@@ -143,14 +152,32 @@ namespace CascadeEngineApi
 
             for (var i = 0; i < other._transactionalReducers.Count; i++)
             {
+                AddKnownFacts(other._transactionalReducers[i].RequiredFacts);
                 other._transactionalReducers[i].Reindex(_transactionalReducers.Count);
                 _transactionalReducers.Add(other._transactionalReducers[i]);
             }
 
             for (var i = 0; i < other._batchTransactionalReducers.Count; i++)
             {
+                AddKnownFacts(other._batchTransactionalReducers[i].RequiredFacts);
                 other._batchTransactionalReducers[i].Reindex(_batchTransactionalReducers.Count);
                 _batchTransactionalReducers.Add(other._batchTransactionalReducers[i]);
+            }
+        }
+
+        private void AddKnownFacts(FactType[] factTypes)
+        {
+            for (var i = 0; i < factTypes.Length; i++)
+            {
+                _knownFactTypes.Add(factTypes[i].Type);
+            }
+        }
+
+        private void AddKnownFacts(Type[] factTypes)
+        {
+            for (var i = 0; i < factTypes.Length; i++)
+            {
+                _knownFactTypes.Add(factTypes[i]);
             }
         }
 

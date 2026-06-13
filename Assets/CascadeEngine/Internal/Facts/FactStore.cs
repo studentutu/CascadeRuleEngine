@@ -15,14 +15,47 @@ namespace CascadeEngineApi
         private readonly DenseEntitySet _touchedEntities = new DenseEntitySet(64);
         private readonly DenseEntityCounter _factCountsByEntity = new DenseEntityCounter(64);
         private int _entityCapacity = 64;
+        private int _factCapacityPerEntity = 4;
         private long _nextSequence;
 
         internal int AcceptedFacts { get; private set; }
         internal int DeduplicatedFacts { get; private set; }
         internal int RejectedDestroyedEntityFacts { get; private set; }
         internal int TouchedEntityCount => _touchedEntities.Count;
+        internal int QueueCapacity => _queue.Capacity;
+        internal int TouchedEntityCapacity => _touchedEntities.Capacity;
+        internal int FactCounterEntityCapacity => _factCountsByEntity.Capacity;
+        internal int BucketCount => _buckets.Count;
 
         internal bool HasQueuedFacts => _queue.Count > 0;
+
+        internal void Warmup(
+            int entityCapacity,
+            int factQueueCapacity,
+            int factCapacityPerEntity,
+            Type[] knownFactTypes)
+        {
+            var normalizedEntityCapacity = NormalizeCapacity(entityCapacity);
+            var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
+
+            EnsureEntityCapacity(normalizedEntityCapacity);
+            if (_queue.Capacity < factQueueCapacity)
+            {
+                _queue.Capacity = factQueueCapacity;
+            }
+
+            if (normalizedFactCapacity > _factCapacityPerEntity)
+            {
+                _factCapacityPerEntity = normalizedFactCapacity;
+            }
+
+            for (var i = 0; i < knownFactTypes.Length; i++)
+            {
+                GetOrCreateBucket(knownFactTypes[i]).Warmup(
+                    normalizedEntityCapacity,
+                    _factCapacityPerEntity);
+            }
+        }
 
         internal void EnsureEntityCapacity(int entityCapacity)
         {
@@ -39,6 +72,49 @@ namespace CascadeEngineApi
             {
                 bucket.EnsureEntityCapacity(entityCapacity);
             }
+        }
+
+        internal int MinimumBucketEntityCapacity()
+        {
+            var minimum = int.MaxValue;
+            foreach (var bucket in _buckets.Values)
+            {
+                if (bucket.EntityCapacity < minimum)
+                {
+                    minimum = bucket.EntityCapacity;
+                }
+            }
+
+            return minimum == int.MaxValue ? 0 : minimum;
+        }
+
+        internal int MinimumBucketTouchedEntityCapacity()
+        {
+            var minimum = int.MaxValue;
+            foreach (var bucket in _buckets.Values)
+            {
+                if (bucket.TouchedEntityCapacity < minimum)
+                {
+                    minimum = bucket.TouchedEntityCapacity;
+                }
+            }
+
+            return minimum == int.MaxValue ? 0 : minimum;
+        }
+
+        internal int MinimumFactListCapacity(int entityCapacity)
+        {
+            var minimum = int.MaxValue;
+            foreach (var bucket in _buckets.Values)
+            {
+                var bucketMinimum = bucket.MinimumFactListCapacity(entityCapacity);
+                if (bucketMinimum < minimum)
+                {
+                    minimum = bucketMinimum;
+                }
+            }
+
+            return minimum == int.MaxValue ? 0 : minimum;
         }
 
         internal bool Emit<TFact>(
@@ -178,7 +254,29 @@ namespace CascadeEngineApi
                 return (FactBucket<TFact>)bucket;
             }
 
-            var typedBucket = new FactBucket<TFact>(_entityCapacity);
+            var typedBucket = new FactBucket<TFact>(_entityCapacity, _factCapacityPerEntity);
+            _buckets.Add(factType, typedBucket);
+            return typedBucket;
+        }
+
+        private IFactBucket GetOrCreateBucket(Type factType)
+        {
+            if (_buckets.TryGetValue(factType, out var bucket))
+            {
+                return bucket;
+            }
+
+            var bucketType = typeof(FactBucket<>).MakeGenericType(factType);
+            var instance = Activator.CreateInstance(
+                bucketType,
+                _entityCapacity,
+                _factCapacityPerEntity);
+            if (instance == null)
+            {
+                throw new InvalidOperationException($"Could not create fact bucket for '{factType.Name}'.");
+            }
+
+            var typedBucket = (IFactBucket)instance;
             _buckets.Add(factType, typedBucket);
             return typedBucket;
         }
@@ -233,5 +331,8 @@ namespace CascadeEngineApi
 
             return FactPriority.Normal;
         }
+
+        private static int NormalizeCapacity(int capacity)
+            => Math.Max(capacity, 1);
     }
 }

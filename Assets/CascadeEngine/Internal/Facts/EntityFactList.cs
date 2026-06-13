@@ -11,9 +11,30 @@ namespace CascadeEngineApi
     internal sealed class EntityFactList<TFact>
         where TFact : struct, IFact
     {
-        private TFact[] _items = new TFact[4];
+        private TFact[] _items;
+
+        internal EntityFactList()
+            : this(4)
+        {
+        }
+
+        internal EntityFactList(int initialCapacity)
+        {
+            _items = new TFact[NormalizeCapacity(initialCapacity)];
+        }
 
         internal int Count { get; private set; }
+        internal int Capacity => _items.Length;
+
+        internal void EnsureCapacity(int capacity)
+        {
+            if (capacity <= _items.Length)
+            {
+                return;
+            }
+
+            Array.Resize(ref _items, capacity);
+        }
 
         internal int Add(in TFact fact)
         {
@@ -75,5 +96,8 @@ namespace CascadeEngineApi
                 Array.Clear(_items, 0, count);
             }
         }
+
+        private static int NormalizeCapacity(int capacity)
+            => Math.Max(capacity, 1);
     }
 }

@@ -64,6 +64,39 @@ SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
+## Warmup For 500+ Entities
+
+Warmup is a capacity phase only. It does not create entities, emit facts, run reducers, commit output state, or publish mutations.
+
+```csharp
+var feature = new GameplayFeature();
+var simulation = new FactSimulation(feature);
+
+const int expectedEntities = 512;
+simulation.Warmup(new WarmupCapacityHints
+{
+    EntityCapacity = expectedEntities,
+    FactQueueCapacity = expectedEntities * 4,
+    FactsPerEntityPerTypeCapacity = 4,
+    QueryEntityCapacity = expectedEntities,
+    TransactionEntityCapacity = expectedEntities,
+    BatchEntityCapacity = expectedEntities,
+    CommitActionCapacity = expectedEntities,
+    OutputStateCapacityPerOutput = expectedEntities,
+    MutationCapacityPerOutput = expectedEntities
+});
+
+for (var i = 0; i < expectedEntities; i++)
+{
+    EntityRef entity = simulation.CreateEntity();
+    // Bootstrap committed output state here when the domain requires it.
+}
+```
+
+Keep the hints honest. If one gameplay tick can enqueue two input facts and two derived facts per entity, size `FactQueueCapacity` for that shape instead of assuming entity count is enough.
+
+Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code and never declared in the feature cannot be warmed.
+
 ## Feature Registration
 
 ```csharp
@@ -94,6 +127,7 @@ public sealed class GameplayFeature : FactFeature
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
 | `FactFeature` | registration hub for reducers and outputs |
 | `FactSimulation` | entity lifecycle, fact queue, reduction, commit, mutation routing |
+| `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
 | `OutputState<TState>` | typed mutation stream descriptor |
 | `StateMutation<TState>` | create/update/delete diff for one output state |
 

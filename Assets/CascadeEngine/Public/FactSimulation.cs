@@ -52,6 +52,36 @@ namespace CascadeEngineApi
         public int MutationCount => _mutationCount;
         public SimulationResult LastResult { get; private set; }
 
+        /// <summary>
+        /// [INTEGRATION] Range: host capacity hints. Condition: call before gameplay load/tick. Output: reusable stores and buffers are pre-sized only.
+        /// </summary>
+        public void Warmup(WarmupCapacityHints hints)
+        {
+            if (hints == null)
+            {
+                throw new ArgumentNullException(nameof(hints));
+            }
+
+            var entityCapacity = NormalizeCapacity(hints.EntityCapacity);
+            _facts.Warmup(
+                entityCapacity,
+                NormalizeCapacity(hints.FactQueueCapacity),
+                NormalizeCapacity(hints.FactsPerEntityPerTypeCapacity),
+                _registry.KnownFactTypes);
+
+            _queryBuffer.EnsureCapacity(NormalizeCapacity(hints.QueryEntityCapacity));
+            _transactionBuffer.EnsureCapacity(NormalizeCapacity(hints.TransactionEntityCapacity));
+            _batchBuffer.EnsureCapacity(NormalizeCapacity(hints.BatchEntityCapacity));
+            EnsureListCapacity(_commitActions, NormalizeCapacity(hints.CommitActionCapacity));
+
+            var outputStateCapacity = NormalizeCapacity(hints.OutputStateCapacityPerOutput);
+            var mutationCapacity = NormalizeCapacity(hints.MutationCapacityPerOutput);
+            for (var i = 0; i < _registry.Outputs.Count; i++)
+            {
+                _registry.Outputs[i].Warmup(this, outputStateCapacity, mutationCapacity);
+            }
+        }
+
         public EntityRef CreateEntity()
         {
             var entity = _entities.Create();
@@ -303,6 +333,40 @@ namespace CascadeEngineApi
             }
 
             throw new InvalidOperationException($"Output state '{typeof(TState).Name}' is not registered.");
+        }
+
+        internal CascadeCapacitySnapshot CaptureCapacitySnapshot(int warmedEntityCapacity)
+        {
+            var minimumStateCapacityHint = int.MaxValue;
+            var minimumMutationCapacity = int.MaxValue;
+
+            foreach (var bucket in _stateBuckets.Values)
+            {
+                if (bucket.StateCapacityHint < minimumStateCapacityHint)
+                {
+                    minimumStateCapacityHint = bucket.StateCapacityHint;
+                }
+
+                if (bucket.MutationCapacity < minimumMutationCapacity)
+                {
+                    minimumMutationCapacity = bucket.MutationCapacity;
+                }
+            }
+
+            return new CascadeCapacitySnapshot(
+                _facts.QueueCapacity,
+                _facts.TouchedEntityCapacity,
+                _facts.FactCounterEntityCapacity,
+                _facts.BucketCount,
+                _facts.MinimumBucketEntityCapacity(),
+                _facts.MinimumBucketTouchedEntityCapacity(),
+                _facts.MinimumFactListCapacity(warmedEntityCapacity),
+                _queryBuffer.Capacity,
+                _transactionBuffer.Capacity,
+                _batchBuffer.Capacity,
+                _commitActions.Capacity,
+                minimumStateCapacityHint == int.MaxValue ? 0 : minimumStateCapacityHint,
+                minimumMutationCapacity == int.MaxValue ? 0 : minimumMutationCapacity);
         }
 
         private void EmitCore<TFact>(EntityRef entity, in TFact fact, int parentDepth)
@@ -557,5 +621,16 @@ namespace CascadeEngineApi
         {
             _batchBuffer.EnsureCapacity(required);
         }
+
+        private static void EnsureListCapacity<T>(List<T> list, int capacity)
+        {
+            if (list.Capacity < capacity)
+            {
+                list.Capacity = capacity;
+            }
+        }
+
+        private static int NormalizeCapacity(int capacity)
+            => Math.Max(capacity, 1);
     }
 }
