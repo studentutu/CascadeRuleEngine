@@ -25,8 +25,8 @@ What I need you to do is to make an example usage of the proposed API (we need t
 
 Basically:
 
-- instead of systems, we have reducers (which don't even begin to be executed until fact appears and a dictionary of facts to reducers for the current SimulationTick executed, mapped reducers for each entity (reducers don't mutate output state directly, so order of execution  is irrelevant)
-- finally commit stage executes stage changes (multiple facts commit a single output component). Output components are created after full reduction (till no more facts exist or some limit on reduction passes is reached)
+- instead of systems, we have reducers (which don't even begin to be executed until fact appears and a dictionary of facts to reducers for the current SimulationTick executed, mapped reducers for each entity (reducers don't mutate output state directly)
+- finally committers project the closed fact set into durable output state. Output components are created/updated/deleted after full reduction (till no more facts exist or some limit on reduction passes is reached)
 - instead of all components being written/read, we divide the input/processing/temporal requests as facts and output components (on the entity)
 - after commit, work is done, entity state is updated, and can be polled by domain logic (UI/some view ECS systems, some managers)
 - full feature API parity to the Entitas (poll entity for its facts/output components)
@@ -42,7 +42,8 @@ Input
   -> ReducerMap[fact_2] -> reducer_B(context, fact_2)
   -> fact_3
   -> no more unprocessed facts, run commit phase
-  -> commit touched entities (we can even make a publishing queue of the dirty entities, so that consumers can just subscribe to it and filter what they need)
+  -> commit touched entities and affected outputs
+  -> publish typed output mutations for consumers
 ```
 
 Similar to NRules but tightly constrained against zero-allocation and output properties.
@@ -61,7 +62,7 @@ Input facts
   -> reducers emit more facts
   -> reduction reaches closure
   -> committers project facts into durable output components
-  -> dirty output queue is published
+  -> typed output mutations are published
 ```
 
 The important design choice:
@@ -70,6 +71,23 @@ The important design choice:
 > Committers are the only code allowed to write output components.
 
 That gives you one deterministic place to merge many facts into one final component.
+
+Current design decisions:
+
+```text
+Facts are set-like within one tick per entity: duplicate entity/fact/payload keys are deduplicated.
+Reducers read committed output state and accumulated tick facts only.
+Reducers never read staged output state because staged output does not exist.
+Intermediate reducer results must be facts.
+Same tick closure is mandatory when the graph can close within the configured budget.
+Equal priority conflicts are logic errors and throw with both conflicting facts attached.
+Missing output state is real: consumers must use HasState/TryGetState or mutation create/delete flags.
+Destroyed entities are permanent. New facts for destroyed entities are rejected before reduction.
+Entity creation/destruction is part of the core lifecycle API, not a host-side convention.
+MVP consumer output is ForEachMutation(output), not a dirty entity queue.
+```
+
+The implementation must stay C# 8 / Unity compatible. Any snippet using newer syntax is descriptive only until rewritten into package code.
 
 ---
 
@@ -122,39 +140,42 @@ No Entitas component is added here. These are transient facts in a tick-local fa
 public sealed class GameSimulationLoop
 {
     private readonly IFactSimulation _simulation;
+    private readonly GameplayCascadeSchema _schema;
 
-    public GameSimulationLoop(IFactSimulation simulation)
+    public GameSimulationLoop(IFactSimulation simulation, GameplayCascadeSchema schema)
     {
         _simulation = simulation;
+        _schema = schema;
     }
 
     public void Simulate()
     {
-        SimulationResult result = _simulation.RunTick(new ReduceOptions
+        _simulation.RunTick(new ReduceOptions
         {
             MaxFacts = 50_000,
             MaxPasses = 64,
             MaxMilliseconds = 8,
             BudgetMode = BudgetMode.PriorityFirst,
-            IncompleteCommitMode = IncompleteCommitMode.DoNotCommitIncompleteEntities
+            IncompleteCommitMode = IncompleteCommitMode.Throw
         });
 
-        // Remark: this is way to broad of an consumer example, prefer 'IDirtyEntityQueue.Consume<PositionState>()' instead in the actual production.
-        foreach (DirtyEntity dirty in result.DirtyEntities)
+        _simulation.ForEachMutation(_schema.Position, (entity, change) =>
         {
-            // TODO: mvp example, this is bad design choice for single consumer to look on all changes.
-            if (dirty.HasChanged<PositionState>())
-            {
-                PositionState position = _simulation.State.Get<PositionState>(dirty.Entity);
-                // Notify view, physics proxy, streaming, etc.
-            }
+            if (!change.HasNext)
+                return;
 
-            if (dirty.HasChanged<InventoryState>())
-            {
-                InventoryState inventory = _simulation.State.Get<InventoryState>(dirty.Entity);
-                // Notify UI, inventory screen, drag-and-drop module, etc.
-            }
-        }
+            PositionState position = change.Next;
+            // Notify view, physics proxy, streaming, etc.
+        });
+
+        _simulation.ForEachMutation(_schema.Inventory, (entity, change) =>
+        {
+            if (!change.HasNext)
+                return;
+
+            InventoryState inventory = change.Next;
+            // Notify UI, inventory screen, drag-and-drop module, etc.
+        });
     }
 }
 ```
@@ -165,7 +186,7 @@ From the outside, the usage becomes:
 emit facts
 run tick
 read committed state
-react to dirty state
+route typed output mutations
 ```
 
 ---
@@ -206,8 +227,17 @@ public sealed class MovementFeature : FactFeature
         Reduce<MoveResolvedFact>()
             .With<MovementAnimationReducer>();
 
+        Reduce<MoveResolvedFact>()
+            .With<MovementAudioReducer>();
+
+        ReduceWhen<MoveCandidateFact, MovementBlockCheckFact>()
+            .With<MovementResolutionReducer>();
+
+        ReduceBatchWhen<SpeedByInputFact, SpeedByEffectsFact, RotationFact, GravityFact, InertiaFact>()
+            .With<PhysicsResolutionReducer>();
+
         Output<PositionState>()
-            .AffectedBy<MoveResolvedFact>()
+            .AffectedBy<PositionResolvedFact>()
             .AffectedBy<TeleportResolvedFact>()
             .CommitWith<PositionCommitter>();
 
@@ -257,11 +287,39 @@ public sealed class InventoryFeature : FactFeature
 The registry builds two maps:
 
 ```csharp
-FactType -> Reducers
+FactType -> immediate reducers
+FactType -> transactional reducer wait lists
+TransactionalReducer -> required fact mask
 FactType -> Affected Output Committers
 ```
 
 So no global system scan happens.
+
+Reducer registration has three forms:
+
+```text
+Reduce<TFact>()                  runs once per newly accepted fact
+ReduceWhen<TA, TB, ...>()        runs once per entity when the required fact set exists
+ReduceBatchWhen<TA, TB, ...>()   runs once per tick over the eligible entity set when required facts exist
+```
+
+Transactional reducers solve the "missing or misordered fact" problem. They do not run because one fact arrived; they run because all required facts for the entity or batch are present in the tick fact store. After a transactional reducer fires for a given entity/fact-set, it is marked fired so it cannot loop without producing a new distinct fact key.
+
+Batch transactional reducers are the escape hatch for physics-like work:
+
+```text
+Input
+  -> SpeedByInputFact
+  -> SpeedByEffectsFact
+  -> RotationFact
+  -> GravityFact
+  -> InertiaFact
+  -> PhysicsResolutionReducer runs once over eligible entities
+  -> PositionResolvedFact per changed entity
+  -> PositionCommitter writes PositionState once
+```
+
+This is not a return to "run all systems." The batch reducer receives only entities that became eligible through facts in the current tick.
 
 ---
 
@@ -270,6 +328,7 @@ So no global system scan happens.
 ### Facts are transient (input/change)
 
 Facts exist only during reduction.
+Within one tick, facts are set-like and deduplicated by entity, fact type, and payload value. Causal metadata is diagnostic and must not accidentally make duplicates distinct. If gameplay needs "two identical shots", emit one fact with `Amount = 2` or include an intentional disambiguating value in the payload. Do not rely on duplicate queue entries.
 
 ```csharp
 public interface IFact
@@ -347,6 +406,7 @@ public readonly record struct InventoryMoveResolvedFact : IFact
 ### Output components are durable (state mutation)
 
 These are the things consumers poll.
+An output state is absent until a committer creates it. Default struct values are not secretly valid state. Consumers and reducers must use `HasState` / `TryGetState` unless the output is guaranteed by bootstrap.
 
 ```csharp
 public interface IOutputState
@@ -391,6 +451,20 @@ public interface IFactReducer<TFact>
 }
 ```
 
+Transactional reducers run when their declared fact set exists:
+
+```csharp
+public interface ITransactionalReducer
+{
+    void Reduce(ITransactionReduceContext ctx, EntityRef entity);
+}
+
+public interface IBatchTransactionalReducer
+{
+    void ReduceBatch(IBatchReduceContext ctx, ReadOnlySpan<EntityRef> entities);
+}
+```
+
 The context should feel like Entitas, but transactional:
 
 ```csharp
@@ -409,16 +483,43 @@ public interface IReduceContext
     bool TryGetState<TState>(EntityRef entity, out TState state)
         where TState : struct, IOutputState;
 
-    EntityQuery Query { get; }
+    IEntityQuery Query { get; }
+
+    EntityRef CreateEntity();
+
+    bool IsDestroyed(EntityRef entity);
+
+    void DestroyEntity(EntityRef entity);
 
     void Emit<TFact>(EntityRef entity, in TFact fact)
         where TFact : struct, IFact;
 
     void EmitGlobal<TFact>(in TFact fact)
         where TFact : struct, IFact;
-
-    void Touch(EntityRef entity);
 }
+```
+
+Lifecycle rules:
+
+```text
+CreateEntity allocates a live entity id immediately and returns it to the reducer.
+New entities have no output state until committers set output state.
+Facts may be emitted to newly created entities in the same tick.
+DestroyEntity is permanent and tombstones the entity immediately.
+Facts emitted to destroyed entities are rejected before the reduction loop.
+Already queued facts for entities destroyed earlier in the same tick are skipped before reducer dispatch.
+Committers do not run for destroyed entities unless explicitly registered for lifecycle cleanup output.
+```
+
+Host and consumer lifecycle parity:
+
+```text
+IFactSimulation.CreateEntity can be called outside reduction before or after RunTick.
+IFactSimulation.DestroyEntity can be called outside reduction before or after RunTick.
+Destroying an entity deletes its output states and publishes typed delete mutations.
+Reducer-side creation can participate in the same tick by receiving emitted facts.
+Consumer-side creation/destruction affects the next tick unless it is called before RunTick.
+Entity ids are handles owned by the Cascade runtime; destroyed ids are not reused in the MVP.
 ```
 
 Entity fact view:
@@ -434,25 +535,29 @@ public interface IEntityFactView
 
     ReadOnlySpan<TFact> All<TFact>()
         where TFact : struct, IFact;
+
+    bool HasAll(FactMask requiredFacts);
 }
 ```
 
 Query API:
 
 ```csharp
-public interface EntityQuery
+public interface IEntityQuery
 {
-    IEnumerable<EntityRef> With<TState>()
+    EntityQueryResult With<TState>()
         where TState : struct, IOutputState;
 
-    IEnumerable<EntityRef> With<TStateA, TStateB>()
+    EntityQueryResult With<TStateA, TStateB>()
         where TStateA : struct, IOutputState
         where TStateB : struct, IOutputState;
 
-    IEnumerable<EntityRef> WithFact<TFact>()
+    EntityQueryResult WithFact<TFact>()
         where TFact : struct, IFact;
 }
 ```
+
+`EntityQueryResult` must be allocation-free in the hot path. Do not ship `IEnumerable<EntityRef>` as the core query primitive; it is too easy to allocate and hide work.
 
 ---
 
@@ -662,7 +767,7 @@ public interface ICommitContext
     bool TryGetState<TState>(EntityRef entity, out TState state)
         where TState : struct, IOutputState;
 
-    EntityQuery Query { get; }
+    IEntityQuery Query { get; }
 
     void Publish<TEvent>(EntityRef entity, in TEvent evt)
         where TEvent : struct, ICommitEvent;
@@ -895,8 +1000,8 @@ The commit stage should do this:
 5. Run only the relevant committers.
 6. Merge all same-output facts into one final output component.
 7. Write output components once.
-8. Publish dirty entities and commit events.
-9. Prepare next facts, e.g. continuous movement with following pipeline: input -> fact -> reduction -> commit -> fact.
+8. Publish typed output mutations and optional commit events.
+9. Leave next-tick fact scheduling to the host loop or an explicit next-tick queue.
 ```
 
 In code:
@@ -921,14 +1026,13 @@ public sealed class FactSimulation : IFactSimulation
         {
             Tick = tick.Id,
             Complete = reduceResult.IsComplete,
-            DirtyEntities = commitResult.DirtyEntities,
-            Events = commitResult.Events
+            MutationCount = commitResult.MutationCount
         };
     }
 }
 ```
 
-Commit should **not** run gameplay logic. It can emit more facts for the next tick.
+Commit should **not** run gameplay logic and should not emit same-tick facts.
 
 Allowed:
 
@@ -936,11 +1040,7 @@ Allowed:
 ctx.Publish(entity, new InventoryChangedEvent { ... });
 ```
 
-```csharp
-ctx.Emit(entity, new InertiaFact()); // bad during commit
-```
-
-But use this sparingly.
+If a continuous process needs follow-up work next tick, schedule it explicitly after `RunTick` from the host loop or from a declared next-tick queue. Do not hide new reduction work inside commit.
 
 ---
 
@@ -958,13 +1058,20 @@ private ReduceResult ReduceAll(TickScope tick, ReduceOptions options)
 
         QueuedFact queued = tick.WorkQueue.PopHighestPriority();
 
+        if (tick.Entities.IsDestroyed(queued.Entity))
+            continue;
+
         ReducerList reducers = _registry.GetReducers(queued.FactType);
 
         foreach (IFactReducer reducer in reducers)
         {
             reducer.ReduceUntyped(tick.Context, queued.Entity, queued.Fact);
         }
+
+        tick.ScheduleReadyTransactionalReducers(queued.Entity, queued.FactType);
     }
+
+    RunReadyTransactionalReducers(tick, options);
 
     return ReduceResult.Complete(tick);
 }
@@ -976,6 +1083,9 @@ A newly emitted fact is added only if it is new.
 public void Emit<TFact>(EntityRef entity, in TFact fact)
     where TFact : struct, IFact
 {
+    if (_entities.IsDestroyed(entity))
+        return;
+
     FactKey key = FactKey.Create(entity, fact);
 
     if (!_factSet.Add(key))
@@ -988,6 +1098,7 @@ public void Emit<TFact>(EntityRef entity, in TFact fact)
     _workQueue.Enqueue(entity, fact, priority);
 
     _touchedEntities.Add(entity);
+    _transactionalScheduler.OnFactAccepted(entity, typeof(TFact));
 
     foreach (OutputRegistration output in _registry.GetAffectedOutputs<TFact>())
     {
@@ -999,6 +1110,20 @@ public void Emit<TFact>(EntityRef entity, in TFact fact)
 This is critical. The engine should deduplicate facts.
 
 Without deduplication, reducer cycles become catastrophic.
+
+Transactional scheduling:
+
+```text
+When a fact is accepted, update the entity's fact mask.
+For each transactional reducer waiting on that fact type, check the required mask.
+If the mask is complete and the reducer has not fired for that entity this tick, queue the transactional reducer.
+For batch reducers, add the entity to the reducer's eligible entity set.
+After the immediate fact queue drains, run ready transactional reducers.
+If transactional reducers emit new facts, return to the immediate fact queue.
+Repeat until both queues are empty or guardrails fail.
+```
+
+This gives same-tick closure without relying on fact arrival order.
 
 ---
 
@@ -1034,7 +1159,7 @@ MoveRequested
   -> MoveBlocked
 ```
 
-But if both happen, the `PositionCommitter` or `MovementStateCommitter` owns the merge policy.
+But if both happen, the `PositionCommitter` or `MovementStateCommitter` owns the merge policy. Priority may select a winner; equal priority is a logic error.
 
 Example:
 
@@ -1061,15 +1186,17 @@ public sealed class MovementStateCommitter : IOutputCommitter<MovementState>
         bool hasResolved = facts.Has<MoveResolvedFact>();
         bool hasBlocked = facts.Has<MoveBlockedFact>();
 
-        // TODO: this needs to be resolved by priority and only when priority is the same throw (with exception on the facts and their priority)!
         if (hasResolved && hasBlocked)
         {
-            // Deterministic policy.
-            // Either fail, prefer block, prefer highest priority, or choose by causal request id.
-            throw new CommitConflictException(
-                entity,
-                typeof(MovementState),
-                "MoveResolvedFact and MoveBlockedFact both exist.");
+            if (!TrySelectHighestPriority(facts, out MovementResolution winner))
+            {
+                throw new CommitConflictException(
+                    entity,
+                    typeof(MovementState),
+                    "MoveResolvedFact and MoveBlockedFact have equal priority.");
+            }
+
+            return CommitWinner(previous, winner);
         }
 
         // Normal commit logic...
@@ -1078,16 +1205,7 @@ public sealed class MovementStateCommitter : IOutputCommitter<MovementState>
 }
 ```
 
-For production, do not throw in release builds unless you want hard simulation failure. Instead:
-
-```csharp
-CommitConflictPolicy.PreferFailureFacts
-CommitConflictPolicy.PreferHighestPriority
-CommitConflictPolicy.RequireSingleResolution
-CommitConflictPolicy.KeepPreviousState
-```
-
-Make the policy explicit per output.
+Do not silently keep previous state for contradictory facts. That recreates the hidden-order ECS failure mode.
 
 ---
 
@@ -1097,7 +1215,7 @@ Make the policy explicit per output.
 Output<PositionState>()
     .AffectedBy<MoveResolvedFact>()
     .AffectedBy<TeleportResolvedFact>()
-    .ConflictPolicy(CommitConflictPolicy.RequireSingleWinner)
+    .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
     .CommitWith<PositionCommitter>();
 ```
 
@@ -1108,151 +1226,85 @@ Output<InventoryState>()
     .AffectedBy<InventoryMoveResolvedFact>()
     .AffectedBy<InventoryItemAddedFact>()
     .AffectedBy<InventoryItemRemovedFact>()
-    .ConflictPolicy(CommitConflictPolicy.FoldAllInDeterministicOrder)
+    .ConflictPolicy(CommitConflictPolicy.FoldAllInStableFactOrder)
     .CommitWith<InventoryCommitter>();
 ```
 
-For UI:
+For marker/event-like dirty state:
 
 ```csharp
-Output<InventoryUiState>()
-    .AffectedBy<InventoryDragRequestedFact>()
-    .AffectedBy<InventoryMoveResolvedFact>()
-    .AffectedBy<InventoryMoveRejectedFact>()
-    .ConflictPolicy(CommitConflictPolicy.LatestFactWins)
-    .CommitWith<InventoryUiCommitter>();
+Output<AudioCueState>()
+    .AffectedBy<FootstepCueFact>()
+    .AffectedBy<DryFireCueFact>()
+    .ConflictPolicy(CommitConflictPolicy.CollapseToSingleMarker)
+    .CommitWith<AudioCueCommitter>();
 ```
 
 Different output components need different commit semantics.
 
 ---
 
-## 14. Dirty publishing queue
+## 14. Typed output mutation API
 
-Consumers should not poll the entire world.
+Consumers should not poll the entire world. MVP output is property-specific mutation routing:
 
 ```csharp
-public readonly record struct DirtyEntity
+public readonly struct StateMutation<TState>
+    where TState : struct, IOutputState
 {
-    public required EntityRef Entity { get; init; }
-    public required ComponentTypeMask ChangedOutputs { get; init; }
-
-    public bool HasChanged<TState>()
-        where TState : struct, IOutputState
-    {
-        return ChangedOutputs.Contains<TState>();
-    }
+    public bool HadPrevious { get; }
+    public TState Previous { get; }
+    public bool HasNext { get; }
+    public TState Next { get; }
 }
+
+public delegate void StateMutationHandler<TState>(
+    EntityRef entity,
+    in StateMutation<TState> mutation)
+    where TState : struct, IOutputState;
 ```
 
-Example consumer:
+Example consumer (example of Entitas ECS):
 
 ```csharp
-public sealed class InventoryUiPresenter
+public sealed class PositionViewSystem : IExecuteSystem
 {
     private readonly IFactSimulation _simulation;
-
-    public void OnSimulationCommitted(SimulationResult result)
-    {
-        foreach (DirtyEntity dirty in result.DirtyEntities)
-        {
-            if (!dirty.HasChanged<InventoryState>())
-                continue;
-
-            InventoryState inventory =
-                _simulation.State.Get<InventoryState>(dirty.Entity);
-
-            RefreshInventoryPanel(dirty.Entity, inventory);
-        }
-    }
-}
-```
-
-View ECS system can also consume dirty queues:
-
-```csharp
-public sealed class PositionViewSystem
-{
-    private readonly ICommittedStateStore _state;
-    private readonly IDirtyEntityQueue _dirty;
+    private readonly GameplayCascadeSchema _schema;
 
     public void Execute()
     {
-        foreach (DirtyEntity dirty in _dirty.Consume<PositionState>())
+        _simulation.ForEachMutation(_schema.Position, OnPositionChanged);
+    }
+
+    private void OnPositionChanged(EntityRef entity, in StateMutation<PositionState> mutation)
+    {
+        if (!mutation.HasNext)
         {
-            PositionState position = _state.Get<PositionState>(dirty.Entity);
-            UpdateTransform(dirty.Entity, position);
+            DestroyTransformProxy(entity);
+            return;
         }
+
+        UpdateTransform(entity, mutation.Next);
     }
 }
 ```
 
-This gives you the “React render only dirty subtree” effect.
+This gives consumers the React-style effect without making them scan unrelated outputs.
+
+Creation, update, and deletion are all visible through the same typed mutation stream:
+
+```text
+create output state   HadPrevious=false, HasNext=true
+update output state   HadPrevious=true,  HasNext=true
+delete output state   HadPrevious=true,  HasNext=false
+```
+
+A dirty entity queue with changed-output masks can be added later if profiling proves it is needed. It is not part of the MVP API.
 
 ---
 
-## 15. Entitas bridge
-
-You can keep Entitas for legacy consumers, but write to it only during commit.
-
-```csharp
-public sealed class EntitasOutputSink : IOutputSink
-{
-    private readonly GameContext _game;
-
-    public void Set<TState>(EntityRef entity, in TState state)
-        where TState : struct, IOutputState
-    {
-        GameEntity entitasEntity = _game.GetEntityWithEntityId(entity.Id);
-
-        switch (state)
-        {
-            case PositionState position:
-                entitasEntity.ReplacePosition(
-                    position.Cell.X,
-                    position.Cell.Y,
-                    position.Facing);
-                break;
-
-            case InventoryState inventory:
-                entitasEntity.ReplaceInventory(
-                    inventory.Slots,
-                    inventory.Version);
-                break;
-        }
-    }
-
-    public void Remove<TState>(EntityRef entity)
-        where TState : struct, IOutputState
-    {
-        GameEntity entitasEntity = _game.GetEntityWithEntityId(entity.Id);
-
-        if (typeof(TState) == typeof(PositionState) && entitasEntity.hasPosition)
-            entitasEntity.RemovePosition();
-
-        if (typeof(TState) == typeof(InventoryState) && entitasEntity.hasInventory)
-            entitasEntity.RemoveInventory();
-    }
-}
-```
-
-Long-term, durable output state can live outside Entitas entirely. During migration, mirror committed output state back into Entitas components.
-
-The expensive operation becomes:
-
-```text
-many temporary facts -> one output component replace
-```
-
-instead of:
-
-```text
-many temporary requests -> many Entitas add/remove/replace operations
-```
-
----
-
-## 16. Full example pipeline
+## 15. Full example pipeline
 
 Input:
 
@@ -1270,52 +1322,58 @@ Reduction:
 ```text
 MoveRequestedFact
   -> MoveRequestReducer
-  -> MoveCandidateFact
+  -> SpeedByInputFact
 
-MoveCandidateFact
-  -> MovementCollisionReducer
-  -> MoveResolvedFact
+ActiveEffectsFact
+  -> SpeedEffectsReducer
+  -> SpeedByEffectsFact
 
-MoveResolvedFact
-  -> MovementAnimationReducer
-  -> PlayMoveAnimationFact
+RotationRequestedFact
+  -> RotationReducer
+  -> RotationFact
+
+GravitySampleFact
+  -> GravityReducer
+  -> GravityFact
+
+PreviousPositionState + Speed/Rotation/Gravity facts
+  -> InertiaReducer
+  -> InertiaFact
+
+SpeedByInputFact + SpeedByEffectsFact + RotationFact + GravityFact + InertiaFact
+  -> PhysicsResolutionReducer (batch transactional reducer, once per tick)
+  -> PositionResolvedFact
+  -> MovementResolvedFact
 ```
 
 Commit:
 
 ```text
-PositionState affected by MoveResolvedFact
-MovementState affected by MoveRequestedFact / MoveResolvedFact
-AnimationState affected by PlayMoveAnimationFact
+PositionState affected by PositionResolvedFact / TeleportResolvedFact
+MovementState affected by MoveRequestedFact / MovementResolvedFact / MoveBlockedFact
+AnimationState affected by MovementResolvedFact
 ```
 
-Final dirty result:
+Final typed mutation output:
 
-```csharp
-DirtyEntity
-{
-    Entity = player,
-    ChangedOutputs =
-    {
-        PositionState,
-        MovementState,
-        AnimationState
-    }
-}
+```text
+ForEachMutation(PositionState)   -> update transform/physics proxy for changed entities
+ForEachMutation(MovementState)   -> update movement UI/debug state
+ForEachMutation(AnimationState)  -> update animation bridge
 ```
 
 Consumers:
 
 ```csharp
-PositionViewSystem consumes PositionState dirty entities.
-AnimationSystem consumes AnimationState dirty entities.
-StreamingSystem consumes PositionState dirty entities.
-Inventory UI ignores this entity entirely.
+PositionViewSystem consumes PositionState mutations.
+AnimationSystem consumes AnimationState mutations.
+StreamingSystem consumes PositionState mutations.
+Inventory UI consumes nothing from this tick.
 ```
 
 ---
 
-## 17. Budgeting model
+## 16. Budgeting model
 
 Budgeting should happen at the fact queue level, not the system level.
 
@@ -1351,31 +1409,29 @@ Incomplete commit modes:
 public enum IncompleteCommitMode
 {
     Throw,
-    DoNotCommitAnything,
-    DoNotCommitIncompleteEntities,
-    CommitClosedOutputsOnly
+    DoNotCommitAnything
 }
 ```
 
 Recommended default:
 
 ```csharp
-IncompleteCommitMode.DoNotCommitIncompleteEntities
+IncompleteCommitMode.Throw
 ```
 
 Meaning:
 
 ```text
-If an entity's fact graph did not close, do not publish partial output for that entity.
-Completed entities can still commit.
-Unfinished facts are carried or dropped according to explicit policy.
+If the tick's fact graph does not close inside the configured budget, commit nothing.
+Surface the failure with reducer/fact diagnostics.
+Do not publish partial durable state in the MVP.
 ```
 
-This prevents half-resolved inventory or half-resolved movement from leaking into durable state.
+This prevents half-resolved inventory or half-resolved movement from leaking into durable state. Partial commit modes can be added later only after we can prove closed subgraphs safely.
 
 ---
 
-## 18. Guardrails
+## 17. Guardrails
 
 You need these from day one.
 
@@ -1385,9 +1441,12 @@ public sealed class FactGuardrails
     public int MaxFactsPerEntity { get; init; } = 512;
     public int MaxFactsPerTypePerEntity { get; init; } = 64;
     public int MaxReducerInvocationsPerTick { get; init; } = 100_000;
+    public int MaxTransactionalReducerInvocationsPerTick { get; init; } = 50_000;
     public int MaxCausalDepth { get; init; } = 32;
     public bool DetectCycles { get; init; } = true;
-    public bool FailOnCommitConflictInDebug { get; init; } = true;
+    public bool FailOnEqualPriorityConflict { get; init; } = true;
+    public bool CountDeduplicatedFacts { get; init; } = true;
+    public bool CountRejectedDestroyedEntityFacts { get; init; } = true;
 }
 ```
 
@@ -1406,10 +1465,11 @@ public readonly record struct FactMeta
 ```
 
 The user-facing fact structs do not need to expose this unless useful.
+Do not include `FactMeta.Id` or `ParentId` in the default deduplication key; metadata is for diagnostics and causal traces.
 
 ---
 
-## 19. Recommended naming
+## 18. Recommended naming
 
 Avoid calling everything a component. Use strict names:
 
@@ -1418,27 +1478,36 @@ Fact              transient input/intermediate data
 Reducer           fact -> more facts
 OutputState       durable committed state
 Committer         facts -> output state
-DirtyEntity       published committed diff
+StateMutation     typed output diff for one state and one entity
 CommitEvent       post-commit notification
 StateStore        durable output component storage
 FactStore         tick-local transient fact storage
 ```
 
-This avoids the current Entitas problem where requests, state, tags, events, and outputs all become “components”.
+This avoids the current Entitas problem where requests, state, tags, events, and outputs all become "components".
 
 ---
 
-## 20. Minimal API skeleton
+## 19. Minimal API skeleton
 
 ```csharp
 public interface IFactSimulation
 {
     ICommittedStateStore State { get; }
 
+    EntityRef CreateEntity();
+
+    void DestroyEntity(EntityRef entity);
+
     void Emit<TFact>(EntityRef entity, in TFact fact)
         where TFact : struct, IFact;
 
     SimulationResult RunTick(ReduceOptions options);
+
+    void ForEachMutation<TState>(
+        OutputState<TState> output,
+        StateMutationHandler<TState> handler)
+        where TState : struct, IOutputState;
 }
 ```
 
@@ -1462,6 +1531,10 @@ public abstract class FactFeature
     protected ReducerRegistrationBuilder<TFact> Reduce<TFact>()
         where TFact : struct, IFact;
 
+    protected TransactionalReducerRegistrationBuilder ReduceWhen(params FactType[] requiredFacts);
+
+    protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen(params FactType[] requiredFacts);
+
     protected OutputRegistrationBuilder<TState> Output<TState>()
         where TState : struct, IOutputState;
 
@@ -1475,6 +1548,20 @@ public sealed class ReducerRegistrationBuilder<TFact>
 {
     public ReducerRegistrationBuilder<TFact> With<TReducer>()
         where TReducer : IFactReducer<TFact>;
+}
+```
+
+```csharp
+public sealed class TransactionalReducerRegistrationBuilder
+{
+    public TransactionalReducerRegistrationBuilder With<TReducer>()
+        where TReducer : ITransactionalReducer;
+}
+
+public sealed class BatchTransactionalReducerRegistrationBuilder
+{
+    public BatchTransactionalReducerRegistrationBuilder With<TReducer>()
+        where TReducer : IBatchTransactionalReducer;
 }
 ```
 
@@ -1495,7 +1582,7 @@ public sealed class OutputRegistrationBuilder<TState>
 
 ---
 
-## 21. What this solves directly
+## 20. What this solves directly
 
 | Current issue                                 | New model                                                                             |
 | --------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -1503,15 +1590,15 @@ public sealed class OutputRegistrationBuilder<TState>
 | Request created late resolves next simulation | Reduction runs to closure in the same tick                                            |
 | One core component change causes mass edits   | Output state is projected in one committer; reducers depend on stable read/query APIs |
 | All systems run constantly                    | Only reducers mapped to existing facts execute                                        |
-| Budgeting is hard                             | Budget the fact queue by priority/entity relevance                                    |
+| Budgeting is hard and messy                   | Budget the fact queue by priority/entity relevance                                    |
 | Adding request components causes spikes       | Facts are stored in transient append-only stores, not Entitas structural components   |
 | Multi-step sub-tick resolution                | The reducer loop is the sub-tick resolution engine                                    |
 | Direct non-ECS changes are awkward            | Domain modules emit facts and read committed state, works more like database          |
-| Consumers over-poll                           | Dirty queue tells consumers exactly which entities/output states changed              |
+| Consumers over-poll (no inherit state mask)   | Typed mutation streams tell consumers exactly which output state changed              |
 
 ---
 
-## 22. The key rule
+## 21. The key rule
 
 The commit stage is not optional glue. It is the reconciliation layer.
 
