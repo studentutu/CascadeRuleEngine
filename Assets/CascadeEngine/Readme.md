@@ -4,20 +4,51 @@
 
 `CascadeEngine` is the drop-in package boundary for the Cascade Rule Engine.
 
-The package replaces reducer-side state writes with a rigid pipeline:
+The package replaces ECS component with reducer-loop and output state rigid pipeline:
 
 ```text
-emit facts
--> run reducers until the fact graph closes
--> run output committers for affected entities
--> publish typed output mutations
+Input or events -> emit facts
+  -> fact work queue
+  -> reducers emit more facts
+  -> reduction reaches closure
+  -> committers project facts into durable output components
+  -> typed output mutations are published
 ```
 
-Core rule:
+Core:
 
 - reducers never write durable state.
-- reducers only read committed state plus accumulated tick facts, then emit more facts. 
+- reducers only read committed state plus accumulated tick facts, then emit more facts.
 - committers are the only code that writes `IOutputState`.
+
+## The key rule
+
+The commit stage is not optional glue. It is the reconciliation layer.
+
+The concept:
+
+```text
+Facts are what happened or what was requested.
+Reducers derive consequences.
+Committers decide durable truth.
+OutputState is the only thing consumers trust.
+```
+
+That is the closest ECS equivalent to React-style reconciliation:
+
+```text
+React event/action
+  -> reducers/state derivation
+  -> virtual result
+  -> reconciliation
+  -> dirty DOM update
+
+Fact ECS
+  -> reducers/fact derivation
+  -> fact closure
+  -> committers
+  -> dirty output component update
+```
 
 ## Minimal Host Flow
 
@@ -53,7 +84,7 @@ public sealed class GameplayFeature : FactFeature
 }
 ```
 
-## Main Public API Types
+## Public API contract
 
 | Type | Role |
 | --- | --- |
