@@ -9,11 +9,11 @@ namespace CascadeEngineApi.Tests
     public sealed class HestiaGameCascadeTests
     {
         [Test]
-        public void AmmoSpendDirtiesTextButNotIconWhenAmmoRemainsNonEmpty()
+        public void AmmoSpendMutatesCurrentAmmoOnlyWhenAmmoRemainsNonEmpty()
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(3);
-            EnableAmmoHudEntity(cascade, entityId);
+            EnableAmmoInput(cascade, entityId);
             cascade.SetInitialAmmo(entityId, ammo: 2);
 
             cascade.InputFireWeapon(entityId);
@@ -21,19 +21,18 @@ namespace CascadeEngineApi.Tests
 
             Assert.AreEqual(1, cascade.GetAmmo(entityId));
             Assert.IsFalse(cascade.IsAmmoEmpty(entityId));
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsTrue(cascade.IsConsumerDirty(entityId, HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+            Assert.AreEqual(1, cascade.Engine.MutationCount);
+            AssertMutation(cascade, 0, entityId, cascade.Schema.AmmoCurrent);
+            Assert.IsTrue(cascade.Engine.WasPropertyMutated(entityId, cascade.Schema.AmmoCurrent));
+            Assert.IsFalse(cascade.Engine.WasPropertyMutated(entityId, cascade.Schema.AmmoEmpty));
         }
 
         [Test]
-        public void AmmoEmptyTransitionDirtiesIconAndAudio()
+        public void AmmoEmptyTransitionMutatesCurrentEmptyAndAudioCue()
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(3);
-            EnableAmmoHudEntity(cascade, entityId);
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesAudioCues);
+            EnableAmmoInput(cascade, entityId);
             cascade.SetInitialAmmo(entityId, ammo: 1);
 
             cascade.InputFireWeapon(entityId);
@@ -41,41 +40,102 @@ namespace CascadeEngineApi.Tests
 
             Assert.AreEqual(0, cascade.GetAmmo(entityId));
             Assert.IsTrue(cascade.IsAmmoEmpty(entityId));
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
-            Assert.IsTrue(cascade.IsConsumerDirty(entityId, HestiaGameCascadeSchema.Consumers.AudioCue));
-            Assert.AreEqual(2, cascade.LastCounters.ProducedFacts);
-            Assert.AreEqual(2, cascade.LastCounters.ReducerRuns);
-            Assert.AreEqual(1, cascade.LastCounters.TouchedEntities);
+            Assert.AreEqual(3, cascade.Engine.MutationCount);
+            AssertMutation(cascade, 0, entityId, cascade.Schema.AmmoCurrent);
+            AssertMutation(cascade, 1, entityId, cascade.Schema.AmmoEmpty);
+            AssertMutation(cascade, 2, entityId, cascade.Schema.PublishedAudioCues);
+            Assert.AreEqual(2, cascade.Engine.LastCounters.ProducedFacts);
+            Assert.AreEqual(2, cascade.Engine.LastCounters.ReducerRuns);
+            Assert.AreEqual(3, cascade.Engine.LastCounters.MutatedProperties);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.TouchedEntities);
 
             cascade.RunTick();
 
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+            Assert.AreEqual(0, cascade.Engine.MutationCount);
+            Assert.IsFalse(cascade.Engine.WasPropertyMutated(entityId, cascade.Schema.AmmoCurrent));
         }
 
         [Test]
-        public void MovementPositionDirtiesOnlyCharacterMotorConsumer()
+        public void TypedMutationOutputCarriesPreviousAndNextValues()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(3);
+            EnableAmmoInput(cascade, entityId);
+            cascade.SetInitialAmmo(entityId, ammo: 2);
+
+            cascade.InputFireWeapon(entityId);
+            cascade.RunTick();
+
+            var handlerRuns = 0;
+            cascade.Engine.ForEachMutation(cascade.Schema.AmmoCurrent, (mutatedId, previous, next) =>
+            {
+                handlerRuns++;
+                Assert.AreEqual(entityId, mutatedId);
+                Assert.AreEqual(2, previous);
+                Assert.AreEqual(1, next);
+            });
+
+            Assert.AreEqual(1, handlerRuns);
+        }
+
+        [Test]
+        public void MovementPositionMutatesOnlyPosition()
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(5);
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesCharacterMotor);
 
             cascade.InputMove(entityId, desiredPosition: 12.5f);
             cascade.RunTick();
 
             Assert.AreEqual(12.5f, cascade.GetPosition(entityId), 0.0001f);
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.CharacterMotor));
-            Assert.IsTrue(cascade.IsConsumerDirty(entityId, HestiaGameCascadeSchema.Consumers.CharacterMotor));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoIcon));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
+            Assert.AreEqual(1, cascade.Engine.MutationCount);
+            AssertMutation(cascade, 0, entityId, cascade.Schema.Position);
+            Assert.IsFalse(cascade.Engine.WasPropertyMutated(entityId, cascade.Schema.AmmoCurrent));
         }
 
         [Test]
-        public void NonRelevantCueDoesNotProduceFactOrConsumerWork()
+        public void HigherPriorityMoveWinsSamePropertyConflict()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(5);
+
+            cascade.InputMove(entityId, desiredPosition: 10f, priority: 5);
+            cascade.InputMove(entityId, desiredPosition: 99f, priority: 1);
+            cascade.RunTick();
+
+            Assert.AreEqual(10f, cascade.GetPosition(entityId), 0.0001f);
+            Assert.AreEqual(1, cascade.Engine.MutationCount);
+        }
+
+        [Test]
+        public void EqualPriorityMoveOverwritesEarlierStagedValue()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(5);
+
+            cascade.InputMove(entityId, desiredPosition: 5f, priority: 0);
+            cascade.InputMove(entityId, desiredPosition: 7f, priority: 0);
+            cascade.RunTick();
+
+            Assert.AreEqual(7f, cascade.GetPosition(entityId), 0.0001f);
+            Assert.AreEqual(1, cascade.Engine.MutationCount);
+        }
+
+        [Test]
+        public void PositionWithinEpsilonDoesNotMutate()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(5);
+
+            cascade.InputMove(entityId, desiredPosition: 0.00005f);
+            cascade.RunTick();
+
+            Assert.AreEqual(0f, cascade.GetPosition(entityId), 0.000001f);
+            Assert.AreEqual(0, cascade.Engine.MutationCount);
+        }
+
+        [Test]
+        public void NonRelevantCueDoesNotProduceFactOrMutation()
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(5);
@@ -83,11 +143,26 @@ namespace CascadeEngineApi.Tests
             cascade.InputFootstepCue(entityId, isRelevant: false);
             cascade.RunTick();
 
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.AudioCue));
-            Assert.AreEqual(0, cascade.LastCounters.ProducedFacts);
-            Assert.AreEqual(0, cascade.LastCounters.ReducerRuns);
-            Assert.AreEqual(1, cascade.LastCounters.SkippedNonRelevant);
-            Assert.AreEqual(0, cascade.LastCounters.TouchedEntities);
+            Assert.AreEqual(0, cascade.Engine.MutationCount);
+            Assert.AreEqual(0, cascade.Engine.LastCounters.ProducedFacts);
+            Assert.AreEqual(0, cascade.Engine.LastCounters.ReducerRuns);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.SkippedNonRelevant);
+            Assert.AreEqual(0, cascade.Engine.LastCounters.TouchedEntities);
+        }
+
+        [Test]
+        public void RelevantCueMutatesMarkerEachTick()
+        {
+            var cascade = new HestiaGameCascade(entityCapacity: 32);
+            var entityId = new CascadeEntityId(5);
+
+            cascade.InputFootstepCue(entityId, isRelevant: true);
+            cascade.RunTick();
+            AssertMutation(cascade, 0, entityId, cascade.Schema.PublishedAudioCues);
+
+            cascade.InputFootstepCue(entityId, isRelevant: true);
+            cascade.RunTick();
+            AssertMutation(cascade, 0, entityId, cascade.Schema.PublishedAudioCues);
         }
 
         [Test]
@@ -95,16 +170,17 @@ namespace CascadeEngineApi.Tests
         {
             var cascade = new HestiaGameCascade(entityCapacity: 1000);
             var entityId = new CascadeEntityId(777);
-            EnableAmmoHudEntity(cascade, entityId);
+            EnableAmmoInput(cascade, entityId);
             cascade.SetInitialAmmo(entityId, ammo: 2);
 
             cascade.InputFireWeapon(entityId);
             cascade.RunTick();
 
-            Assert.AreEqual(1, cascade.LastCounters.ReducerRuns);
-            Assert.AreEqual(1, cascade.LastCounters.TouchedEntities);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.ReducerRuns);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.TouchedEntities);
             Assert.AreEqual(1, cascade.GetAmmo(entityId));
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.AreEqual(1, cascade.Engine.MutationCount);
+            AssertMutation(cascade, 0, entityId, cascade.Schema.AmmoCurrent);
         }
 
         [Test]
@@ -112,7 +188,7 @@ namespace CascadeEngineApi.Tests
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(3);
-            EnableAmmoHudEntity(cascade, entityId);
+            EnableAmmoInput(cascade, entityId);
             cascade.SetInitialAmmo(entityId, ammo: 5);
 
             cascade.InputFireWeapon(entityId);
@@ -120,87 +196,100 @@ namespace CascadeEngineApi.Tests
             cascade.RunTick();
 
             Assert.AreEqual(3, cascade.GetAmmo(entityId));
-            Assert.AreEqual(2, cascade.LastCounters.ProducedFacts);
-            Assert.AreEqual(2, cascade.LastCounters.ProcessedFacts);
-            Assert.AreEqual(2, cascade.LastCounters.ReducerRuns);
-            Assert.AreEqual(4, cascade.LastCounters.RegisteredReducers);
-            Assert.AreEqual(1, cascade.LastCounters.TouchedEntities);
+            Assert.AreEqual(2, cascade.Engine.LastCounters.ProducedFacts);
+            Assert.AreEqual(2, cascade.Engine.LastCounters.ProcessedFacts);
+            Assert.AreEqual(2, cascade.Engine.LastCounters.ReducerRuns);
+            Assert.AreEqual(4, cascade.Engine.LastCounters.RegisteredReducers);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.TouchedEntities);
+            Assert.AreEqual(1, cascade.Engine.MutationCount);
+            AssertMutation(cascade, 0, entityId, cascade.Schema.AmmoCurrent);
         }
 
         [Test]
-        public void ReducerMapRejectsDuplicateFactKind()
+        public void SchemaRejectsDuplicatePropertyName()
         {
-            var reducers = new CascadeReducerMap<object>();
-            var factKind = new CascadeFactKey(31, "DuplicateTestFact");
+            var schema = new CascadeSchema(entityCapacity: 4);
+            schema.AddProperty<int>("Hp");
 
-            reducers.Register(factKind, NoopReducer);
-
-            Assert.Throws<InvalidOperationException>(() => reducers.Register(factKind, NoopReducer));
+            Assert.Throws<InvalidOperationException>(() => schema.AddProperty<int>("Hp"));
         }
 
         [Test]
-        public void ReducerMapFailsUnknownFactKind()
+        public void SchemaRejectsDuplicateFactName()
         {
-            var reducers = new CascadeReducerMap<object>();
-            var factKind = new CascadeFactKey(32, "UnknownTestFact");
+            var schema = new CascadeSchema(entityCapacity: 4);
+            schema.AddFact<int>("Hit", NoopReducer);
 
-            Assert.Throws<InvalidOperationException>(() => reducers.GetRequired(factKind));
+            Assert.Throws<InvalidOperationException>(() => schema.AddFact<int>("Hit", NoopReducer));
         }
 
         [Test]
-        public void PropertyCommitMapRejectsDuplicateProperty()
+        public void SchemaSealsWhenEngineIsConstructed()
         {
-            var committers = new CascadePropertyCommitMap();
-            var property = new CascadePropertyKey(33, "DuplicateTestProperty");
+            var schema = new CascadeSchema(entityCapacity: 4);
+            var unused = new CascadeEngine(schema);
 
-            committers.Register(property, NoopCommitter);
-
-            Assert.Throws<InvalidOperationException>(() => committers.Register(property, NoopCommitter));
+            Assert.Throws<InvalidOperationException>(() => schema.AddProperty<int>("LateProperty"));
+            Assert.Throws<InvalidOperationException>(() => new CascadeEngine(schema));
         }
 
         [Test]
-        public void PropertyCommitMapFailsUnknownProperty()
+        public void EngineRejectsKeysFromAnotherSchema()
         {
-            var committers = new CascadePropertyCommitMap();
-            var property = new CascadePropertyKey(34, "UnknownTestProperty");
-
-            Assert.Throws<InvalidOperationException>(() => committers.GetRequired(property));
-        }
-
-        [Test]
-        public void CoreCommitRequiresRegisteredPropertyCommitter()
-        {
+            var cascade = new HestiaGameCascade(entityCapacity: 4);
+            var foreignSchema = new HestiaGameCascadeSchema(entityCapacity: 4);
             var entityId = new CascadeEntityId(1);
-            var property = new CascadePropertyKey(35, "RequiredCommitterProperty");
-            var entities = new CascadeEntityStateStore(entityCapacity: 4);
-            var touched = new CascadeTouchedEntitySet(entityCapacity: 4);
-            var dirtyConsumers = new CascadeDirtyConsumerSet();
-            var committers = new CascadePropertyCommitMap();
 
-            entities.Get(entityId).Stage(property, ReducerPayload.From(7));
-            touched.Mark(entityId);
-
-            Assert.Throws<InvalidOperationException>(() => entities.CommitTouched(touched, committers, dirtyConsumers));
-            Assert.AreEqual(0, entities.Get(entityId).GetCommittedOrDefault<int>(property));
+            Assert.Throws<InvalidOperationException>(
+                () => cascade.Engine.ReadCommitted(entityId, foreignSchema.AmmoCurrent));
+            Assert.Throws<InvalidOperationException>(
+                () => cascade.Engine.EnqueueFact(entityId, foreignSchema.AmmoSpendRequested, 1));
         }
 
         [Test]
-        public void CoreCommitClearsDestroyedEntityWithoutCommitter()
+        public void ReducerFactCycleFailsTickAndAbortsStagedWork()
         {
+            var schema = new CascadeSchema(entityCapacity: 4);
+            var hp = schema.AddProperty<int>("Hp");
+            CascadeFact<CascadeSignal> loop = null!;
+            loop = schema.AddFact<CascadeSignal>("Loop", (context, signal) =>
+            {
+                context.Stage(hp, 99);
+                context.Produce(loop);
+            });
+            var engine = new CascadeEngine(schema, maxReducerRunsPerTick: 8);
             var entityId = new CascadeEntityId(1);
-            var property = new CascadePropertyKey(36, "DestroyedEntityProperty");
-            var entities = new CascadeEntityStateStore(entityCapacity: 4);
-            var touched = new CascadeTouchedEntitySet(entityCapacity: 4);
-            var dirtyConsumers = new CascadeDirtyConsumerSet();
-            var committers = new CascadePropertyCommitMap();
 
-            entities.Get(entityId).Stage(property, ReducerPayload.From(7));
-            touched.Mark(entityId);
-            entities.Destroy(entityId);
+            engine.EnqueueFact(entityId, loop);
 
-            Assert.DoesNotThrow(() => entities.CommitTouched(touched, committers, dirtyConsumers));
-            Assert.AreEqual(0, entities.Get(entityId).StagedPropertyCount);
-            Assert.AreEqual(0, dirtyConsumers.Count);
+            Assert.Throws<InvalidOperationException>(() => engine.RunTick());
+            Assert.AreEqual(0, engine.ReadCommitted(entityId, hp));
+            Assert.AreEqual(0, engine.MutationCount);
+        }
+
+        [Test]
+        public void FailedReducerAbortsAllStagedWorkAndNextTickRecovers()
+        {
+            var schema = new CascadeSchema(entityCapacity: 4);
+            var hp = schema.AddProperty<int>("Hp");
+            var stageThenFail = schema.AddFact<int>("StageThenFail", (context, value) =>
+            {
+                context.Stage(hp, value);
+                throw new InvalidOperationException("Reducer failed.");
+            });
+            var setHp = schema.AddFact<int>("SetHp", (context, value) => context.Stage(hp, value));
+            var engine = new CascadeEngine(schema);
+            var entityId = new CascadeEntityId(1);
+
+            engine.EnqueueFact(entityId, stageThenFail, 50);
+            Assert.Throws<InvalidOperationException>(() => engine.RunTick());
+            Assert.AreEqual(0, engine.ReadCommitted(entityId, hp));
+            Assert.AreEqual(0, engine.MutationCount);
+
+            engine.EnqueueFact(entityId, setHp, 7);
+            engine.RunTick();
+            Assert.AreEqual(7, engine.ReadCommitted(entityId, hp));
+            Assert.AreEqual(1, engine.MutationCount);
         }
 
         [Test]
@@ -208,19 +297,19 @@ namespace CascadeEngineApi.Tests
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(3);
-            EnableAmmoHudEntity(cascade, entityId);
+            EnableAmmoInput(cascade, entityId);
             cascade.SetInitialAmmo(entityId, ammo: 2);
-            cascade.DestroyEntity(entityId);
+            cascade.Engine.DestroyEntity(entityId);
 
             cascade.InputFireWeapon(entityId);
             cascade.RunTick();
 
-            Assert.AreEqual(1, cascade.LastCounters.ProducedFacts);
-            Assert.AreEqual(1, cascade.LastCounters.ProcessedFacts);
-            Assert.AreEqual(0, cascade.LastCounters.ReducerRuns);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.ProducedFacts);
+            Assert.AreEqual(1, cascade.Engine.LastCounters.ProcessedFacts);
+            Assert.AreEqual(0, cascade.Engine.LastCounters.ReducerRuns);
             Assert.AreEqual(0, cascade.GetAmmo(entityId));
-            Assert.IsFalse(cascade.HasEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput));
-            Assert.IsFalse(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.IsFalse(cascade.HasEntityFlag(entityId, cascade.Schema.AcceptsAmmoInput));
+            Assert.AreEqual(0, cascade.Engine.MutationCount);
         }
 
         [Test]
@@ -228,20 +317,21 @@ namespace CascadeEngineApi.Tests
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(9);
+            var flag = cascade.Schema.AcceptsAmmoInput;
 
-            Assert.IsFalse(cascade.HasEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput));
+            Assert.IsFalse(cascade.HasEntityFlag(entityId, flag));
 
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput);
-            Assert.IsTrue(cascade.HasEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput));
+            cascade.SetEntityFlag(entityId, flag);
+            Assert.IsTrue(cascade.HasEntityFlag(entityId, flag));
 
-            cascade.ClearEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput);
-            Assert.IsFalse(cascade.HasEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput));
+            cascade.ClearEntityFlag(entityId, flag);
+            Assert.IsFalse(cascade.HasEntityFlag(entityId, flag));
 
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput, enabled: true);
-            Assert.IsTrue(cascade.HasEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput));
+            cascade.SetEntityFlag(entityId, flag, enabled: true);
+            Assert.IsTrue(cascade.HasEntityFlag(entityId, flag));
 
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput, enabled: false);
-            Assert.IsFalse(cascade.HasEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput));
+            cascade.SetEntityFlag(entityId, flag, enabled: false);
+            Assert.IsFalse(cascade.HasEntityFlag(entityId, flag));
         }
 
         [Test]
@@ -249,77 +339,35 @@ namespace CascadeEngineApi.Tests
         {
             var cascade = new HestiaGameCascade(entityCapacity: 32);
             var entityId = new CascadeEntityId(3);
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesHudAmmo);
             cascade.SetInitialAmmo(entityId, ammo: 2);
 
             cascade.InputFireWeapon(entityId);
             cascade.RunTick();
 
             Assert.AreEqual(2, cascade.GetAmmo(entityId));
-            Assert.AreEqual(1, cascade.LastCounters.ReducerRuns);
-            Assert.AreEqual(0, cascade.LastCounters.TouchedEntities);
-            Assert.IsFalse(cascade.IsConsumerDirty(entityId, HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            Assert.AreEqual(1, cascade.Engine.LastCounters.ReducerRuns);
+            Assert.AreEqual(0, cascade.Engine.LastCounters.TouchedEntities);
+            Assert.AreEqual(0, cascade.Engine.MutationCount);
         }
 
-        [Test]
-        public void EntityFlagsFilterConsumerWorkButNotCommittedState()
+        private static void AssertMutation(
+            HestiaGameCascade cascade,
+            int index,
+            CascadeEntityId entityId,
+            CascadePropertyKey property)
         {
-            var cascade = new HestiaGameCascade(entityCapacity: 32);
-            var entityId = new CascadeEntityId(3);
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput);
-            cascade.SetInitialAmmo(entityId, ammo: 2);
-
-            cascade.InputFireWeapon(entityId);
-            cascade.RunTick();
-
-            Assert.AreEqual(1, cascade.GetAmmo(entityId));
-            Assert.AreEqual(0, cascade.LastCounters.DirtyConsumers);
-            Assert.IsFalse(cascade.IsConsumerDirty(entityId, HestiaGameCascadeSchema.Consumers.HudAmmoText));
-
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesHudAmmo);
-            cascade.InputFireWeapon(entityId);
-            cascade.RunTick();
-
-            Assert.AreEqual(0, cascade.GetAmmo(entityId));
-            Assert.IsTrue(cascade.IsConsumerDirty(entityId, HestiaGameCascadeSchema.Consumers.HudAmmoText));
+            var mutation = cascade.Engine.GetMutation(index);
+            Assert.AreEqual(entityId, mutation.EntityId);
+            Assert.AreSame(property, mutation.Property);
         }
 
-        [Test]
-        public void DirtyConsumersAreEntityScopedAndExposeCommittedEntity()
-        {
-            var cascade = new HestiaGameCascade(entityCapacity: 32);
-            var firstEntityId = new CascadeEntityId(3);
-            var secondEntityId = new CascadeEntityId(7);
-            EnableAmmoHudEntity(cascade, firstEntityId);
-            EnableAmmoHudEntity(cascade, secondEntityId);
-            cascade.SetInitialAmmo(firstEntityId, ammo: 2);
-            cascade.SetInitialAmmo(secondEntityId, ammo: 2);
-
-            cascade.InputFireWeapon(firstEntityId);
-            cascade.InputFireWeapon(secondEntityId);
-            cascade.RunTick();
-
-            Assert.IsTrue(cascade.IsConsumerDirty(HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsTrue(cascade.IsConsumerDirty(firstEntityId, HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.IsTrue(cascade.IsConsumerDirty(secondEntityId, HestiaGameCascadeSchema.Consumers.HudAmmoText));
-            Assert.AreEqual(2, cascade.DirtyConsumerEntityCount);
-            Assert.AreEqual(2, cascade.LastCounters.DirtyConsumers);
-            Assert.AreEqual(firstEntityId, cascade.GetDirtyConsumerEntityId(0));
-            Assert.AreEqual(1, cascade.GetDirtyConsumerEntity(0).GetCommittedOrDefault<int>(HestiaGameCascadeSchema.Properties.AmmoCurrent));
-        }
-
-        private static void NoopReducer(object context, CascadeFact fact)
+        private static void NoopReducer(CascadeReducerContext context, int payload)
         {
         }
 
-        private static void NoopCommitter(CascadePropertyCommitContext context)
+        private static void EnableAmmoInput(HestiaGameCascade cascade, CascadeEntityId entityId)
         {
-        }
-
-        private static void EnableAmmoHudEntity(HestiaGameCascade cascade, CascadeEntityId entityId)
-        {
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.AcceptsAmmoInput);
-            cascade.SetEntityFlag(entityId, HestiaGameCascadeSchema.EntityFlags.PublishesHudAmmo);
+            cascade.SetEntityFlag(entityId, cascade.Schema.AcceptsAmmoInput);
         }
     }
 }

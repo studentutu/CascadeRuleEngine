@@ -5,19 +5,14 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Identifies one entity-local flag and its bit in the entity flag mask.
+    /// Schema-declared entity flag with an auto-assigned bit index (0-511). Create only via <see cref="CascadeSchema.AddFlag"/>.
     /// </summary>
     public readonly struct CascadeEntityFlagKey : IEquatable<CascadeEntityFlagKey>
     {
-        public CascadeEntityFlagKey(int index, string name)
+        internal CascadeEntityFlagKey(int index, string name)
         {
-            if (index < 0 || index >= Bitmask512.BitCount)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index));
-            }
-
             Index = index;
-            Name = name ?? throw new ArgumentNullException(nameof(name));
+            Name = name;
         }
 
         public int Index { get; }
@@ -33,7 +28,7 @@ namespace CascadeEngineApi
             => Index;
 
         public override string ToString()
-            => Name;
+            => Name ?? string.Empty;
 
         public static bool operator ==(CascadeEntityFlagKey left, CascadeEntityFlagKey right)
             => left.Equals(right);

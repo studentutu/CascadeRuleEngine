@@ -3,7 +3,7 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Per-tick counters used to validate fanout and skipped work.
+    /// Per-tick counters used to validate reduction, commit work, mutation output, and skipped work.
     /// </summary>
     public readonly struct CascadeTickCounters
     {
@@ -11,7 +11,7 @@ namespace CascadeEngineApi
             int producedFacts,
             int processedFacts,
             int reducerRuns,
-            int dirtyConsumers,
+            int mutatedProperties,
             int skippedNonRelevant,
             int registeredReducers,
             int touchedEntities)
@@ -19,7 +19,7 @@ namespace CascadeEngineApi
             ProducedFacts = producedFacts;
             ProcessedFacts = processedFacts;
             ReducerRuns = reducerRuns;
-            DirtyConsumers = dirtyConsumers;
+            MutatedProperties = mutatedProperties;
             SkippedNonRelevant = skippedNonRelevant;
             RegisteredReducers = registeredReducers;
             TouchedEntities = touchedEntities;
@@ -28,7 +28,7 @@ namespace CascadeEngineApi
         public int ProducedFacts { get; }
         public int ProcessedFacts { get; }
         public int ReducerRuns { get; }
-        public int DirtyConsumers { get; }
+        public int MutatedProperties { get; }
         public int SkippedNonRelevant { get; }
         public int RegisteredReducers { get; }
         public int TouchedEntities { get; }

@@ -1,135 +1,113 @@
 #nullable enable
 
+using System;
 using CascadeEngineApi;
 
 namespace Hestia
 {
     /// <summary>
-    /// Single explicit schema for the executable Hestia sample cascade.
+    /// Single declaration point for the Hestia sample cascade: typed properties, flags, and facts bound to their reducers.
     /// </summary>
-    public static class HestiaGameCascadeSchema
+    public sealed class HestiaGameCascadeSchema
     {
-        public static class Consumers
+        public HestiaGameCascadeSchema(int entityCapacity)
         {
-            public static readonly CascadeConsumerKey HudAmmoText = new CascadeConsumerKey(0, "HudAmmoText");
-            public static readonly CascadeConsumerKey HudAmmoIcon = new CascadeConsumerKey(1, "HudAmmoIcon");
-            public static readonly CascadeConsumerKey CharacterMotor = new CascadeConsumerKey(2, "CharacterMotor");
-            public static readonly CascadeConsumerKey AudioCue = new CascadeConsumerKey(3, "AudioCue");
+            Schema = new CascadeSchema(entityCapacity);
+
+            // Entity specific flags.
+            AcceptsAmmoInput = Schema.AddFlag("AcceptsAmmoInput");
+
+            // Output state (for consumers).
+            AmmoCurrent = Schema.AddProperty<int>("AmmoCurrent");
+            AmmoEmpty = Schema.AddProperty<bool>("AmmoEmpty");
+            Position = Schema.AddProperty<float>("Position", AreClosePositions);
+            PublishedAudioCues = Schema.AddMarkerProperty<CascadeSignal>("PublishedAudioCues");
+
+            // Reducers.
+            AmmoSpendRequested = Schema.AddFact<int>("AmmoSpendRequested", ReduceAmmoSpendRequested);
+            DesiredPosition = Schema.AddFact<HestiaMoveRequest>("DesiredPosition", ReduceDesiredPosition);
+            FootstepCue = Schema.AddFact<CascadeSignal>("FootstepCue", ReduceAudioCue);
+            DryFireCue = Schema.AddFact<CascadeSignal>("DryFireCue", ReduceAudioCue);
         }
 
-        public static class EntityFlags
-        {
-            public static readonly CascadeEntityFlagKey AcceptsAmmoInput = new CascadeEntityFlagKey(0, "AcceptsAmmoInput");
-            public static readonly CascadeEntityFlagKey PublishesHudAmmo = new CascadeEntityFlagKey(1, "PublishesHudAmmo");
-            public static readonly CascadeEntityFlagKey PublishesCharacterMotor = new CascadeEntityFlagKey(2, "PublishesCharacterMotor");
-            public static readonly CascadeEntityFlagKey PublishesAudioCues = new CascadeEntityFlagKey(3, "PublishesAudioCues");
-        }
+        /// <summary>
+        /// Underlying engine schema. Pass to the CascadeEngine constructor exactly once.
+        /// </summary>
+        public CascadeSchema Schema { get; }
 
-        public static class Facts
-        {
-            public static readonly CascadeFactKey AmmoSpendRequested = new CascadeFactKey(0, "AmmoSpendRequested");
-            public static readonly CascadeFactKey DesiredPosition = new CascadeFactKey(1, "DesiredPosition");
-            public static readonly CascadeFactKey FootstepCue = new CascadeFactKey(2, "FootstepCue");
-            public static readonly CascadeFactKey DryFireCue = new CascadeFactKey(3, "DryFireCue");
-        }
+        public CascadeEntityFlagKey AcceptsAmmoInput { get; }
 
-        public static class Properties
-        {
-            public static readonly CascadePropertyKey None = new CascadePropertyKey(0, "None");
-            public static readonly CascadePropertyKey AmmoCurrent = new CascadePropertyKey(1, "AmmoCurrent");
-            public static readonly CascadePropertyKey AmmoEmpty = new CascadePropertyKey(2, "AmmoEmpty");
-            public static readonly CascadePropertyKey Position = new CascadePropertyKey(3, "Position");
-            public static readonly CascadePropertyKey PublishedAudioCues = new CascadePropertyKey(4, "PublishedAudioCues");
-        }
+        public CascadeProperty<int> AmmoCurrent { get; }
+        public CascadeProperty<bool> AmmoEmpty { get; }
+        public CascadeProperty<float> Position { get; }
+        public CascadeProperty<CascadeSignal> PublishedAudioCues { get; }
 
-        internal static void RegisterReducers(CascadeReducerMap<HestiaGameCascadeReducerContext> reducers)
-        {
-            // Canonical Hestia fact table: FactKind -> reducer function.
-            reducers.Register(Facts.AmmoSpendRequested, ReduceAmmoSpendRequested);
-            reducers.Register(Facts.DesiredPosition, ReduceDesiredPosition);
-            reducers.Register(Facts.FootstepCue, ReduceAudioCue);
-            reducers.Register(Facts.DryFireCue, ReduceAudioCue);
-        }
+        public CascadeFact<int> AmmoSpendRequested { get; }
+        public CascadeFact<HestiaMoveRequest> DesiredPosition { get; }
+        public CascadeFact<CascadeSignal> FootstepCue { get; }
+        public CascadeFact<CascadeSignal> DryFireCue { get; }
 
-        internal static void RegisterPropertyCommitters(CascadePropertyCommitMap committers)
+        /// <summary>
+        /// Example of a reducer that derives state and produces a follow-up fact.
+        /// </summary>
+        /// <remarks> Reducer functions may live outside the schema, this is just an example. </remarks>
+        private void ReduceAmmoSpendRequested(CascadeReducerContext context, int amount)
         {
-            // Canonical Hestia property table: PropertyKey -> commit function -> exact consumers.
-            committers.Register(Properties.AmmoCurrent, CommitAmmoCurrent);
-            committers.Register(Properties.AmmoEmpty, CommitAmmoEmpty);
-            committers.Register(Properties.Position, CommitPosition);
-            committers.Register(Properties.PublishedAudioCues, CommitAudioCue);
-        }
-
-        private static void ReduceAmmoSpendRequested(HestiaGameCascadeReducerContext context, CascadeFact fact)
-        {
-            if (!context.Entity.HasFlag(EntityFlags.AcceptsAmmoInput))
+            if (!context.HasFlag(AcceptsAmmoInput))
             {
                 return;
             }
 
-            var amount = fact.Payload.Unwrap<int>();
-            var becameEmpty = context.StageAmmoSpend(amount);
+            var becameEmpty = StageAmmoSpend(context, amount);
             if (!becameEmpty)
             {
                 return;
             }
 
-            context.Produce(new CascadeFact(
-                context.EntityId,
-                Facts.DryFireCue,
-                Properties.PublishedAudioCues,
-                ReducerPayload.Empty));
+            context.Produce(DryFireCue);
         }
 
-        private static void ReduceDesiredPosition(HestiaGameCascadeReducerContext context, CascadeFact fact)
+        /// <summary>
+        /// Example of a reducer that resolves same-property conflicts by payload priority.
+        /// </summary>
+        private void ReduceDesiredPosition(CascadeReducerContext context, HestiaMoveRequest request)
         {
-            var desiredPosition = fact.Payload.Unwrap<float>();
-            context.StagePosition(desiredPosition, fact.Priority);
+            context.StageIfPriorityAtLeast(Position, request.Position, request.Priority);
         }
 
-        private static void ReduceAudioCue(HestiaGameCascadeReducerContext context, CascadeFact fact)
+        /// <summary>
+        /// Example of a reducer that stages a marker property (publishes a mutation even when the value is unchanged).
+        /// </summary>
+        private void ReduceAudioCue(CascadeReducerContext context, CascadeSignal signal)
         {
-            context.StageAudioCue();
+            context.Stage(PublishedAudioCues, signal);
         }
 
-        private static void CommitAmmoCurrent(CascadePropertyCommitContext context)
+        /// <summary>
+        /// Hestia specific domain helper. Range: positive amount. Condition: ammo spend. Output: true when ammo just hit empty.
+        /// </summary>
+        private bool StageAmmoSpend(CascadeReducerContext context, int amount)
         {
-            if (context.PublishStagedIfChanged() && context.Entity.HasFlag(EntityFlags.PublishesHudAmmo))
+            if (amount <= 0)
             {
-                context.MarkDirty(Consumers.HudAmmoText);
-            }
-        }
-
-        private static void CommitAmmoEmpty(CascadePropertyCommitContext context)
-        {
-            if (context.PublishStagedIfChanged() && context.Entity.HasFlag(EntityFlags.PublishesHudAmmo))
-            {
-                context.MarkDirty(Consumers.HudAmmoIcon);
-            }
-        }
-
-        private static void CommitPosition(CascadePropertyCommitContext context)
-        {
-            var previous = context.Entity.GetCommittedOrDefault<float>(context.Property);
-            var next = context.GetStaged<float>();
-            if (System.Math.Abs(previous - next) < 0.0001f)
-            {
-                return;
+                return false;
             }
 
-            context.PublishStagedIfChanged();
-            if (context.Entity.HasFlag(EntityFlags.PublishesCharacterMotor))
-            {
-                context.MarkDirty(Consumers.CharacterMotor);
-            }
+            var previousEmpty = context.Read(AmmoEmpty);
+            var baseAmmo = context.Read(AmmoCurrent);
+            var nextAmmo = Math.Max(0, baseAmmo - amount);
+            var nextEmpty = nextAmmo <= 0;
+
+            context.Stage(AmmoCurrent, nextAmmo);
+            context.Stage(AmmoEmpty, nextEmpty);
+
+            return nextEmpty && !previousEmpty;
         }
 
-        private static void CommitAudioCue(CascadePropertyCommitContext context)
-        {
-            if (context.Entity.HasFlag(EntityFlags.PublishesAudioCues))
-            {
-                context.MarkDirty(Consumers.AudioCue);
-            }
-        }
+        /// <summary>
+        /// Position change policy: commits only when the value moved beyond the epsilon.
+        /// </summary>
+        private static bool AreClosePositions(float previous, float next)
+            => Math.Abs(previous - next) < 0.0001f;
     }
 }

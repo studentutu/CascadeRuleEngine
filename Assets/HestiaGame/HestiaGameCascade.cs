@@ -5,93 +5,78 @@ using CascadeEngineApi;
 namespace Hestia
 {
     /// <summary>
-    /// [INTEGRATION] Hestia sample Cascade facade: input facts and project queries only.
-    /// Don't forget to execute 'RunTick' to actuly use the engine.
+    /// [INTEGRATION] Hestia sample Cascade facade: owns the schema and engine, exposes input facts and committed-state queries.
+    /// Don't forget to execute 'RunTick' to actually use the engine.
     /// </summary>
-    public sealed class HestiaGameCascade : CascadeEngine<HestiaGameCascadeReducerContext>
+    public sealed class HestiaGameCascade
     {
-        public HestiaGameCascade(int entityCapacity, int factCapacity = 128, int maxReducerRunsPerTick = 64)
-            : base(
-                entityCapacity,
-                factCapacity,
-                maxReducerRunsPerTick,
-                CreateReducerContext,
-                HestiaGameCascadeSchema.RegisterReducers,
-                HestiaGameCascadeSchema.RegisterPropertyCommitters)
+        private readonly HestiaGameCascadeSchema _schema;
+        private readonly CascadeEngine _engine;
+
+        public HestiaGameCascade(int entityCapacity, int maxReducerRunsPerTick = 64)
         {
+            _schema = new HestiaGameCascadeSchema(entityCapacity);
+            _engine = new CascadeEngine(_schema.Schema, maxReducerRunsPerTick);
         }
+
+        /// <summary>
+        /// Typed keys for consumers that route mutations or read specific properties.
+        /// </summary>
+        public HestiaGameCascadeSchema Schema => _schema;
+
+        /// <summary>
+        /// Underlying engine for generic queries: mutations, counters, flags, destroy.
+        /// </summary>
+        public CascadeEngine Engine => _engine;
+
+        /// <summary>
+        /// [INTEGRATION] Runs one cascade tick: facts reduce, staged values commit, mutations publish.
+        /// </summary>
+        public void RunTick()
+            => _engine.RunTick();
 
         public int GetAmmo(CascadeEntityId entityId)
-            => Entities.Get(entityId).GetCommittedOrDefault<int>(HestiaGameCascadeSchema.Properties.AmmoCurrent);
+            => _engine.ReadCommitted(entityId, _schema.AmmoCurrent);
 
         public bool IsAmmoEmpty(CascadeEntityId entityId)
-            => Entities.Get(entityId).GetCommittedOrDefault<bool>(HestiaGameCascadeSchema.Properties.AmmoEmpty);
+            => _engine.ReadCommitted(entityId, _schema.AmmoEmpty);
 
         public float GetPosition(CascadeEntityId entityId)
-            => Entities.Get(entityId).GetCommittedOrDefault<float>(HestiaGameCascadeSchema.Properties.Position);
+            => _engine.ReadCommitted(entityId, _schema.Position);
 
         public bool HasEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag)
-            => Entities.Get(entityId).HasFlag(flag);
+            => _engine.HasFlag(entityId, flag);
 
         public void SetEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag)
-        {
-            Entities.Get(entityId).SetFlag(flag);
-        }
+            => _engine.SetFlag(entityId, flag);
 
         public void ClearEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag)
-        {
-            Entities.Get(entityId).ClearFlag(flag);
-        }
+            => _engine.ClearFlag(entityId, flag);
 
         public void SetEntityFlag(CascadeEntityId entityId, CascadeEntityFlagKey flag, bool enabled)
-        {
-            Entities.Get(entityId).SetFlag(flag, enabled);
-        }
+            => _engine.SetFlag(entityId, flag, enabled);
 
         public void SetInitialAmmo(CascadeEntityId entityId, int ammo)
         {
-            var entity = Entities.Get(entityId);
-            entity.SetCommitted(HestiaGameCascadeSchema.Properties.AmmoCurrent, ReducerPayload.From(ammo));
-            entity.SetCommitted(HestiaGameCascadeSchema.Properties.AmmoEmpty, ReducerPayload.From(ammo <= 0));
+            _engine.SetCommitted(entityId, _schema.AmmoCurrent, ammo);
+            _engine.SetCommitted(entityId, _schema.AmmoEmpty, ammo <= 0);
         }
 
         public void InputFireWeapon(CascadeEntityId entityId)
-        {
-            AddFact(new CascadeFact(
-                entityId,
-                HestiaGameCascadeSchema.Facts.AmmoSpendRequested,
-                HestiaGameCascadeSchema.Properties.AmmoCurrent,
-                ReducerPayload.From(1)));
-        }
+            => _engine.EnqueueFact(entityId, _schema.AmmoSpendRequested, 1);
 
-        public void InputMove(CascadeEntityId entityId, float desiredPosition)
-        {
-            AddFact(new CascadeFact(
-                entityId,
-                HestiaGameCascadeSchema.Facts.DesiredPosition,
-                HestiaGameCascadeSchema.Properties.Position,
-                ReducerPayload.From(desiredPosition)));
-        }
+        public void InputMove(CascadeEntityId entityId, float desiredPosition, int priority = 0)
+            => _engine.EnqueueFact(entityId, _schema.DesiredPosition, new HestiaMoveRequest(desiredPosition, priority));
 
         public void InputFootstepCue(CascadeEntityId entityId, bool isRelevant)
         {
             if (!isRelevant)
             {
-                SkipNonRelevant();
+                _engine.SkipNonRelevant();
                 return;
             }
 
-            AddFact(new CascadeFact(
-                entityId,
-                HestiaGameCascadeSchema.Facts.FootstepCue,
-                HestiaGameCascadeSchema.Properties.PublishedAudioCues,
-                ReducerPayload.Empty));
+            _engine.EnqueueFact(entityId, _schema.FootstepCue);
         }
-
-        private static HestiaGameCascadeReducerContext CreateReducerContext(
-            CascadeEntityStateStore entities,
-            CascadeFactBuffer facts,
-            CascadeTouchedEntitySet touchedEntities)
-            => new HestiaGameCascadeReducerContext(entities, facts, touchedEntities);
     }
 }

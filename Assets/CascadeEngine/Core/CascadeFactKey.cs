@@ -1,44 +1,40 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Identifies the kind of fact without exposing enum-indexed control flow.
+    /// Untyped handle for one schema-declared fact kind. Typed payload queue and reducer live in <see cref="CascadeFact{TPayload}"/>.
     /// </summary>
-    public readonly struct CascadeFactKey : IEquatable<CascadeFactKey>
+    public abstract class CascadeFactKey
     {
-        public CascadeFactKey(int index, string name)
+        private protected CascadeFactKey(CascadeSchema owner, int index, string name)
         {
-            if (index < 0 || index >= Bitmask512.BitCount)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index));
-            }
-
+            Owner = owner;
             Index = index;
-            Name = name ?? throw new ArgumentNullException(nameof(name));
+            Name = name;
         }
 
         public int Index { get; }
         public string Name { get; }
 
-        public bool Equals(CascadeFactKey other)
-            => Index == other.Index;
-
-        public override bool Equals(object? obj)
-            => obj is CascadeFactKey other && Equals(other);
-
-        public override int GetHashCode()
-            => Index;
+        internal CascadeSchema Owner { get; }
 
         public override string ToString()
             => Name;
 
-        public static bool operator ==(CascadeFactKey left, CascadeFactKey right)
-            => left.Equals(right);
+        /// <summary>
+        /// Range: queued slot. Condition: engine fact loop, no side effects. Output: entity targeted by the queued fact.
+        /// </summary>
+        internal abstract CascadeEntityId GetEntity(int slot);
 
-        public static bool operator !=(CascadeFactKey left, CascadeFactKey right)
-            => !left.Equals(right);
+        /// <summary>
+        /// Range: queued slot. Condition: context is bound to the slot entity. Output: registered reducer runs with the typed payload.
+        /// </summary>
+        internal abstract void Dispatch(CascadeReducerContext context, int slot);
+
+        /// <summary>
+        /// Range: all queued slots. Condition: tick finished or failed. Output: queue emptied and payload slots reset.
+        /// </summary>
+        internal abstract void ClearQueue();
     }
 }

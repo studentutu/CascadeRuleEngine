@@ -1,44 +1,55 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Identifies the state property targeted by a fact or commit policy.
+    /// Untyped handle for one schema-declared property. Typed storage and policy live in <see cref="CascadeProperty{T}"/>.
     /// </summary>
-    public readonly struct CascadePropertyKey : IEquatable<CascadePropertyKey>
+    public abstract class CascadePropertyKey
     {
-        public CascadePropertyKey(int index, string name)
+        private protected CascadePropertyKey(CascadeSchema owner, int index, string name)
         {
-            if (index < 0 || index >= Bitmask512.BitCount)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index));
-            }
-
+            Owner = owner;
             Index = index;
-            Name = name ?? throw new ArgumentNullException(nameof(name));
+            Name = name;
         }
 
         public int Index { get; }
         public string Name { get; }
 
-        public bool Equals(CascadePropertyKey other)
-            => Index == other.Index;
+        internal CascadeSchema Owner { get; }
 
-        public override bool Equals(object? obj)
-            => obj is CascadePropertyKey other && Equals(other);
-
-        public override int GetHashCode()
-            => Index;
+        /// <summary>
+        /// Range: mutation output from the last tick. Condition: routing checks. Output: number of entities this property mutated.
+        /// </summary>
+        internal abstract int MutatedCount { get; }
 
         public override string ToString()
             => Name;
 
-        public static bool operator ==(CascadePropertyKey left, CascadePropertyKey right)
-            => left.Equals(right);
+        /// <summary>
+        /// Range: staged entities of this property. Condition: engine commit phase. Output: committed values and recorded mutations.
+        /// </summary>
+        internal abstract void CommitStaged(CascadeEntityStore entities, CascadeMutationLog mutations);
 
-        public static bool operator !=(CascadePropertyKey left, CascadePropertyKey right)
-            => !left.Equals(right);
+        /// <summary>
+        /// Range: staged entities of this property. Condition: tick failed. Output: staged work discarded without committing.
+        /// </summary>
+        internal abstract void AbortStaged();
+
+        /// <summary>
+        /// Range: mutation output of this property. Condition: new tick starts or caller consumed output. Output: mutation output cleared.
+        /// </summary>
+        internal abstract void ClearMutationOutput();
+
+        /// <summary>
+        /// Range: one entity slot. Condition: entity destroyed. Output: committed and staged values reset to default.
+        /// </summary>
+        internal abstract void ClearEntity(CascadeEntityId entityId);
+
+        /// <summary>
+        /// Range: mutation output from the last tick. Condition: exact entity check, no side effects. Output: true if this property mutated for the entity.
+        /// </summary>
+        internal abstract bool WasMutated(CascadeEntityId entityId);
     }
 }
