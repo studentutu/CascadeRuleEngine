@@ -9,11 +9,19 @@ namespace CascadeEngineApi
     /// </summary>
     internal readonly struct QueuedFact
     {
-        internal QueuedFact(EntityRef entity, Type factType, object payload, FactPriority priority, int depth, long sequence)
+        internal QueuedFact(
+            EntityRef entity,
+            Type factType,
+            IFactBucket bucket,
+            int factIndex,
+            FactPriority priority,
+            int depth,
+            long sequence)
         {
             Entity = entity;
             FactType = factType;
-            Payload = payload;
+            Bucket = bucket;
+            FactIndex = factIndex;
             Priority = priority;
             Depth = depth;
             Sequence = sequence;
@@ -21,7 +29,8 @@ namespace CascadeEngineApi
 
         internal EntityRef Entity { get; }
         internal Type FactType { get; }
-        internal object Payload { get; }
+        internal IFactBucket Bucket { get; }
+        internal int FactIndex { get; }
         internal FactPriority Priority { get; }
         internal int Depth { get; }
         internal long Sequence { get; }

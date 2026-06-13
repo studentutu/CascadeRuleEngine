@@ -88,7 +88,7 @@ public sealed class GameplayFeature : FactFeature
 
 | Type | Role |
 | --- | --- |
-| `IFact` | transient input or derived consequence for one tick |
+| `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |

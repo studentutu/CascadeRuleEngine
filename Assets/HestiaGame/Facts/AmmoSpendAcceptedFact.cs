@@ -27,5 +27,9 @@ namespace Hestia
 
         public override int GetHashCode()
             => Amount.CombineHestiaHash((int)Priority);
+
+        public void Dispose()
+        {
+        }
     }
 }

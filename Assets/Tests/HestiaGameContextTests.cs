@@ -265,6 +265,21 @@ namespace CascadeEngineApi.Tests
                 () => cascade.InputFireWeapon(new EntityRef(99)));
         }
 
+        [Test]
+        public void AcceptedFactsAreDisposedWhenTickFactStoreClears()
+        {
+            DisposableFact.DisposeCount = 0;
+
+            var simulation = new FactSimulation(new EmptyFactFeature());
+            var entity = simulation.CreateEntity();
+
+            simulation.Emit(entity, new DisposableFact(7));
+            var result = simulation.RunTick(ReduceOptions.Default());
+
+            Assert.AreEqual(1, result.AcceptedFacts);
+            Assert.AreEqual(1, DisposableFact.DisposeCount);
+        }
+
         private static void AssertAudioCue(
             HestiaGameContext context,
             EntityRef entity,
@@ -284,6 +299,34 @@ namespace CascadeEngineApi.Tests
                 });
 
             Assert.AreEqual(1, mutations);
+        }
+
+        private sealed class EmptyFactFeature : FactFeature
+        {
+        }
+
+        private readonly struct DisposableFact : IFact, IEquatable<DisposableFact>
+        {
+            internal static int DisposeCount;
+
+            internal DisposableFact(int value)
+            {
+                Value = value;
+            }
+
+            private int Value { get; }
+
+            public bool Equals(DisposableFact other)
+                => Value == other.Value;
+
+            public override bool Equals(object? obj)
+                => obj is DisposableFact other && Equals(other);
+
+            public override int GetHashCode()
+                => Value;
+
+            public void Dispose()
+                => DisposeCount++;
         }
     }
 }

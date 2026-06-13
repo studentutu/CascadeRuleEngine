@@ -25,5 +25,9 @@ namespace Hestia
 
         public override int GetHashCode()
             => (int)Priority;
+
+        public void Dispose()
+        {
+        }
     }
 }

@@ -11,6 +11,6 @@ namespace CascadeEngineApi
     {
         Type FactType { get; }
 
-        void Reduce(FactSimulation simulation, EntityRef entity, object fact);
+        void Reduce(FactSimulation simulation, in QueuedFact fact);
     }
 }

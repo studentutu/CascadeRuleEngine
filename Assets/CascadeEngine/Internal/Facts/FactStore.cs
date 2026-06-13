@@ -11,10 +11,10 @@ namespace CascadeEngineApi
     internal sealed class FactStore
     {
         private readonly Dictionary<Type, IFactBucket> _buckets = new Dictionary<Type, IFactBucket>();
-        private readonly HashSet<FactIdentity> _dedupe = new HashSet<FactIdentity>();
         private readonly List<QueuedFact> _queue = new List<QueuedFact>();
-        private readonly List<EntityRef> _touchedEntities = new List<EntityRef>();
-        private readonly HashSet<EntityRef> _touchedEntitySet = new HashSet<EntityRef>();
+        private readonly DenseEntitySet _touchedEntities = new DenseEntitySet(64);
+        private readonly DenseEntityCounter _factCountsByEntity = new DenseEntityCounter(64);
+        private int _entityCapacity = 64;
         private long _nextSequence;
 
         internal int AcceptedFacts { get; private set; }
@@ -23,6 +23,23 @@ namespace CascadeEngineApi
         internal int TouchedEntityCount => _touchedEntities.Count;
 
         internal bool HasQueuedFacts => _queue.Count > 0;
+
+        internal void EnsureEntityCapacity(int entityCapacity)
+        {
+            if (entityCapacity <= _entityCapacity)
+            {
+                return;
+            }
+
+            _entityCapacity = entityCapacity;
+            _touchedEntities.EnsureCapacity(entityCapacity);
+            _factCountsByEntity.EnsureCapacity(entityCapacity);
+
+            foreach (var bucket in _buckets.Values)
+            {
+                bucket.EnsureEntityCapacity(entityCapacity);
+            }
+        }
 
         internal bool Emit<TFact>(
             EntityStore entities,
@@ -43,28 +60,26 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException($"Fact causal depth '{depth}' exceeded limit '{guardrails.MaxCausalDepth}'.");
             }
 
-            var payload = (object)fact;
             var factType = typeof(TFact);
-            var identity = new FactIdentity(entity, factType, payload);
-            if (!_dedupe.Add(identity))
+            var bucket = GetOrCreateBucket<TFact>();
+            if (bucket.Contains(entity, in fact))
             {
                 DeduplicatedFacts++;
                 return false;
             }
 
-            var bucket = GetOrCreateBucket<TFact>();
             if (bucket.CountFor(entity) >= guardrails.MaxFactsPerTypePerEntity)
             {
                 throw new InvalidOperationException($"Fact type '{factType.Name}' exceeded per-entity limit '{guardrails.MaxFactsPerTypePerEntity}' for entity '{entity}'.");
             }
 
-            bucket.Add(entity, in fact);
+            var factIndex = bucket.Add(entity, in fact);
             AcceptedFacts++;
 
             if (!entity.IsGlobal)
             {
                 TrackTouchedEntity(entity);
-                if (CountFactsForEntity(entity) > guardrails.MaxFactsPerEntity)
+                if (IncrementFactCount(entity) > guardrails.MaxFactsPerEntity)
                 {
                     throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
                 }
@@ -73,8 +88,9 @@ namespace CascadeEngineApi
             _queue.Add(new QueuedFact(
                 entity,
                 factType,
-                payload,
-                ResolvePriority(payload),
+                bucket,
+                factIndex,
+                ResolvePriority(in fact),
                 depth,
                 _nextSequence));
             _nextSequence++;
@@ -134,14 +150,8 @@ namespace CascadeEngineApi
             return true;
         }
 
-        internal void CopyTouchedEntities(EntityRef[] destination, out int count)
-        {
-            count = _touchedEntities.Count;
-            for (var i = 0; i < count; i++)
-            {
-                destination[i] = _touchedEntities[i];
-            }
-        }
+        internal void CopyTouchedEntities(EntityRefBuffer destination, out int count)
+            => _touchedEntities.CopyTo(destination, out count);
 
         internal void Clear()
         {
@@ -150,10 +160,9 @@ namespace CascadeEngineApi
                 bucket.Clear();
             }
 
-            _dedupe.Clear();
             _queue.Clear();
+            _factCountsByEntity.Clear(_touchedEntities);
             _touchedEntities.Clear();
-            _touchedEntitySet.Clear();
             _nextSequence = 0;
             AcceptedFacts = 0;
             DeduplicatedFacts = 0;
@@ -169,30 +178,19 @@ namespace CascadeEngineApi
                 return (FactBucket<TFact>)bucket;
             }
 
-            var typedBucket = new FactBucket<TFact>();
+            var typedBucket = new FactBucket<TFact>(_entityCapacity);
             _buckets.Add(factType, typedBucket);
             return typedBucket;
         }
 
         private void TrackTouchedEntity(EntityRef entity)
         {
-            if (!_touchedEntitySet.Add(entity))
-            {
-                return;
-            }
-
             _touchedEntities.Add(entity);
         }
 
-        private int CountFactsForEntity(EntityRef entity)
+        private int IncrementFactCount(EntityRef entity)
         {
-            var count = 0;
-            foreach (var bucket in _buckets.Values)
-            {
-                count += bucket.CountFor(entity);
-            }
-
-            return count;
+            return _factCountsByEntity.Increment(entity);
         }
 
         private int SelectIndex(BudgetMode mode)
@@ -225,9 +223,10 @@ namespace CascadeEngineApi
             return bestIndex;
         }
 
-        private static FactPriority ResolvePriority(object payload)
+        private static FactPriority ResolvePriority<TFact>(in TFact fact)
+            where TFact : struct, IFact
         {
-            if (payload is IPrioritizedFact prioritized)
+            if (fact is IPrioritizedFact prioritized)
             {
                 return prioritized.Priority;
             }

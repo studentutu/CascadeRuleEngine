@@ -1,11 +1,13 @@
 #nullable enable
 
+using System;
+
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Transient tick-local input or derived consequence. Facts are deduplicated by entity, type, and payload value inside one tick.
+    /// Transient tick-local input or derived consequence. Accepted facts are disposed when tick-local storage clears.
     /// </summary>
-    public interface IFact
+    public interface IFact : IDisposable
     {
     }
 }

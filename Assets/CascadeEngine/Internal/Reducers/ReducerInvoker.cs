@@ -5,7 +5,7 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Typed reducer bridge that keeps unboxing in one place.
+    /// Typed reducer bridge from bucket/index queued work to a reducer call.
     /// </summary>
     internal sealed class ReducerInvoker<TFact> : IReducerInvoker
         where TFact : struct, IFact
@@ -19,10 +19,11 @@ namespace CascadeEngineApi
 
         public Type FactType => typeof(TFact);
 
-        public void Reduce(FactSimulation simulation, EntityRef entity, object fact)
+        public void Reduce(FactSimulation simulation, in QueuedFact fact)
         {
-            var typedFact = (TFact)fact;
-            _reducer.Reduce(simulation, entity, in typedFact);
+            var bucket = (FactBucket<TFact>)fact.Bucket;
+            ref readonly var typedFact = ref bucket.Get(fact.Entity, fact.FactIndex);
+            _reducer.Reduce(simulation, fact.Entity, in typedFact);
         }
     }
 }

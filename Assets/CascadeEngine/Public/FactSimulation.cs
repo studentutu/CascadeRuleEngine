@@ -22,9 +22,9 @@ namespace CascadeEngineApi
         private readonly Dictionary<Type, IStateBucket> _stateBuckets = new Dictionary<Type, IStateBucket>();
         private readonly EntityFactView _factView;
         private readonly List<ICommitAction> _commitActions = new List<ICommitAction>();
-        private EntityRef[] _queryBuffer = new EntityRef[64];
-        private EntityRef[] _transactionBuffer = new EntityRef[64];
-        private EntityRef[] _batchBuffer = new EntityRef[64];
+        private readonly EntityRefBuffer _queryBuffer = new EntityRefBuffer(64);
+        private readonly EntityRefBuffer _transactionBuffer = new EntityRefBuffer(64);
+        private readonly EntityRefBuffer _batchBuffer = new EntityRefBuffer(64);
         private readonly HashSet<string> _firedTransactional = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _firedBatchEntities = new HashSet<string>(StringComparer.Ordinal);
         private SimulationTick _tick;
@@ -53,7 +53,11 @@ namespace CascadeEngineApi
         public SimulationResult LastResult { get; private set; }
 
         public EntityRef CreateEntity()
-            => _entities.Create();
+        {
+            var entity = _entities.Create();
+            _facts.EnsureEntityCapacity(_entities.Count);
+            return entity;
+        }
 
         public void DestroyEntity(EntityRef entity)
         {
@@ -139,7 +143,7 @@ namespace CascadeEngineApi
                             }
 
                             _currentCausalDepth = queued.Depth + 1;
-                            reducers[i].Reduce(this, queued.Entity, queued.Payload);
+                            reducers[i].Reduce(this, in queued);
                             _currentCausalDepth = 0;
                         }
                     }
@@ -247,7 +251,7 @@ namespace CascadeEngineApi
                 }
             }
 
-            return new EntityQueryResult(_queryBuffer, count);
+            return _queryBuffer.ToQueryResult(count);
         }
 
         public EntityQueryResult With<TStateA, TStateB>()
@@ -266,7 +270,7 @@ namespace CascadeEngineApi
                 }
             }
 
-            return new EntityQueryResult(_queryBuffer, count);
+            return _queryBuffer.ToQueryResult(count);
         }
 
         public EntityQueryResult WithFact<TFact>()
@@ -287,7 +291,7 @@ namespace CascadeEngineApi
                 }
             }
 
-            return new EntityQueryResult(_queryBuffer, count);
+            return _queryBuffer.ToQueryResult(count);
         }
 
         internal StateBucket<TState> GetStateBucket<TState>()
@@ -429,7 +433,7 @@ namespace CascadeEngineApi
                     throw new InvalidOperationException($"Transactional reducer invocation limit '{options.Guardrails.MaxTransactionalReducerInvocationsPerTick}' exceeded.");
                 }
 
-                registration.ReduceBatch(this, new ReadOnlySpan<EntityRef>(_batchBuffer, 0, batchCount));
+                registration.ReduceBatch(this, _batchBuffer.AsSpan(batchCount));
                 ranAny = true;
             }
 
@@ -540,33 +544,18 @@ namespace CascadeEngineApi
 
         private void EnsureQueryCapacity(int required)
         {
-            if (_queryBuffer.Length >= required)
-            {
-                return;
-            }
-
-            Array.Resize(ref _queryBuffer, required);
+            _queryBuffer.EnsureCapacity(required);
         }
 
         private void EnsureTransactionCapacity()
         {
             var required = Math.Max(_entities.Count, 1);
-            if (_transactionBuffer.Length >= required)
-            {
-                return;
-            }
-
-            Array.Resize(ref _transactionBuffer, required);
+            _transactionBuffer.EnsureCapacity(required);
         }
 
         private void EnsureBatchCapacity(int required)
         {
-            if (_batchBuffer.Length >= required)
-            {
-                return;
-            }
-
-            Array.Resize(ref _batchBuffer, required);
+            _batchBuffer.EnsureCapacity(required);
         }
     }
 }

@@ -15,6 +15,8 @@ namespace CascadeEngineApi
 
         int CountFor(EntityRef entity);
 
+        void EnsureEntityCapacity(int entityCapacity);
+
         void Clear();
     }
 }

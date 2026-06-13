@@ -10,19 +10,20 @@ namespace CascadeEngineApi
     /// </summary>
     internal sealed class EntityStore
     {
-        private readonly List<bool> _destroyed = new List<bool>();
+        private readonly HashSet<int> _destroyed = new HashSet<int>();
+        private int _createdCount;
 
-        internal int Count => _destroyed.Count;
+        internal int Count => _createdCount;
 
         internal EntityRef Create()
         {
-            var entity = new EntityRef(_destroyed.Count);
-            _destroyed.Add(false);
+            var entity = new EntityRef(_createdCount);
+            _createdCount++;
             return entity;
         }
 
         internal bool IsKnown(EntityRef entity)
-            => !entity.IsGlobal && (uint)entity.Value < _destroyed.Count;
+            => !entity.IsGlobal && (uint)entity.Value < _createdCount;
 
         internal void Validate(EntityRef entity)
         {
@@ -31,7 +32,7 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException("Global entity cannot be used for entity state or lifecycle operations.");
             }
 
-            if ((uint)entity.Value >= _destroyed.Count)
+            if ((uint)entity.Value >= _createdCount)
             {
                 throw new ArgumentOutOfRangeException(nameof(entity), $"Unknown entity '{entity}'. Create entities through FactSimulation.CreateEntity.");
             }
@@ -45,25 +46,19 @@ namespace CascadeEngineApi
             }
 
             Validate(entity);
-            return _destroyed[entity.Value];
+            return _destroyed.Contains(entity.Value);
         }
 
         internal bool Destroy(EntityRef entity)
         {
             Validate(entity);
-            if (_destroyed[entity.Value])
-            {
-                return false;
-            }
-
-            _destroyed[entity.Value] = true;
-            return true;
+            return _destroyed.Add(entity.Value);
         }
 
         internal bool IsLive(EntityRef entity)
         {
             Validate(entity);
-            return !_destroyed[entity.Value];
+            return !_destroyed.Contains(entity.Value);
         }
     }
 }
