@@ -3,13 +3,15 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Internal typed factory used to warm fact buckets without using System.Type as identity.
+    /// Internal typed factory used to warm fact buckets without object identity routing.
     /// </summary>
     internal interface IFactBucketFactory
     {
         CascadeTypeId Id { get; }
         string DebugName { get; }
 
-        IFactBucket Create(int entityCapacity, int factCapacityPerEntity);
+        void Register(CascadeTypeCatalog catalog);
+
+        IFactBucket Create(CascadeTypeId id, int entityCapacity, int factCapacityPerEntity);
     }
 }

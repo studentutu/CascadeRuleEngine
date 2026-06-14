@@ -14,10 +14,13 @@ namespace CascadeEngineApi
         {
         }
 
-        public CascadeTypeId Id => CascadeTypeIdentity.RequireId<TFact>();
-        public string DebugName => CascadeTypeIdentity<TFact>.DebugName;
+        public CascadeTypeId Id => CascadeTypeId.FromName(DebugName);
+        public string DebugName => typeof(TFact).Name;
 
-        public IFactBucket Create(int entityCapacity, int factCapacityPerEntity)
-            => new FactBucket<TFact>(entityCapacity, factCapacityPerEntity);
+        public void Register(CascadeTypeCatalog catalog)
+            => catalog.Register<TFact>();
+
+        public IFactBucket Create(CascadeTypeId id, int entityCapacity, int factCapacityPerEntity)
+            => new FactBucket<TFact>(id, entityCapacity, factCapacityPerEntity);
     }
 }

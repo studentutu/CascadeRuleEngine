@@ -11,8 +11,6 @@ namespace Hestia
     /// </summary>
     public readonly struct HestiaAmmoState : IOutputState, IEquatable<HestiaAmmoState>
     {
-        public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(HestiaAmmoState));
-
         public HestiaAmmoState(int current)
         {
             Current = Mathf.Max(0, current);

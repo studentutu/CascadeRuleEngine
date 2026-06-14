@@ -17,7 +17,7 @@ namespace CascadeEngineApi
         }
 
         public BatchTransactionalReducerRegistrationBuilder With<TReducer>()
-            where TReducer : IBatchTransactionalReducer
+            where TReducer : IBatchTransactionalReducer, new()
         {
             _registry.AddBatchTransactionalReducer<TReducer>(_requiredFacts);
             return this;

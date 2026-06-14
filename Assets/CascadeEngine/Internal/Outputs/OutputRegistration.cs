@@ -25,7 +25,7 @@ namespace CascadeEngineApi
 
         internal OutputState<TState> Output { get; }
 
-        public CascadeTypeId StateId => CascadeTypeIdentity.RequireId<TState>();
+        public CascadeTypeId StateId => Output.Id;
         public string Name => Output.Name;
 
         public void Reindex(int index)
@@ -61,7 +61,7 @@ namespace CascadeEngineApi
         }
 
         public IStateBucket CreateStateBucket()
-            => new StateBucket<TState>();
+            => new StateBucket<TState>(Output.Id, Output.Name);
 
         public void DeleteState(FactSimulation simulation, EntityRef entity)
             => simulation.GetStateBucket<TState>().Delete(entity);

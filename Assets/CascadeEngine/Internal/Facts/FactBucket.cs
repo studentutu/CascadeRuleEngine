@@ -10,14 +10,16 @@ namespace CascadeEngineApi
     internal sealed class FactBucket<TFact> : IFactBucket
         where TFact : struct, IFact
     {
+        private readonly CascadeTypeId _factId;
         private readonly DenseEntityObjectStore<EntityFactList<TFact>> _factsByEntity;
         private readonly DenseEntitySet _touchedEntities;
         private readonly EntityFactList<TFact> _globalFacts;
         private int _factCapacityPerEntity;
         private bool _globalTouched;
 
-        public FactBucket(int entityCapacity, int factCapacityPerEntity)
+        public FactBucket(CascadeTypeId factId, int entityCapacity, int factCapacityPerEntity)
         {
+            _factId = factId;
             _factCapacityPerEntity = NormalizeCapacity(factCapacityPerEntity);
             _globalFacts = new EntityFactList<TFact>(_factCapacityPerEntity);
             _factsByEntity = new DenseEntityObjectStore<EntityFactList<TFact>>(
@@ -26,7 +28,7 @@ namespace CascadeEngineApi
             _touchedEntities = new DenseEntitySet(entityCapacity);
         }
 
-        public CascadeTypeId FactId => CascadeTypeIdentity.RequireId<TFact>();
+        public CascadeTypeId FactId => _factId;
         public int EntityCapacity => _factsByEntity.Capacity;
         public int TouchedEntityCapacity => _touchedEntities.Capacity;
 

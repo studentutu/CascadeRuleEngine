@@ -44,7 +44,7 @@ namespace CascadeEngineApi.Tests
         {
             var exception = Assert.Throws<InvalidOperationException>(() => new DuplicateFactIdFeature());
 
-            StringAssert.Contains("Cascade type id", exception.Message);
+            StringAssert.Contains("Cascade type name", exception.Message);
         }
 
         [Test]
@@ -52,7 +52,7 @@ namespace CascadeEngineApi.Tests
         {
             var exception = Assert.Throws<InvalidOperationException>(() => new DuplicateOutputIdFeature());
 
-            StringAssert.Contains("Cascade type id", exception.Message);
+            StringAssert.Contains("Cascade type name", exception.Message);
         }
 
         [Test]
@@ -108,10 +108,10 @@ namespace CascadeEngineApi.Tests
         {
             public DuplicateFactIdFeature()
             {
-                Reduce<DuplicateFactA>()
+                Reduce<DuplicateFactSourceA.SameNameFact>()
                     .With<DuplicateFactAReducer>();
 
-                Reduce<DuplicateFactB>()
+                Reduce<DuplicateFactSourceB.SameNameFact>()
                     .With<DuplicateFactBReducer>();
             }
         }
@@ -120,56 +120,54 @@ namespace CascadeEngineApi.Tests
         {
             public DuplicateOutputIdFeature()
             {
-                Output<DuplicateOutputStateA>("DuplicateA")
+                Output<DuplicateOutputStateSourceA.SameNameState>("DuplicateA")
                     .AffectedBy<DuplicateOutputTriggerFact>()
                     .CommitWith<DuplicateOutputCommitterA>();
 
-                Output<DuplicateOutputStateB>("DuplicateB")
+                Output<DuplicateOutputStateSourceB.SameNameState>("DuplicateB")
                     .AffectedBy<DuplicateOutputTriggerFact>()
                     .CommitWith<DuplicateOutputCommitterB>();
             }
         }
 
-        private sealed class DuplicateFactAReducer : IFactReducer<DuplicateFactA>
+        private sealed class DuplicateFactAReducer : IFactReducer<DuplicateFactSourceA.SameNameFact>
         {
-            public void Reduce(IReduceContext ctx, EntityRef entity, in DuplicateFactA fact)
+            public void Reduce(IReduceContext ctx, EntityRef entity, in DuplicateFactSourceA.SameNameFact fact)
             {
             }
         }
 
-        private sealed class DuplicateFactBReducer : IFactReducer<DuplicateFactB>
+        private sealed class DuplicateFactBReducer : IFactReducer<DuplicateFactSourceB.SameNameFact>
         {
-            public void Reduce(IReduceContext ctx, EntityRef entity, in DuplicateFactB fact)
+            public void Reduce(IReduceContext ctx, EntityRef entity, in DuplicateFactSourceB.SameNameFact fact)
             {
             }
         }
 
-        private sealed class DuplicateOutputCommitterA : IOutputCommitter<DuplicateOutputStateA>
+        private sealed class DuplicateOutputCommitterA : IOutputCommitter<DuplicateOutputStateSourceA.SameNameState>
         {
-            public CommitDecision<DuplicateOutputStateA> Commit(
+            public CommitDecision<DuplicateOutputStateSourceA.SameNameState> Commit(
                 ICommitContext ctx,
                 EntityRef entity,
-                in Optional<DuplicateOutputStateA> previous)
+                in Optional<DuplicateOutputStateSourceA.SameNameState> previous)
             {
-                return CommitDecision<DuplicateOutputStateA>.Unchanged();
+                return CommitDecision<DuplicateOutputStateSourceA.SameNameState>.Unchanged();
             }
         }
 
-        private sealed class DuplicateOutputCommitterB : IOutputCommitter<DuplicateOutputStateB>
+        private sealed class DuplicateOutputCommitterB : IOutputCommitter<DuplicateOutputStateSourceB.SameNameState>
         {
-            public CommitDecision<DuplicateOutputStateB> Commit(
+            public CommitDecision<DuplicateOutputStateSourceB.SameNameState> Commit(
                 ICommitContext ctx,
                 EntityRef entity,
-                in Optional<DuplicateOutputStateB> previous)
+                in Optional<DuplicateOutputStateSourceB.SameNameState> previous)
             {
-                return CommitDecision<DuplicateOutputStateB>.Unchanged();
+                return CommitDecision<DuplicateOutputStateSourceB.SameNameState>.Unchanged();
             }
         }
 
         private readonly struct TypeIdStartFact : IFact, IEquatable<TypeIdStartFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(TypeIdStartFact));
-
             public TypeIdStartFact(int value)
             {
                 Value = value;
@@ -193,8 +191,6 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct TypeIdDerivedFact : IFact, IEquatable<TypeIdDerivedFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(TypeIdDerivedFact));
-
             public TypeIdDerivedFact(int value)
             {
                 Value = value;
@@ -218,8 +214,6 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct TypeIdResultState : IOutputState, IEquatable<TypeIdResultState>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(TypeIdResultState));
-
             public TypeIdResultState(int value)
             {
                 Value = value;
@@ -237,46 +231,46 @@ namespace CascadeEngineApi.Tests
                 => Value;
         }
 
-        private readonly struct DuplicateFactA : IFact, IEquatable<DuplicateFactA>
+        private static class DuplicateFactSourceA
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DuplicateFactA));
-
-            public bool Equals(DuplicateFactA other)
-                => true;
-
-            public override bool Equals(object? obj)
-                => obj is DuplicateFactA;
-
-            public override int GetHashCode()
-                => 0;
-
-            public void Dispose()
+            internal readonly struct SameNameFact : IFact, IEquatable<SameNameFact>
             {
+                public bool Equals(SameNameFact other)
+                    => true;
+
+                public override bool Equals(object? obj)
+                    => obj is SameNameFact;
+
+                public override int GetHashCode()
+                    => 0;
+
+                public void Dispose()
+                {
+                }
             }
         }
 
-        private readonly struct DuplicateFactB : IFact, IEquatable<DuplicateFactB>
+        private static class DuplicateFactSourceB
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DuplicateFactA));
-
-            public bool Equals(DuplicateFactB other)
-                => true;
-
-            public override bool Equals(object? obj)
-                => obj is DuplicateFactB;
-
-            public override int GetHashCode()
-                => 0;
-
-            public void Dispose()
+            internal readonly struct SameNameFact : IFact, IEquatable<SameNameFact>
             {
+                public bool Equals(SameNameFact other)
+                    => true;
+
+                public override bool Equals(object? obj)
+                    => obj is SameNameFact;
+
+                public override int GetHashCode()
+                    => 0;
+
+                public void Dispose()
+                {
+                }
             }
         }
 
         private readonly struct DuplicateOutputTriggerFact : IFact, IEquatable<DuplicateOutputTriggerFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DuplicateOutputTriggerFact));
-
             public bool Equals(DuplicateOutputTriggerFact other)
                 => true;
 
@@ -291,32 +285,34 @@ namespace CascadeEngineApi.Tests
             }
         }
 
-        private readonly struct DuplicateOutputStateA : IOutputState, IEquatable<DuplicateOutputStateA>
+        private static class DuplicateOutputStateSourceA
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DuplicateOutputStateA));
+            internal readonly struct SameNameState : IOutputState, IEquatable<SameNameState>
+            {
+                public bool Equals(SameNameState other)
+                    => true;
 
-            public bool Equals(DuplicateOutputStateA other)
-                => true;
+                public override bool Equals(object? obj)
+                    => obj is SameNameState;
 
-            public override bool Equals(object? obj)
-                => obj is DuplicateOutputStateA;
-
-            public override int GetHashCode()
-                => 0;
+                public override int GetHashCode()
+                    => 0;
+            }
         }
 
-        private readonly struct DuplicateOutputStateB : IOutputState, IEquatable<DuplicateOutputStateB>
+        private static class DuplicateOutputStateSourceB
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DuplicateOutputStateA));
+            internal readonly struct SameNameState : IOutputState, IEquatable<SameNameState>
+            {
+                public bool Equals(SameNameState other)
+                    => true;
 
-            public bool Equals(DuplicateOutputStateB other)
-                => true;
+                public override bool Equals(object? obj)
+                    => obj is SameNameState;
 
-            public override bool Equals(object? obj)
-                => obj is DuplicateOutputStateB;
-
-            public override int GetHashCode()
-                => 0;
+                public override int GetHashCode()
+                    => 0;
+            }
         }
     }
 }

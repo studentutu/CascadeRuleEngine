@@ -10,14 +10,16 @@ namespace CascadeEngineApi
     internal sealed class ReducerInvoker<TFact> : IReducerInvoker
         where TFact : struct, IFact
     {
+        private readonly CascadeTypeId _factId;
         private readonly IFactReducer<TFact> _reducer;
 
-        internal ReducerInvoker(IFactReducer<TFact> reducer)
+        internal ReducerInvoker(CascadeTypeId factId, IFactReducer<TFact> reducer)
         {
+            _factId = factId;
             _reducer = reducer ?? throw new ArgumentNullException(nameof(reducer));
         }
 
-        public CascadeTypeId FactId => CascadeTypeIdentity.RequireId<TFact>();
+        public CascadeTypeId FactId => _factId;
 
         public void Reduce(FactSimulation simulation, in QueuedFact fact)
         {

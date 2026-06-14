@@ -66,14 +66,11 @@ simulation.ForEachMutation(feature.Position, OnPositionChanged);
 
 ## Stable Type Ids
 
-Every fact and output state type must declare one stable id:
+Fact and output ids are derived during feature registration from the CLR type name. Do not add static ids to fact or output structs. The feature registry owns the initialized name-to-id catalog and validates duplicates before a simulation can use it.
 
 ```csharp
 public readonly struct MoveRequestedFact : IFact
 {
-    public static readonly CascadeTypeId CascadeId =
-        CascadeTypeId.FromName(nameof(MoveRequestedFact));
-
     public void Dispose()
     {
     }
@@ -81,12 +78,10 @@ public readonly struct MoveRequestedFact : IFact
 
 public readonly struct PositionState : IOutputState
 {
-    public static readonly CascadeTypeId CascadeId =
-        CascadeTypeId.FromName(nameof(PositionState));
 }
 ```
 
-`System.Type` is retained only behind generic construction and diagnostic exception utilities.
+Type names must be unique inside one full feature registration, including sub-features. Duplicate names or int-id collisions fail during registration. There is no id-to-type diagnostics map; routing maps use `CascadeTypeId`.
 
 ## Warmup For 500+ Entities
 
@@ -119,7 +114,7 @@ for (var i = 0; i < expectedEntities; i++)
 
 Keep the hints honest. If one gameplay tick can enqueue two input facts and two derived facts per entity, size `FactQueueCapacity` for that shape instead of assuming entity count is enough.
 
-Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code and never declared in the feature cannot be warmed.
+Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code still need a declaration in the feature, usually as an affected fact for the output that consumes them.
 
 ## Dispose Ownership Rules
 
@@ -158,8 +153,7 @@ public sealed class GameplayFeature : FactFeature
 
 | Type | Role |
 | --- | --- |
-| `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
-| `CascadeTypeDiagnostics` | diagnostic-only id-to-`System.Type` lookup for exceptions/tooling |
+| `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |

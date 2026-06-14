@@ -10,8 +10,6 @@ namespace Hestia
     /// </summary>
     public readonly struct HestiaAudioCueState : IOutputState, IEquatable<HestiaAudioCueState>
     {
-        public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(HestiaAudioCueState));
-
         public HestiaAudioCueState(HestiaAudioCueKind cue, int version)
         {
             Cue = cue;

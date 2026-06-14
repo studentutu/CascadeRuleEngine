@@ -10,8 +10,6 @@ namespace Hestia
     /// </summary>
     public readonly struct AmmoSpendRequestedFact : IFact, IPrioritizedFact, IEquatable<AmmoSpendRequestedFact>
     {
-        public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(AmmoSpendRequestedFact));
-
         public AmmoSpendRequestedFact(int amount, FactPriority priority)
         {
             Amount = amount;

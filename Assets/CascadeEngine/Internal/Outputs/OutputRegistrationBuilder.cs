@@ -33,7 +33,7 @@ namespace CascadeEngineApi
         }
 
         public OutputState<TState> CommitWith<TCommitter>()
-            where TCommitter : IOutputCommitter<TState>
+            where TCommitter : IOutputCommitter<TState>, new()
             => _registry.AddOutput<TState, TCommitter>(_name, _affectedFacts.ToArray(), _conflictPolicy);
     }
 }

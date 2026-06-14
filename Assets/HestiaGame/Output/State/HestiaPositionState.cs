@@ -10,8 +10,6 @@ namespace Hestia
     /// </summary>
     public readonly struct HestiaPositionState : IOutputState, IEquatable<HestiaPositionState>
     {
-        public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(HestiaPositionState));
-
         public HestiaPositionState(float position)
         {
             Position = position;

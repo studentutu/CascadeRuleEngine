@@ -56,7 +56,7 @@ namespace CascadeEngineApi
 
             _feature = feature;
             _registry = feature.Registry;
-            _factView = new EntityFactView(_facts);
+            _factView = new EntityFactView(_facts, _registry);
             CreateRegisteredStateBuckets();
         }
 
@@ -419,7 +419,7 @@ namespace CascadeEngineApi
             for (var i = 0; i < touchedCount; i++)
             {
                 var entity = _transactionBuffer[i];
-                if (_facts.Has(entity, CascadeTypeIdentity.RequireId<TFact>()))
+                if (_facts.Has(entity, _registry.RequireFact<TFact>()))
                 {
                     _queryBuffer[count] = entity;
                     count++;
@@ -432,13 +432,13 @@ namespace CascadeEngineApi
         internal StateBucket<TState> GetStateBucket<TState>()
             where TState : struct, IOutputState
         {
-            var stateId = CascadeTypeIdentity.RequireId<TState>();
+            var stateId = _registry.RequireOutput<TState>();
             if (_stateBuckets.TryGetValue(stateId, out var bucket))
             {
                 return (StateBucket<TState>)bucket;
             }
 
-            throw new InvalidOperationException($"Output state '{CascadeTypeDiagnostics.Describe(stateId)}' is not registered.");
+            throw new InvalidOperationException($"Output state '{_registry.Describe(stateId)}' is not registered.");
         }
 
         internal CascadeCapacitySnapshot CaptureCapacitySnapshot(int warmedEntityCapacity)
@@ -480,7 +480,7 @@ namespace CascadeEngineApi
         private void EmitCore<TFact>(EntityRef entity, in TFact fact, int parentDepth)
             where TFact : struct, IFact
         {
-            _facts.Emit(_entities, entity, in fact, parentDepth, CurrentGuardrails);
+            _facts.Emit(_entities, entity, _registry.RequireFact<TFact>(), in fact, parentDepth, CurrentGuardrails);
         }
 
         private FactGuardrails CurrentGuardrails { get; set; } = new FactGuardrails();

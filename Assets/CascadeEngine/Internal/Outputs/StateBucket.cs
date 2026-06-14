@@ -11,11 +11,19 @@ namespace CascadeEngineApi
     internal sealed class StateBucket<TState> : IStateBucket
         where TState : struct, IOutputState
     {
+        private readonly CascadeTypeId _stateId;
+        private readonly string _debugName;
         private Dictionary<int, TState> _values = new Dictionary<int, TState>();
         private readonly List<StateMutationRecord<TState>> _mutations = new List<StateMutationRecord<TState>>();
         private int _stateCapacityHint;
 
-        public CascadeTypeId StateId => CascadeTypeIdentity.RequireId<TState>();
+        internal StateBucket(CascadeTypeId stateId, string debugName)
+        {
+            _stateId = stateId;
+            _debugName = debugName;
+        }
+
+        public CascadeTypeId StateId => _stateId;
         public int StateCapacityHint => _stateCapacityHint;
         public int MutationCapacity => _mutations.Capacity;
         public int MutationCount => _mutations.Count;
@@ -41,7 +49,7 @@ namespace CascadeEngineApi
                 return state;
             }
 
-            throw new KeyNotFoundException($"Entity '{entity}' has no '{CascadeTypeIdentity<TState>.DebugName}' output state.");
+            throw new KeyNotFoundException($"Entity '{entity}' has no '{_debugName}' output state.");
         }
 
         internal void Set(EntityRef entity, TState next)

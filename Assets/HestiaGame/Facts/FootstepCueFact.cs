@@ -10,8 +10,6 @@ namespace Hestia
     /// </summary>
     public readonly struct FootstepCueFact : IFact, IPrioritizedFact, IEquatable<FootstepCueFact>
     {
-        public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(FootstepCueFact));
-
         public FootstepCueFact(FactPriority priority)
         {
             Priority = priority;

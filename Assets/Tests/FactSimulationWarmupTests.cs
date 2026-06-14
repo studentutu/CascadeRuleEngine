@@ -191,8 +191,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupBootstrapState : IOutputState, IEquatable<WarmupBootstrapState>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupBootstrapState));
-
             public WarmupBootstrapState(int value)
             {
                 Value = value;
@@ -212,8 +210,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupResultState : IOutputState, IEquatable<WarmupResultState>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupResultState));
-
             public WarmupResultState(int value, int sourceCount)
             {
                 Value = value;
@@ -235,8 +231,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupStartFact : IFact, IEquatable<WarmupStartFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupStartFact));
-
             public WarmupStartFact(int value)
             {
                 Value = value;
@@ -260,8 +254,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupPairFact : IFact, IEquatable<WarmupPairFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupPairFact));
-
             public WarmupPairFact(int value)
             {
                 Value = value;
@@ -285,8 +277,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupDerivedFact : IFact, IEquatable<WarmupDerivedFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupDerivedFact));
-
             public WarmupDerivedFact(int value)
             {
                 Value = value;
@@ -310,8 +300,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupTransactionalFact : IFact, IEquatable<WarmupTransactionalFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupTransactionalFact));
-
             public WarmupTransactionalFact(int value)
             {
                 Value = value;
@@ -335,8 +323,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupBatchFact : IFact, IEquatable<WarmupBatchFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupBatchFact));
-
             public WarmupBatchFact(int value)
             {
                 Value = value;
@@ -360,8 +346,6 @@ namespace CascadeEngineApi.Tests
 
         public readonly struct WarmupUnusedFact : IFact, IEquatable<WarmupUnusedFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(WarmupUnusedFact));
-
             public bool Equals(WarmupUnusedFact other)
                 => true;
 

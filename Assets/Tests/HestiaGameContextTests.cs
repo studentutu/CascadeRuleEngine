@@ -270,7 +270,7 @@ namespace CascadeEngineApi.Tests
         {
             DisposableFact.DisposeCount = 0;
 
-            var simulation = new FactSimulation(new EmptyFactFeature());
+            var simulation = new FactSimulation(new DisposableFactFeature());
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new DisposableFact(7));
@@ -285,7 +285,7 @@ namespace CascadeEngineApi.Tests
         {
             DisposableFact.DisposeCount = 0;
 
-            var simulation = new FactSimulation(new EmptyFactFeature());
+            var simulation = new FactSimulation(new DisposableFactFeature());
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new DisposableFact(7));
@@ -300,7 +300,7 @@ namespace CascadeEngineApi.Tests
         {
             DisposableFact.DisposeCount = 0;
 
-            var simulation = new FactSimulation(new EmptyFactFeature());
+            var simulation = new FactSimulation(new DisposableFactFeature());
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new DisposableFact(7));
@@ -399,6 +399,15 @@ namespace CascadeEngineApi.Tests
         {
         }
 
+        private sealed class DisposableFactFeature : FactFeature
+        {
+            public DisposableFactFeature()
+            {
+                Reduce<DisposableFact>()
+                    .With<DisposableFactReducer>();
+            }
+        }
+
         private sealed class ParentDisposableFeature : FactFeature
         {
             internal ParentDisposableFeature()
@@ -435,6 +444,13 @@ namespace CascadeEngineApi.Tests
                 => DisposeCount++;
         }
 
+        private sealed class DisposableFactReducer : IFactReducer<DisposableFact>
+        {
+            public void Reduce(IReduceContext ctx, EntityRef entity, in DisposableFact fact)
+            {
+            }
+        }
+
         private sealed class DisposableStateCommitter : IOutputCommitter<DisposableState>, IDisposable
         {
             internal static int DisposeCount;
@@ -453,7 +469,6 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct DisposableState : IOutputState, IDisposable, IEquatable<DisposableState>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DisposableState));
             internal static int DisposeCount;
 
             internal DisposableState(int value)
@@ -478,7 +493,6 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct DisposableFact : IFact, IEquatable<DisposableFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DisposableFact));
             internal static int DisposeCount;
 
             internal DisposableFact(int value)

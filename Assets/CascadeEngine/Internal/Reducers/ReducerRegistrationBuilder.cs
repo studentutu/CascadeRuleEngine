@@ -16,7 +16,7 @@ namespace CascadeEngineApi
         }
 
         public ReducerRegistrationBuilder<TFact> With<TReducer>()
-            where TReducer : IFactReducer<TFact>
+            where TReducer : IFactReducer<TFact>, new()
         {
             _registry.AddReducer<TFact, TReducer>();
             return this;

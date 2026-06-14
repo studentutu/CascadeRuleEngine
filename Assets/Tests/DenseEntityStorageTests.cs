@@ -122,7 +122,6 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct DenseStorageDisposableFact : IFact, IEquatable<DenseStorageDisposableFact>
         {
-            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DenseStorageDisposableFact));
             internal static int DisposeCount;
 
             internal DenseStorageDisposableFact(int value)

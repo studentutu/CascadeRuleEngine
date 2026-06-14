@@ -10,6 +10,7 @@ namespace CascadeEngineApi
     /// </summary>
     internal sealed class FactFeatureRegistry : IDisposable
     {
+        private readonly CascadeTypeCatalog _typeCatalog = new CascadeTypeCatalog();
         private readonly Dictionary<CascadeTypeId, List<IReducerInvoker>> _reducersByFact =
             new Dictionary<CascadeTypeId, List<IReducerInvoker>>();
 
@@ -32,12 +33,13 @@ namespace CascadeEngineApi
 
         internal void AddReducer<TFact, TReducer>()
             where TFact : struct, IFact
-            where TReducer : IFactReducer<TFact>
+            where TReducer : IFactReducer<TFact>, new()
         {
-            var reducer = Create<TReducer>();
-            var invoker = new ReducerInvoker<TFact>(reducer);
             var factType = FactType.Of<TFact>();
+            factType.Register(_typeCatalog);
             _knownFactTypes.Add(factType);
+            var reducer = Create<TReducer>();
+            var invoker = new ReducerInvoker<TFact>(factType.Id, reducer);
 
             if (!_reducersByFact.TryGetValue(factType.Id, out var reducers))
             {
@@ -49,11 +51,11 @@ namespace CascadeEngineApi
         }
 
         internal void AddTransactionalReducer<TReducer>(FactType[] requiredFacts)
-            where TReducer : ITransactionalReducer
+            where TReducer : ITransactionalReducer, new()
         {
             ValidateRequiredFacts(requiredFacts);
-            var reducer = Create<TReducer>();
             AddKnownFacts(requiredFacts);
+            var reducer = Create<TReducer>();
             _transactionalReducers.Add(new TransactionalRegistration(
                 _transactionalReducers.Count,
                 ToIds(requiredFacts),
@@ -61,11 +63,11 @@ namespace CascadeEngineApi
         }
 
         internal void AddBatchTransactionalReducer<TReducer>(FactType[] requiredFacts)
-            where TReducer : IBatchTransactionalReducer
+            where TReducer : IBatchTransactionalReducer, new()
         {
             ValidateRequiredFacts(requiredFacts);
-            var reducer = Create<TReducer>();
             AddKnownFacts(requiredFacts);
+            var reducer = Create<TReducer>();
             _batchTransactionalReducers.Add(new BatchTransactionalRegistration(
                 _batchTransactionalReducers.Count,
                 ToIds(requiredFacts),
@@ -77,10 +79,10 @@ namespace CascadeEngineApi
             FactType[] affectedFacts,
             CommitConflictPolicy conflictPolicy)
             where TState : struct, IOutputState
-            where TCommitter : IOutputCommitter<TState>
+            where TCommitter : IOutputCommitter<TState>, new()
         {
-            var stateId = CascadeTypeIdentity.RequireId<TState>();
-            var stateName = CascadeTypeIdentity<TState>.DebugName;
+            var stateId = _typeCatalog.Register<TState>();
+            var stateName = _typeCatalog.NameOf<TState>();
             if (_outputsByState.ContainsKey(stateId))
             {
                 throw new InvalidOperationException($"Output state '{stateName}' is already registered.");
@@ -106,7 +108,7 @@ namespace CascadeEngineApi
         internal bool TryGetOutput<TState>(out OutputRegistration<TState> output)
             where TState : struct, IOutputState
         {
-            if (_outputsByState.TryGetValue(CascadeTypeIdentity.RequireId<TState>(), out var registration))
+            if (_outputsByState.TryGetValue(RequireOutput<TState>(), out var registration))
             {
                 output = (OutputRegistration<TState>)registration;
                 return true;
@@ -119,9 +121,23 @@ namespace CascadeEngineApi
         internal bool ContainsOutput<TState>(OutputState<TState> output)
             where TState : struct, IOutputState
         {
-            return _outputsByState.TryGetValue(CascadeTypeIdentity.RequireId<TState>(), out var registration)
+            return _outputsByState.TryGetValue(RequireOutput<TState>(), out var registration)
                 && ReferenceEquals(((OutputRegistration<TState>)registration).Output, output);
         }
+
+        internal CascadeTypeId RequireFact<TFact>()
+            where TFact : struct, IFact
+            => _typeCatalog.Require<TFact>();
+
+        internal CascadeTypeId RequireOutput<TState>()
+            where TState : struct, IOutputState
+            => _typeCatalog.Require<TState>();
+
+        internal string TypeName<T>()
+            => _typeCatalog.NameOf<T>();
+
+        internal string Describe(CascadeTypeId id)
+            => _typeCatalog.Describe(id);
 
         public void Dispose()
         {
@@ -154,10 +170,12 @@ namespace CascadeEngineApi
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
             _knownFactTypes.Clear();
+            _typeCatalog.Clear();
         }
 
         internal void AbsorbFrom(FactFeatureRegistry other)
         {
+            _typeCatalog.AbsorbFrom(other._typeCatalog);
             AddKnownFacts(other._knownFactTypes.ToArray());
 
             foreach (var pair in other._reducersByFact)
@@ -205,6 +223,7 @@ namespace CascadeEngineApi
         {
             for (var i = 0; i < factTypes.Length; i++)
             {
+                factTypes[i].Register(_typeCatalog);
                 _knownFactTypes.Add(factTypes[i]);
             }
         }
@@ -218,14 +237,9 @@ namespace CascadeEngineApi
         }
 
         private static T Create<T>()
+            where T : new()
         {
-            var instance = Activator.CreateInstance(typeof(T));
-            if (instance == null)
-            {
-                throw new InvalidOperationException($"Could not create '{typeof(T).Name}'. Reducers and committers need a public parameterless constructor in the MVP.");
-            }
-
-            return (T)instance;
+            return new T();
         }
 
         private static CascadeTypeId[] ToIds(FactType[] factTypes)
@@ -255,6 +269,7 @@ namespace CascadeEngineApi
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
             _knownFactTypes.Clear();
+            _typeCatalog.Clear();
         }
     }
 }
