@@ -16,6 +16,7 @@ namespace CascadeEngineApi
         public int CommitActionCapacity { get; set; } = 64;
         public int OutputStateCapacityPerOutput { get; set; } = 64;
         public int MutationCapacityPerOutput { get; set; } = 64;
+        public FactListCapacityMode FactListCapacityMode { get; set; } = FactListCapacityMode.GrowOnDemand;
 
         public static WarmupCapacityHints ForEntities(int entityCapacity)
         {

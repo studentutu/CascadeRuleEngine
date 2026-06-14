@@ -12,19 +12,32 @@ namespace CascadeEngineApi
         where TFact : struct, IFact
     {
         private TFact[] _items;
+        private FactListCapacityMode _capacityMode;
 
         internal EntityFactList()
-            : this(4)
+            : this(4, FactListCapacityMode.GrowOnDemand)
         {
         }
 
         internal EntityFactList(int initialCapacity)
+            : this(initialCapacity, FactListCapacityMode.GrowOnDemand)
+        {
+        }
+
+        internal EntityFactList(int initialCapacity, FactListCapacityMode capacityMode)
         {
             _items = new TFact[NormalizeCapacity(initialCapacity)];
+            _capacityMode = capacityMode;
         }
 
         internal int Count { get; private set; }
         internal int Capacity => _items.Length;
+        internal FactListCapacityMode CapacityMode => _capacityMode;
+
+        internal void SetCapacityMode(FactListCapacityMode capacityMode)
+        {
+            _capacityMode = capacityMode;
+        }
 
         internal void EnsureCapacity(int capacity)
         {
@@ -40,7 +53,7 @@ namespace CascadeEngineApi
         {
             if (Count == _items.Length)
             {
-                Array.Resize(ref _items, _items.Length * 2);
+                GrowForAdd();
             }
 
             var index = Count;
@@ -99,5 +112,16 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);
+
+        private void GrowForAdd()
+        {
+            if (_capacityMode == FactListCapacityMode.Fixed)
+            {
+                throw new InvalidOperationException(
+                    $"Fact list for '{typeof(TFact).Name}' exceeded fixed capacity '{_items.Length}'. Increase WarmupCapacityHints.FactsPerEntityPerTypeCapacity.");
+            }
+
+            Array.Resize(ref _items, _items.Length * 2);
+        }
     }
 }

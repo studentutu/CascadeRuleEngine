@@ -120,6 +120,21 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(30, latest.Value);
         }
 
+        [Test]
+        public void EntityFactListFixedCapacityRejectsUnexpectedGrowth()
+        {
+            var facts = new EntityFactList<DenseStorageDisposableFact>(
+                initialCapacity: 1,
+                capacityMode: FactListCapacityMode.Fixed);
+
+            facts.Add(new DenseStorageDisposableFact(10));
+
+            Assert.Throws<InvalidOperationException>(
+                () => facts.Add(new DenseStorageDisposableFact(20)));
+            Assert.AreEqual(1, facts.Count);
+            Assert.AreEqual(1, facts.Capacity);
+        }
+
         private readonly struct DenseStorageDisposableFact : IFact, IEquatable<DenseStorageDisposableFact>
         {
             internal static int DisposeCount;

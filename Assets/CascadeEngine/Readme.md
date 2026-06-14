@@ -102,7 +102,8 @@ simulation.Warmup(new WarmupCapacityHints
     BatchEntityCapacity = expectedEntities,
     CommitActionCapacity = expectedEntities,
     OutputStateCapacityPerOutput = expectedEntities,
-    MutationCapacityPerOutput = expectedEntities
+    MutationCapacityPerOutput = expectedEntities,
+    FactListCapacityMode = FactListCapacityMode.Fixed
 });
 
 for (var i = 0; i < expectedEntities; i++)
@@ -115,6 +116,8 @@ for (var i = 0; i < expectedEntities; i++)
 Keep the hints honest. If one gameplay tick can enqueue two input facts and two derived facts per entity, size `FactQueueCapacity` for that shape instead of assuming entity count is enough.
 
 Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code still need a declaration in the feature, usually as an affected fact for the output that consumes them.
+
+Use `FactListCapacityMode.Fixed` for gameplay hot paths that must not allocate. In fixed mode, an underestimated `FactsPerEntityPerTypeCapacity` throws instead of silently resizing an `EntityFactList<TFact>`. Use the default `GrowOnDemand` only while prototyping or when the host explicitly accepts capacity growth.
 
 ## Dispose Ownership Rules
 
@@ -149,6 +152,8 @@ public sealed class GameplayFeature : FactFeature
 }
 ```
 
+Fact queue priority is inferred during feature registration. Facts that implement `IPrioritizedFact` use an internal typed resolver path without boxing the struct. Facts without `IPrioritizedFact` use `FactPriority.Normal`.
+
 ## Public API contract
 
 | Type | Role |
@@ -161,6 +166,7 @@ public sealed class GameplayFeature : FactFeature
 | `FactFeature` | registration hub for reducers and outputs |
 | `FactSimulation` | entity lifecycle, fact queue, reduction, commit, mutation routing, terminal disposal |
 | `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
+| `FactListCapacityMode` | grow or fixed capacity policy for per-entity fact lists |
 | `OutputState<TState>` | typed mutation stream descriptor |
 | `StateMutation<TState>` | create/update/delete diff for one output state |
 

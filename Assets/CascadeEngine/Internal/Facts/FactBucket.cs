@@ -15,13 +15,19 @@ namespace CascadeEngineApi
         private readonly DenseEntitySet _touchedEntities;
         private readonly EntityFactList<TFact> _globalFacts;
         private int _factCapacityPerEntity;
+        private FactListCapacityMode _factListCapacityMode;
         private bool _globalTouched;
 
-        public FactBucket(CascadeTypeId factId, int entityCapacity, int factCapacityPerEntity)
+        public FactBucket(
+            CascadeTypeId factId,
+            int entityCapacity,
+            int factCapacityPerEntity,
+            FactListCapacityMode factListCapacityMode)
         {
             _factId = factId;
             _factCapacityPerEntity = NormalizeCapacity(factCapacityPerEntity);
-            _globalFacts = new EntityFactList<TFact>(_factCapacityPerEntity);
+            _factListCapacityMode = factListCapacityMode;
+            _globalFacts = new EntityFactList<TFact>(_factCapacityPerEntity, _factListCapacityMode);
             _factsByEntity = new DenseEntityObjectStore<EntityFactList<TFact>>(
                 CreateFactList,
                 entityCapacity);
@@ -84,9 +90,15 @@ namespace CascadeEngineApi
             _touchedEntities.EnsureCapacity(entityCapacity);
         }
 
-        public void Warmup(int entityCapacity, int factCapacityPerEntity)
+        public void Warmup(
+            int entityCapacity,
+            int factCapacityPerEntity,
+            FactListCapacityMode factListCapacityMode)
         {
             EnsureEntityCapacity(entityCapacity);
+            _factListCapacityMode = factListCapacityMode;
+            _globalFacts.SetCapacityMode(_factListCapacityMode);
+
             var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
             if (normalizedFactCapacity > _factCapacityPerEntity)
             {
@@ -96,7 +108,9 @@ namespace CascadeEngineApi
 
             for (var i = 0; i < entityCapacity; i++)
             {
-                _factsByEntity.GetOrCreate(new EntityRef(i)).EnsureCapacity(_factCapacityPerEntity);
+                var facts = _factsByEntity.GetOrCreate(new EntityRef(i));
+                facts.SetCapacityMode(_factListCapacityMode);
+                facts.EnsureCapacity(_factCapacityPerEntity);
             }
         }
 
@@ -186,7 +200,7 @@ namespace CascadeEngineApi
         }
 
         private EntityFactList<TFact> CreateFactList()
-            => new EntityFactList<TFact>(_factCapacityPerEntity);
+            => new EntityFactList<TFact>(_factCapacityPerEntity, _factListCapacityMode);
 
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);

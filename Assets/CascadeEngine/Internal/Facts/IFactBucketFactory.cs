@@ -9,9 +9,16 @@ namespace CascadeEngineApi
     {
         CascadeTypeId Id { get; }
         string DebugName { get; }
+        bool CanCreatePriorityResolver { get; }
 
         void Register(CascadeTypeCatalog catalog);
 
-        IFactBucket Create(CascadeTypeId id, int entityCapacity, int factCapacityPerEntity);
+        object CreatePriorityResolver();
+
+        IFactBucket Create(
+            CascadeTypeId id,
+            int entityCapacity,
+            int factCapacityPerEntity,
+            FactListCapacityMode factListCapacityMode);
     }
 }

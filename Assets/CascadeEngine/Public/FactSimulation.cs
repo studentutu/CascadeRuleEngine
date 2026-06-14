@@ -23,12 +23,11 @@ namespace CascadeEngineApi
         private readonly FactStore _facts = new FactStore();
         private readonly Dictionary<CascadeTypeId, IStateBucket> _stateBuckets = new Dictionary<CascadeTypeId, IStateBucket>();
         private readonly EntityFactView _factView;
-        private readonly List<ICommitAction> _commitActions = new List<ICommitAction>();
         private readonly EntityRefBuffer _queryBuffer = new EntityRefBuffer(64);
         private readonly EntityRefBuffer _transactionBuffer = new EntityRefBuffer(64);
         private readonly EntityRefBuffer _batchBuffer = new EntityRefBuffer(64);
-        private readonly HashSet<FiredReducerKey> _firedTransactional = new HashSet<FiredReducerKey>();
-        private readonly HashSet<FiredReducerKey> _firedBatchEntities = new HashSet<FiredReducerKey>();
+        private readonly FiredReducerTracker _firedTransactional;
+        private readonly FiredReducerTracker _firedBatchEntities;
         private SimulationTick _tick;
         private int _currentCausalDepth;
         private int _mutationCount;
@@ -57,6 +56,8 @@ namespace CascadeEngineApi
             _feature = feature;
             _registry = feature.Registry;
             _factView = new EntityFactView(_facts, _registry);
+            _firedTransactional = new FiredReducerTracker(_registry.TransactionalReducers.Count, 64);
+            _firedBatchEntities = new FiredReducerTracker(_registry.BatchTransactionalReducers.Count, 64);
             CreateRegisteredStateBuckets();
         }
 
@@ -107,18 +108,21 @@ namespace CascadeEngineApi
                 entityCapacity,
                 NormalizeCapacity(hints.FactQueueCapacity),
                 NormalizeCapacity(hints.FactsPerEntityPerTypeCapacity),
+                hints.FactListCapacityMode,
                 _registry.KnownFactTypes);
 
             _queryBuffer.EnsureCapacity(NormalizeCapacity(hints.QueryEntityCapacity));
             _transactionBuffer.EnsureCapacity(NormalizeCapacity(hints.TransactionEntityCapacity));
             _batchBuffer.EnsureCapacity(NormalizeCapacity(hints.BatchEntityCapacity));
-            EnsureListCapacity(_commitActions, NormalizeCapacity(hints.CommitActionCapacity));
+            _firedTransactional.Warmup(_registry.TransactionalReducers.Count, entityCapacity);
+            _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, entityCapacity);
 
             var outputStateCapacity = NormalizeCapacity(hints.OutputStateCapacityPerOutput);
             var mutationCapacity = NormalizeCapacity(hints.MutationCapacityPerOutput);
+            var commitActionCapacity = NormalizeCapacity(hints.CommitActionCapacity);
             for (var i = 0; i < _registry.Outputs.Count; i++)
             {
-                _registry.Outputs[i].Warmup(this, outputStateCapacity, mutationCapacity);
+                _registry.Outputs[i].Warmup(this, outputStateCapacity, mutationCapacity, commitActionCapacity);
             }
         }
 
@@ -128,6 +132,8 @@ namespace CascadeEngineApi
 
             var entity = _entities.Create();
             _facts.EnsureEntityCapacity(_entities.Count);
+            _firedTransactional.Warmup(_registry.TransactionalReducers.Count, _entities.Count);
+            _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, _entities.Count);
             return entity;
         }
 
@@ -180,10 +186,10 @@ namespace CascadeEngineApi
             ClearMutations();
             _tick = new SimulationTick(_tick.Value + 1);
             CurrentGuardrails = options.Guardrails;
-            _firedTransactional.Clear();
-            _firedBatchEntities.Clear();
+            _firedTransactional.BeginTick();
+            _firedBatchEntities.BeginTick();
 
-            var stopwatch = Stopwatch.StartNew();
+            var startTimestamp = Stopwatch.GetTimestamp();
             var processedFacts = 0;
             var reducerInvocations = 0;
             var transactionalInvocations = 0;
@@ -201,7 +207,7 @@ namespace CascadeEngineApi
 
                     while (_facts.HasQueuedFacts)
                     {
-                        if (BudgetExceeded(options, stopwatch, processedFacts))
+                        if (BudgetExceeded(options, startTimestamp, processedFacts))
                         {
                             return HandleIncomplete(options, processedFacts, reducerInvocations, transactionalInvocations, "fact budget exceeded");
                         }
@@ -248,7 +254,7 @@ namespace CascadeEngineApi
             }
             catch
             {
-                _commitActions.Clear();
+                ClearQueuedCommitActions();
                 ClearMutations();
                 _facts.Clear();
                 _currentCausalDepth = 0;
@@ -271,9 +277,9 @@ namespace CascadeEngineApi
                 return;
             }
 
-            _commitActions.Clear();
-            _firedTransactional.Clear();
-            _firedBatchEntities.Clear();
+            ClearQueuedCommitActions();
+            _firedTransactional.DisposeTracker();
+            _firedBatchEntities.DisposeTracker();
             _facts.DisposeStore();
 
             foreach (var bucket in _stateBuckets.Values)
@@ -472,7 +478,7 @@ namespace CascadeEngineApi
                 _queryBuffer.Capacity,
                 _transactionBuffer.Capacity,
                 _batchBuffer.Capacity,
-                _commitActions.Capacity,
+                MinimumCommitActionCapacity(),
                 minimumStateCapacityHint == int.MaxValue ? 0 : minimumStateCapacityHint,
                 minimumMutationCapacity == int.MaxValue ? 0 : minimumMutationCapacity);
         }
@@ -480,7 +486,15 @@ namespace CascadeEngineApi
         private void EmitCore<TFact>(EntityRef entity, in TFact fact, int parentDepth)
             where TFact : struct, IFact
         {
-            _facts.Emit(_entities, entity, _registry.RequireFact<TFact>(), in fact, parentDepth, CurrentGuardrails);
+            var factId = _registry.RequireFact<TFact>();
+            _facts.Emit(
+                _entities,
+                entity,
+                factId,
+                in fact,
+                _registry.ResolvePriority(factId, in fact),
+                parentDepth,
+                CurrentGuardrails);
         }
 
         private FactGuardrails CurrentGuardrails { get; set; } = new FactGuardrails();
@@ -502,14 +516,15 @@ namespace CascadeEngineApi
             return LastResult;
         }
 
-        private bool BudgetExceeded(ReduceOptions options, Stopwatch stopwatch, int processedFacts)
+        private bool BudgetExceeded(ReduceOptions options, long startTimestamp, int processedFacts)
         {
             if (processedFacts >= options.MaxFacts)
             {
                 return true;
             }
 
-            return options.MaxMilliseconds > 0 && stopwatch.ElapsedMilliseconds > options.MaxMilliseconds;
+            return options.MaxMilliseconds > 0
+                && ElapsedMilliseconds(startTimestamp) > options.MaxMilliseconds;
         }
 
         private bool RunReadyTransactionalReducers(ReduceOptions options, ref int transactionalInvocations)
@@ -539,8 +554,7 @@ namespace CascadeEngineApi
                         continue;
                     }
 
-                    var firedKey = new FiredReducerKey(registration.Index, entity.Value);
-                    if (!_firedTransactional.Add(firedKey))
+                    if (!_firedTransactional.MarkIfNew(registration.Index, entity))
                     {
                         continue;
                     }
@@ -584,8 +598,7 @@ namespace CascadeEngineApi
                         continue;
                     }
 
-                    var firedKey = new FiredReducerKey(registration.Index, entity.Value);
-                    if (!_firedBatchEntities.Add(firedKey))
+                    if (!_firedBatchEntities.MarkIfNew(registration.Index, entity))
                     {
                         continue;
                     }
@@ -614,7 +627,7 @@ namespace CascadeEngineApi
 
         private void CommitTouchedOutputs()
         {
-            _commitActions.Clear();
+            ClearQueuedCommitActions();
             EnsureTransactionCapacity();
             _facts.CopyTouchedEntities(_transactionBuffer, out var touchedCount);
 
@@ -631,21 +644,17 @@ namespace CascadeEngineApi
                     var output = _registry.Outputs[outputIndex];
                     if (output.IsAffectedBy(_facts, entity))
                     {
-                        var action = output.CreateCommitAction(this, entity);
-                        if (action != null)
-                        {
-                            _commitActions.Add(action);
-                        }
+                        output.QueueCommitAction(this, entity);
                     }
                 }
             }
 
-            for (var i = 0; i < _commitActions.Count; i++)
+            for (var i = 0; i < _registry.Outputs.Count; i++)
             {
-                _commitActions[i].Apply();
+                _registry.Outputs[i].ApplyQueuedCommitActions();
             }
 
-            _commitActions.Clear();
+            ClearQueuedCommitActions();
         }
 
         private void CreateRegisteredStateBuckets()
@@ -681,6 +690,29 @@ namespace CascadeEngineApi
             }
 
             _mutationCount = count;
+        }
+
+        private void ClearQueuedCommitActions()
+        {
+            for (var i = 0; i < _registry.Outputs.Count; i++)
+            {
+                _registry.Outputs[i].ClearQueuedCommitActions();
+            }
+        }
+
+        private int MinimumCommitActionCapacity()
+        {
+            var minimum = int.MaxValue;
+            for (var i = 0; i < _registry.Outputs.Count; i++)
+            {
+                var capacity = _registry.Outputs[i].CommitActionCapacity;
+                if (capacity < minimum)
+                {
+                    minimum = capacity;
+                }
+            }
+
+            return minimum == int.MaxValue ? 0 : minimum;
         }
 
         private SimulationResult CreateResult(
@@ -736,36 +768,10 @@ namespace CascadeEngineApi
             _batchBuffer.EnsureCapacity(required);
         }
 
-        private static void EnsureListCapacity<T>(List<T> list, int capacity)
-        {
-            if (list.Capacity < capacity)
-            {
-                list.Capacity = capacity;
-            }
-        }
-
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);
 
-        private readonly struct FiredReducerKey : IEquatable<FiredReducerKey>
-        {
-            private readonly int _registrationIndex;
-            private readonly int _entityValue;
-
-            internal FiredReducerKey(int registrationIndex, int entityValue)
-            {
-                _registrationIndex = registrationIndex;
-                _entityValue = entityValue;
-            }
-
-            public bool Equals(FiredReducerKey other)
-                => _registrationIndex == other._registrationIndex && _entityValue == other._entityValue;
-
-            public override bool Equals(object? obj)
-                => obj is FiredReducerKey other && Equals(other);
-
-            public override int GetHashCode()
-                => unchecked((_registrationIndex * 397) ^ _entityValue);
-        }
+        private static long ElapsedMilliseconds(long startTimestamp)
+            => (Stopwatch.GetTimestamp() - startTimestamp) * 1000L / Stopwatch.Frequency;
     }
 }

@@ -17,7 +17,10 @@ namespace CascadeEngineApi
 
         void EnsureEntityCapacity(int entityCapacity);
 
-        void Warmup(int entityCapacity, int factCapacityPerEntity);
+        void Warmup(
+            int entityCapacity,
+            int factCapacityPerEntity,
+            FactListCapacityMode factListCapacityMode);
 
         int MinimumFactListCapacity(int entityCapacity);
 

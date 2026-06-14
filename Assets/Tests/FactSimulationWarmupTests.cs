@@ -24,7 +24,8 @@ namespace CascadeEngineApi.Tests
                 BatchEntityCapacity = entityCount,
                 CommitActionCapacity = entityCount,
                 OutputStateCapacityPerOutput = entityCount,
-                MutationCapacityPerOutput = entityCount
+                MutationCapacityPerOutput = entityCount,
+                FactListCapacityMode = FactListCapacityMode.Fixed
             };
 
             simulation.Warmup(hints);
@@ -76,6 +77,71 @@ namespace CascadeEngineApi.Tests
 
             Assert.AreEqual(entityCount, mutations);
             Assert.AreEqual(before, simulation.CaptureCapacitySnapshot(entityCount));
+        }
+
+        [Test]
+        public void WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount()
+        {
+            const int entityCount = 512;
+
+            var feature = new WarmupFeature();
+            var simulation = new FactSimulation(feature);
+            var options = new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            };
+
+            simulation.Warmup(new WarmupCapacityHints
+            {
+                EntityCapacity = entityCount,
+                FactQueueCapacity = entityCount * 5,
+                FactsPerEntityPerTypeCapacity = 1,
+                QueryEntityCapacity = entityCount,
+                TransactionEntityCapacity = entityCount,
+                BatchEntityCapacity = entityCount,
+                CommitActionCapacity = entityCount,
+                OutputStateCapacityPerOutput = entityCount,
+                MutationCapacityPerOutput = entityCount,
+                FactListCapacityMode = FactListCapacityMode.Fixed
+            });
+
+            var entities = new EntityRef[entityCount];
+            for (var i = 0; i < entityCount; i++)
+            {
+                var entity = simulation.CreateEntity();
+                entities[i] = entity;
+                simulation.SetStateSilently(entity, new WarmupBootstrapState(i));
+            }
+
+            var firstUseBytes = MeasureAllocatedBytes(
+                () => RunRepresentativeTick(simulation, entities, options));
+            var steadyStateBytes = MeasureAllocatedBytes(
+                () => RunRepresentativeTick(simulation, entities, options));
+
+            TestContext.WriteLine($"Cascade allocation measurement for {entityCount} entities: first-use={firstUseBytes} bytes, steady-state={steadyStateBytes} bytes.");
+            Assert.GreaterOrEqual(firstUseBytes, 0);
+            Assert.AreEqual(0, steadyStateBytes);
+        }
+
+        private static long MeasureAllocatedBytes(Action action)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        private static SimulationResult RunRepresentativeTick(
+            FactSimulation simulation,
+            EntityRef[] entities,
+            ReduceOptions options)
+        {
+            for (var i = 0; i < entities.Length; i++)
+            {
+                simulation.Emit(entities[i], new WarmupStartFact(i));
+                simulation.Emit(entities[i], new WarmupPairFact(i));
+            }
+
+            return simulation.RunTick(options);
         }
 
         public sealed class WarmupFeature : FactFeature
@@ -229,23 +295,25 @@ namespace CascadeEngineApi.Tests
                 => unchecked((Value * 397) ^ SourceCount);
         }
 
-        public readonly struct WarmupStartFact : IFact, IEquatable<WarmupStartFact>
+        public readonly struct WarmupStartFact : IFact, IPrioritizedFact, IEquatable<WarmupStartFact>
         {
             public WarmupStartFact(int value)
             {
                 Value = value;
+                Priority = FactPriority.Normal;
             }
 
             public int Value { get; }
+            public FactPriority Priority { get; }
 
             public bool Equals(WarmupStartFact other)
-                => Value == other.Value;
+                => Value == other.Value && Priority == other.Priority;
 
             public override bool Equals(object? obj)
                 => obj is WarmupStartFact other && Equals(other);
 
             public override int GetHashCode()
-                => Value;
+                => unchecked((Value * 397) ^ (int)Priority);
 
             public void Dispose()
             {

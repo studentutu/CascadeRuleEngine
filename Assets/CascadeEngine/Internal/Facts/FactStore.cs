@@ -16,6 +16,7 @@ namespace CascadeEngineApi
         private readonly DenseEntityCounter _factCountsByEntity = new DenseEntityCounter(64);
         private int _entityCapacity = 64;
         private int _factCapacityPerEntity = 4;
+        private FactListCapacityMode _factListCapacityMode = FactListCapacityMode.GrowOnDemand;
         private long _nextSequence;
 
         internal int AcceptedFacts { get; private set; }
@@ -33,6 +34,7 @@ namespace CascadeEngineApi
             int entityCapacity,
             int factQueueCapacity,
             int factCapacityPerEntity,
+            FactListCapacityMode factListCapacityMode,
             FactType[] knownFactTypes)
         {
             var normalizedEntityCapacity = NormalizeCapacity(entityCapacity);
@@ -49,6 +51,8 @@ namespace CascadeEngineApi
                 _factCapacityPerEntity = normalizedFactCapacity;
             }
 
+            _factListCapacityMode = factListCapacityMode;
+
             for (var i = 0; i < knownFactTypes.Length; i++)
             {
                 if (!knownFactTypes[i].CanCreateBucket)
@@ -58,7 +62,8 @@ namespace CascadeEngineApi
 
                 GetOrCreateBucket(knownFactTypes[i]).Warmup(
                     normalizedEntityCapacity,
-                    _factCapacityPerEntity);
+                    _factCapacityPerEntity,
+                    _factListCapacityMode);
             }
         }
 
@@ -127,6 +132,7 @@ namespace CascadeEngineApi
             EntityRef entity,
             CascadeTypeId factId,
             in TFact fact,
+            FactPriority priority,
             int depth,
             FactGuardrails guardrails)
             where TFact : struct, IFact
@@ -171,7 +177,7 @@ namespace CascadeEngineApi
                 factId,
                 bucket,
                 factIndex,
-                ResolvePriority(in fact),
+                priority,
                 depth,
                 _nextSequence));
             _nextSequence++;
@@ -266,7 +272,11 @@ namespace CascadeEngineApi
                 return (FactBucket<TFact>)bucket;
             }
 
-            var typedBucket = new FactBucket<TFact>(factId, _entityCapacity, _factCapacityPerEntity);
+            var typedBucket = new FactBucket<TFact>(
+                factId,
+                _entityCapacity,
+                _factCapacityPerEntity,
+                _factListCapacityMode);
             _buckets.Add(factId, typedBucket);
             return typedBucket;
         }
@@ -278,7 +288,10 @@ namespace CascadeEngineApi
                 return bucket;
             }
 
-            var typedBucket = factType.CreateBucket(_entityCapacity, _factCapacityPerEntity);
+            var typedBucket = factType.CreateBucket(
+                _entityCapacity,
+                _factCapacityPerEntity,
+                _factListCapacityMode);
             _buckets.Add(factType.Id, typedBucket);
             return typedBucket;
         }
@@ -321,17 +334,6 @@ namespace CascadeEngineApi
             }
 
             return bestIndex;
-        }
-
-        private static FactPriority ResolvePriority<TFact>(in TFact fact)
-            where TFact : struct, IFact
-        {
-            if (fact is IPrioritizedFact prioritized)
-            {
-                return prioritized.Priority;
-            }
-
-            return FactPriority.Normal;
         }
 
         private static int NormalizeCapacity(int capacity)

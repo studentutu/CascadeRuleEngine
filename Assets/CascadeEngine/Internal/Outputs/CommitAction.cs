@@ -5,7 +5,7 @@ namespace CascadeEngineApi
     /// <summary>
     /// Typed delayed state write applied after every committer has made its decision.
     /// </summary>
-    internal sealed class CommitAction<TState> : ICommitAction
+    internal readonly struct CommitAction<TState>
         where TState : struct, IOutputState
     {
         private readonly StateBucket<TState> _bucket;

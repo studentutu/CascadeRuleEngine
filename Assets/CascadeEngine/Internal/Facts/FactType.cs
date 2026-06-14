@@ -33,6 +33,9 @@ namespace CascadeEngineApi
 
         internal CascadeTypeId Id { get; }
         internal bool CanCreateBucket => _bucketFactory != null;
+        internal bool CanCreatePriorityResolver => _bucketFactory != null
+            && _bucketFactory.CanCreatePriorityResolver;
+
         internal string DebugName => _bucketFactory != null
             ? _bucketFactory.DebugName
             : _debugName;
@@ -42,14 +45,27 @@ namespace CascadeEngineApi
             _bucketFactory?.Register(catalog);
         }
 
-        internal IFactBucket CreateBucket(int entityCapacity, int factCapacityPerEntity)
+        internal IFactBucket CreateBucket(
+            int entityCapacity,
+            int factCapacityPerEntity,
+            FactListCapacityMode factListCapacityMode)
         {
             if (_bucketFactory == null)
             {
                 throw new InvalidOperationException($"Fact type '{DebugName}' was registered without a typed bucket factory.");
             }
 
-            return _bucketFactory.Create(Id, entityCapacity, factCapacityPerEntity);
+            return _bucketFactory.Create(Id, entityCapacity, factCapacityPerEntity, factListCapacityMode);
+        }
+
+        internal object CreatePriorityResolver()
+        {
+            if (_bucketFactory == null)
+            {
+                throw new InvalidOperationException($"Fact type '{DebugName}' was registered without a typed priority resolver factory.");
+            }
+
+            return _bucketFactory.CreatePriorityResolver();
         }
 
         public static FactType Of<TFact>()
