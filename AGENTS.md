@@ -188,7 +188,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Examples are external.
 - C# 8 and .Net 8.
 - Banned runtime reflexion (System.Reflexion and similar are stripped in IL2Cpp).
-- Zero memory allocation in hot path.
+- Zero memory allocation in hot path (initialization may allocate).
 - Clear Lifecycle: Creation/Initialization/Registration, Execution, Teardown(Full dispose is a must).
 - Missing required services are setup errors, not fallback cases.
 - Use one class per file and keep summaries explicit.
