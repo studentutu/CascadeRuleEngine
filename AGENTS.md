@@ -182,6 +182,18 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - Ensure [Unity Editor compiler errors](CI/CompileErrorsAfterUnityRun.txt) is empty (no compilation errors while running Unity Editor).
   - See output of [runParsetests.sh](runParsetests.sh) to check if there are any failed tests, it will also enumerate them if failed tests exists.
 
+## Constraints
+
+- Clear separation in package for internal and public API.
+- Examples are external.
+- C# 8 and .Net 8.
+- Banned runtime reflexion (System.Reflexion and similar are stripped in IL2Cpp).
+- Zero memory allocation in hot path.
+- Clear Lifecycle: Creation/Initialization/Registration, Execution, Teardown(Full dispose is a must).
+- Missing required services are setup errors, not fallback cases.
+- Use one class per file and keep summaries explicit.
+- EditMode tests must not rely on Unity lifecycle callbacks.
+
 ## When finished with task/job
 
 Propose next task and always ask: what should I do next?
