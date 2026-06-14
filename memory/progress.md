@@ -36,7 +36,7 @@
 1. Validate transactional reducer semantics with tests.
    - Add a two-fact entity-scoped reducer test.
    - Add a batch transactional reducer test with only eligible entities.
-   - Verify transactional reducers do not fire twice for the same entity/fact set.
+   - Verify transactional reducers do not fire twice for the same entity/fact set when separate entities concluded the same fact via separate strategies(1 pass for entity_1, 2 pass for entity_2).
 
 2. Add focused diagnostics for reduction failures along with hot-path tightening.
    - Fact/type routing still uses `System.Type` references in several internal maps and descriptors. This is heavier than needed for hot-path fact identity and routing.
