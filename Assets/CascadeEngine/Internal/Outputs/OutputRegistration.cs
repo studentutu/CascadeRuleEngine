@@ -10,22 +10,22 @@ namespace CascadeEngineApi
     internal sealed class OutputRegistration<TState> : IOutputRegistration
         where TState : struct, IOutputState
     {
-        private readonly Type[] _affectedFacts;
+        private readonly CascadeTypeId[] _affectedFactIds;
         private readonly IOutputCommitter<TState> _committer;
 
         internal OutputRegistration(
             OutputState<TState> output,
-            Type[] affectedFacts,
+            CascadeTypeId[] affectedFactIds,
             IOutputCommitter<TState> committer)
         {
             Output = output;
-            _affectedFacts = affectedFacts;
+            _affectedFactIds = affectedFactIds;
             _committer = committer;
         }
 
         internal OutputState<TState> Output { get; }
 
-        public Type StateType => typeof(TState);
+        public CascadeTypeId StateId => CascadeTypeIdentity.RequireId<TState>();
         public string Name => Output.Name;
 
         public void Reindex(int index)
@@ -33,9 +33,9 @@ namespace CascadeEngineApi
 
         public bool IsAffectedBy(FactStore facts, EntityRef entity)
         {
-            for (var i = 0; i < _affectedFacts.Length; i++)
+            for (var i = 0; i < _affectedFactIds.Length; i++)
             {
-                if (facts.Has(entity, _affectedFacts[i]))
+                if (facts.Has(entity, _affectedFactIds[i]))
                 {
                     return true;
                 }
@@ -59,6 +59,9 @@ namespace CascadeEngineApi
 
             return new CommitAction<TState>(bucket, entity, decision);
         }
+
+        public IStateBucket CreateStateBucket()
+            => new StateBucket<TState>();
 
         public void DeleteState(FactSimulation simulation, EntityRef entity)
             => simulation.GetStateBucket<TState>().Delete(entity);

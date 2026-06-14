@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -9,7 +7,7 @@ namespace CascadeEngineApi
     /// </summary>
     internal interface IFactBucket
     {
-        Type FactType { get; }
+        CascadeTypeId FactId { get; }
         int EntityCapacity { get; }
         int TouchedEntityCapacity { get; }
 

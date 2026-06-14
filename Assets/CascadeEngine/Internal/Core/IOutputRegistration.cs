@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -9,7 +7,7 @@ namespace CascadeEngineApi
     /// </summary>
     internal interface IOutputRegistration
     {
-        Type StateType { get; }
+        CascadeTypeId StateId { get; }
         string Name { get; }
 
         void Reindex(int index);
@@ -17,6 +15,8 @@ namespace CascadeEngineApi
         bool IsAffectedBy(FactStore facts, EntityRef entity);
 
         ICommitAction? CreateCommitAction(FactSimulation simulation, EntityRef entity);
+
+        IStateBucket CreateStateBucket();
 
         void DeleteState(FactSimulation simulation, EntityRef entity);
 

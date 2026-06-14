@@ -64,6 +64,30 @@ SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
+## Stable Type Ids
+
+Every fact and output state type must declare one stable id:
+
+```csharp
+public readonly struct MoveRequestedFact : IFact
+{
+    public static readonly CascadeTypeId CascadeId =
+        CascadeTypeId.FromName(nameof(MoveRequestedFact));
+
+    public void Dispose()
+    {
+    }
+}
+
+public readonly struct PositionState : IOutputState
+{
+    public static readonly CascadeTypeId CascadeId =
+        CascadeTypeId.FromName(nameof(PositionState));
+}
+```
+
+`System.Type` is retained only behind generic construction and diagnostic exception utilities.
+
 ## Warmup For 500+ Entities
 
 Warmup is a capacity phase only. It does not create entities, emit facts, run reducers, commit output state, or publish mutations.
@@ -134,6 +158,8 @@ public sealed class GameplayFeature : FactFeature
 
 | Type | Role |
 | --- | --- |
+| `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
+| `CascadeTypeDiagnostics` | diagnostic-only id-to-`System.Type` lookup for exceptions/tooling |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |

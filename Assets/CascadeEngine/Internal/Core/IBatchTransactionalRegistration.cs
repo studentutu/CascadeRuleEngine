@@ -10,7 +10,7 @@ namespace CascadeEngineApi
     internal interface IBatchTransactionalRegistration
     {
         int Index { get; }
-        Type[] RequiredFacts { get; }
+        CascadeTypeId[] RequiredFactIds { get; }
 
         void Reindex(int index);
 

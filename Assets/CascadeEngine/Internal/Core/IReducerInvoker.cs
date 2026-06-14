@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -9,7 +7,7 @@ namespace CascadeEngineApi
     /// </summary>
     internal interface IReducerInvoker
     {
-        Type FactType { get; }
+        CascadeTypeId FactId { get; }
 
         void Reduce(FactSimulation simulation, in QueuedFact fact);
 

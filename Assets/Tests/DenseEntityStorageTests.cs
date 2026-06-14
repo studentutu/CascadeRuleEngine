@@ -103,39 +103,40 @@ namespace CascadeEngineApi.Tests
         [Test]
         public void EntityFactListClearsByDisposingStoredFactsAndCanBeReused()
         {
-            DisposableFact.DisposeCount = 0;
-            var facts = new EntityFactList<DisposableFact>();
+            DenseStorageDisposableFact.DisposeCount = 0;
+            var facts = new EntityFactList<DenseStorageDisposableFact>();
 
-            Assert.AreEqual(0, facts.Add(new DisposableFact(10)));
-            Assert.AreEqual(1, facts.Add(new DisposableFact(20)));
+            Assert.AreEqual(0, facts.Add(new DenseStorageDisposableFact(10)));
+            Assert.AreEqual(1, facts.Add(new DenseStorageDisposableFact(20)));
             Assert.AreEqual(2, facts.Count);
 
             facts.Clear();
 
             Assert.AreEqual(0, facts.Count);
-            Assert.AreEqual(2, DisposableFact.DisposeCount);
+            Assert.AreEqual(2, DenseStorageDisposableFact.DisposeCount);
 
-            Assert.AreEqual(0, facts.Add(new DisposableFact(30)));
+            Assert.AreEqual(0, facts.Add(new DenseStorageDisposableFact(30)));
             Assert.IsTrue(facts.TryGetLatest(out var latest));
             Assert.AreEqual(30, latest.Value);
         }
 
-        private readonly struct DisposableFact : IFact, IEquatable<DisposableFact>
+        private readonly struct DenseStorageDisposableFact : IFact, IEquatable<DenseStorageDisposableFact>
         {
+            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DenseStorageDisposableFact));
             internal static int DisposeCount;
 
-            internal DisposableFact(int value)
+            internal DenseStorageDisposableFact(int value)
             {
                 Value = value;
             }
 
             internal int Value { get; }
 
-            public bool Equals(DisposableFact other)
+            public bool Equals(DenseStorageDisposableFact other)
                 => Value == other.Value;
 
             public override bool Equals(object? obj)
-                => obj is DisposableFact other && Equals(other);
+                => obj is DenseStorageDisposableFact other && Equals(other);
 
             public override int GetHashCode()
                 => Value;

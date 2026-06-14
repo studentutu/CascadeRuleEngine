@@ -10,6 +10,8 @@ namespace Hestia
     /// </summary>
     public readonly struct MoveRequestedFact : IFact, IPrioritizedFact, IEquatable<MoveRequestedFact>
     {
+        public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(MoveRequestedFact));
+
         public MoveRequestedFact(float position, FactPriority priority)
         {
             Position = position;

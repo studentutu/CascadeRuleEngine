@@ -10,7 +10,7 @@ namespace CascadeEngineApi
     /// </summary>
     internal sealed class FactStore
     {
-        private readonly Dictionary<Type, IFactBucket> _buckets = new Dictionary<Type, IFactBucket>();
+        private readonly Dictionary<CascadeTypeId, IFactBucket> _buckets = new Dictionary<CascadeTypeId, IFactBucket>();
         private readonly List<QueuedFact> _queue = new List<QueuedFact>();
         private readonly DenseEntitySet _touchedEntities = new DenseEntitySet(64);
         private readonly DenseEntityCounter _factCountsByEntity = new DenseEntityCounter(64);
@@ -33,7 +33,7 @@ namespace CascadeEngineApi
             int entityCapacity,
             int factQueueCapacity,
             int factCapacityPerEntity,
-            Type[] knownFactTypes)
+            FactType[] knownFactTypes)
         {
             var normalizedEntityCapacity = NormalizeCapacity(entityCapacity);
             var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
@@ -51,6 +51,11 @@ namespace CascadeEngineApi
 
             for (var i = 0; i < knownFactTypes.Length; i++)
             {
+                if (!knownFactTypes[i].CanCreateBucket)
+                {
+                    continue;
+                }
+
                 GetOrCreateBucket(knownFactTypes[i]).Warmup(
                     normalizedEntityCapacity,
                     _factCapacityPerEntity);
@@ -136,7 +141,7 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException($"Fact causal depth '{depth}' exceeded limit '{guardrails.MaxCausalDepth}'.");
             }
 
-            var factType = typeof(TFact);
+            var factId = CascadeTypeIdentity.RequireId<TFact>();
             var bucket = GetOrCreateBucket<TFact>();
             if (bucket.Contains(entity, in fact))
             {
@@ -146,7 +151,7 @@ namespace CascadeEngineApi
 
             if (bucket.CountFor(entity) >= guardrails.MaxFactsPerTypePerEntity)
             {
-                throw new InvalidOperationException($"Fact type '{factType.Name}' exceeded per-entity limit '{guardrails.MaxFactsPerTypePerEntity}' for entity '{entity}'.");
+                throw new InvalidOperationException($"Fact type '{CascadeTypeDiagnostics.Describe(factId)}' exceeded per-entity limit '{guardrails.MaxFactsPerTypePerEntity}' for entity '{entity}'.");
             }
 
             var factIndex = bucket.Add(entity, in fact);
@@ -163,7 +168,7 @@ namespace CascadeEngineApi
 
             _queue.Add(new QueuedFact(
                 entity,
-                factType,
+                factId,
                 bucket,
                 factIndex,
                 ResolvePriority(in fact),
@@ -187,13 +192,13 @@ namespace CascadeEngineApi
             return true;
         }
 
-        internal bool Has(EntityRef entity, Type factType)
-            => _buckets.TryGetValue(factType, out var bucket) && bucket.Has(entity);
+        internal bool Has(EntityRef entity, CascadeTypeId factId)
+            => _buckets.TryGetValue(factId, out var bucket) && bucket.Has(entity);
 
         internal bool TryGetLatest<TFact>(EntityRef entity, out TFact fact)
             where TFact : struct, IFact
         {
-            if (_buckets.TryGetValue(typeof(TFact), out var bucket))
+            if (_buckets.TryGetValue(CascadeTypeIdentity.RequireId<TFact>(), out var bucket))
             {
                 return ((FactBucket<TFact>)bucket).TryGetLatest(entity, out fact);
             }
@@ -205,7 +210,7 @@ namespace CascadeEngineApi
         internal ReadOnlySpan<TFact> All<TFact>(EntityRef entity)
             where TFact : struct, IFact
         {
-            if (_buckets.TryGetValue(typeof(TFact), out var bucket))
+            if (_buckets.TryGetValue(CascadeTypeIdentity.RequireId<TFact>(), out var bucket))
             {
                 return ((FactBucket<TFact>)bucket).All(entity);
             }
@@ -213,7 +218,7 @@ namespace CascadeEngineApi
             return ReadOnlySpan<TFact>.Empty;
         }
 
-        internal bool HasAll(EntityRef entity, Type[] requiredFacts)
+        internal bool HasAll(EntityRef entity, CascadeTypeId[] requiredFacts)
         {
             for (var i = 0; i < requiredFacts.Length; i++)
             {
@@ -256,36 +261,26 @@ namespace CascadeEngineApi
         private FactBucket<TFact> GetOrCreateBucket<TFact>()
             where TFact : struct, IFact
         {
-            var factType = typeof(TFact);
-            if (_buckets.TryGetValue(factType, out var bucket))
+            var factId = CascadeTypeIdentity.RequireId<TFact>();
+            if (_buckets.TryGetValue(factId, out var bucket))
             {
                 return (FactBucket<TFact>)bucket;
             }
 
             var typedBucket = new FactBucket<TFact>(_entityCapacity, _factCapacityPerEntity);
-            _buckets.Add(factType, typedBucket);
+            _buckets.Add(factId, typedBucket);
             return typedBucket;
         }
 
-        private IFactBucket GetOrCreateBucket(Type factType)
+        private IFactBucket GetOrCreateBucket(FactType factType)
         {
-            if (_buckets.TryGetValue(factType, out var bucket))
+            if (_buckets.TryGetValue(factType.Id, out var bucket))
             {
                 return bucket;
             }
 
-            var bucketType = typeof(FactBucket<>).MakeGenericType(factType);
-            var instance = Activator.CreateInstance(
-                bucketType,
-                _entityCapacity,
-                _factCapacityPerEntity);
-            if (instance == null)
-            {
-                throw new InvalidOperationException($"Could not create fact bucket for '{factType.Name}'.");
-            }
-
-            var typedBucket = (IFactBucket)instance;
-            _buckets.Add(factType, typedBucket);
+            var typedBucket = factType.CreateBucket(_entityCapacity, _factCapacityPerEntity);
+            _buckets.Add(factType.Id, typedBucket);
             return typedBucket;
         }
 

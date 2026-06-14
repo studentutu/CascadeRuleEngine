@@ -15,7 +15,7 @@ namespace CascadeEngineApi
         private readonly List<StateMutationRecord<TState>> _mutations = new List<StateMutationRecord<TState>>();
         private int _stateCapacityHint;
 
-        public Type StateType => typeof(TState);
+        public CascadeTypeId StateId => CascadeTypeIdentity.RequireId<TState>();
         public int StateCapacityHint => _stateCapacityHint;
         public int MutationCapacity => _mutations.Capacity;
         public int MutationCount => _mutations.Count;
@@ -41,7 +41,7 @@ namespace CascadeEngineApi
                 return state;
             }
 
-            throw new KeyNotFoundException($"Entity '{entity}' has no '{typeof(TState).Name}' output state.");
+            throw new KeyNotFoundException($"Entity '{entity}' has no '{CascadeTypeIdentity<TState>.DebugName}' output state.");
         }
 
         internal void Set(EntityRef entity, TState next)

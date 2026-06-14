@@ -10,14 +10,16 @@ namespace CascadeEngineApi
     public sealed class OutputState<TState>
         where TState : struct, IOutputState
     {
-        internal OutputState(int index, string name, CommitConflictPolicy conflictPolicy)
+        internal OutputState(int index, CascadeTypeId id, string name, CommitConflictPolicy conflictPolicy)
         {
             Index = index;
+            Id = id;
             Name = name ?? throw new ArgumentNullException(nameof(name));
             ConflictPolicy = conflictPolicy;
         }
 
         internal int Index { get; set; }
+        public CascadeTypeId Id { get; }
         public string Name { get; }
         public CommitConflictPolicy ConflictPolicy { get; }
 

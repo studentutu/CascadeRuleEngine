@@ -21,14 +21,14 @@ namespace CascadeEngineApi
         private readonly FactFeatureRegistry _registry;
         private readonly EntityStore _entities = new EntityStore();
         private readonly FactStore _facts = new FactStore();
-        private readonly Dictionary<Type, IStateBucket> _stateBuckets = new Dictionary<Type, IStateBucket>();
+        private readonly Dictionary<CascadeTypeId, IStateBucket> _stateBuckets = new Dictionary<CascadeTypeId, IStateBucket>();
         private readonly EntityFactView _factView;
         private readonly List<ICommitAction> _commitActions = new List<ICommitAction>();
         private readonly EntityRefBuffer _queryBuffer = new EntityRefBuffer(64);
         private readonly EntityRefBuffer _transactionBuffer = new EntityRefBuffer(64);
         private readonly EntityRefBuffer _batchBuffer = new EntityRefBuffer(64);
-        private readonly HashSet<string> _firedTransactional = new HashSet<string>(StringComparer.Ordinal);
-        private readonly HashSet<string> _firedBatchEntities = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<FiredReducerKey> _firedTransactional = new HashSet<FiredReducerKey>();
+        private readonly HashSet<FiredReducerKey> _firedBatchEntities = new HashSet<FiredReducerKey>();
         private SimulationTick _tick;
         private int _currentCausalDepth;
         private int _mutationCount;
@@ -214,7 +214,7 @@ namespace CascadeEngineApi
                             continue;
                         }
 
-                        if (!_registry.TryGetReducers(queued.FactType, out var reducers))
+                        if (!_registry.TryGetReducers(queued.FactId, out var reducers))
                         {
                             continue;
                         }
@@ -419,7 +419,7 @@ namespace CascadeEngineApi
             for (var i = 0; i < touchedCount; i++)
             {
                 var entity = _transactionBuffer[i];
-                if (_facts.Has(entity, typeof(TFact)))
+                if (_facts.Has(entity, CascadeTypeIdentity.RequireId<TFact>()))
                 {
                     _queryBuffer[count] = entity;
                     count++;
@@ -432,12 +432,13 @@ namespace CascadeEngineApi
         internal StateBucket<TState> GetStateBucket<TState>()
             where TState : struct, IOutputState
         {
-            if (_stateBuckets.TryGetValue(typeof(TState), out var bucket))
+            var stateId = CascadeTypeIdentity.RequireId<TState>();
+            if (_stateBuckets.TryGetValue(stateId, out var bucket))
             {
                 return (StateBucket<TState>)bucket;
             }
 
-            throw new InvalidOperationException($"Output state '{typeof(TState).Name}' is not registered.");
+            throw new InvalidOperationException($"Output state '{CascadeTypeDiagnostics.Describe(stateId)}' is not registered.");
         }
 
         internal CascadeCapacitySnapshot CaptureCapacitySnapshot(int warmedEntityCapacity)
@@ -533,12 +534,12 @@ namespace CascadeEngineApi
                 for (var reducerIndex = 0; reducerIndex < _registry.TransactionalReducers.Count; reducerIndex++)
                 {
                     var registration = _registry.TransactionalReducers[reducerIndex];
-                    if (!_facts.HasAll(entity, registration.RequiredFacts))
+                    if (!_facts.HasAll(entity, registration.RequiredFactIds))
                     {
                         continue;
                     }
 
-                    var firedKey = registration.Index + ":" + entity.Value;
+                    var firedKey = new FiredReducerKey(registration.Index, entity.Value);
                     if (!_firedTransactional.Add(firedKey))
                     {
                         continue;
@@ -578,12 +579,12 @@ namespace CascadeEngineApi
                 for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
                 {
                     var entity = _transactionBuffer[entityIndex];
-                    if (_entities.IsDestroyed(entity) || !_facts.HasAll(entity, registration.RequiredFacts))
+                    if (_entities.IsDestroyed(entity) || !_facts.HasAll(entity, registration.RequiredFactIds))
                     {
                         continue;
                     }
 
-                    var firedKey = registration.Index + ":" + entity.Value;
+                    var firedKey = new FiredReducerKey(registration.Index, entity.Value);
                     if (!_firedBatchEntities.Add(firedKey))
                     {
                         continue;
@@ -652,14 +653,12 @@ namespace CascadeEngineApi
             for (var i = 0; i < _registry.Outputs.Count; i++)
             {
                 var output = _registry.Outputs[i];
-                if (_stateBuckets.ContainsKey(output.StateType))
+                if (_stateBuckets.ContainsKey(output.StateId))
                 {
-                    throw new InvalidOperationException($"Output state '{output.StateType.Name}' registered twice.");
+                    throw new InvalidOperationException($"Output state '{output.Name}' registered twice.");
                 }
 
-                var bucketType = typeof(StateBucket<>).MakeGenericType(output.StateType);
-                var bucket = (IStateBucket)Activator.CreateInstance(bucketType);
-                _stateBuckets.Add(output.StateType, bucket);
+                _stateBuckets.Add(output.StateId, output.CreateStateBucket());
             }
         }
 
@@ -747,5 +746,26 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);
+
+        private readonly struct FiredReducerKey : IEquatable<FiredReducerKey>
+        {
+            private readonly int _registrationIndex;
+            private readonly int _entityValue;
+
+            internal FiredReducerKey(int registrationIndex, int entityValue)
+            {
+                _registrationIndex = registrationIndex;
+                _entityValue = entityValue;
+            }
+
+            public bool Equals(FiredReducerKey other)
+                => _registrationIndex == other._registrationIndex && _entityValue == other._entityValue;
+
+            public override bool Equals(object? obj)
+                => obj is FiredReducerKey other && Equals(other);
+
+            public override int GetHashCode()
+                => unchecked((_registrationIndex * 397) ^ _entityValue);
+        }
     }
 }

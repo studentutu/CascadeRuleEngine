@@ -25,7 +25,7 @@ namespace CascadeEngineApi
 
         public bool Has<TFact>()
             where TFact : struct, IFact
-            => _facts.Has(_entity, typeof(TFact));
+            => _facts.Has(_entity, CascadeTypeIdentity.RequireId<TFact>());
 
         public bool TryGetLatest<TFact>(out TFact fact)
             where TFact : struct, IFact

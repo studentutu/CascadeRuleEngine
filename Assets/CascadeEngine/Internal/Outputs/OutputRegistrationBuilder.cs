@@ -22,7 +22,7 @@ namespace CascadeEngineApi
         public OutputRegistrationBuilder<TState> AffectedBy<TFact>()
             where TFact : struct, IFact
         {
-            _affectedFacts.Add(typeof(TFact));
+            _affectedFacts.Add(FactType.Of<TFact>());
             return this;
         }
 

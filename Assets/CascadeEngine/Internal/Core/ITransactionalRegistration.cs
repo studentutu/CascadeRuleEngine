@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -10,7 +8,7 @@ namespace CascadeEngineApi
     internal interface ITransactionalRegistration
     {
         int Index { get; }
-        Type[] RequiredFacts { get; }
+        CascadeTypeId[] RequiredFactIds { get; }
 
         void Reindex(int index);
 

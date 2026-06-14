@@ -11,15 +11,15 @@ namespace CascadeEngineApi
     {
         private readonly IBatchTransactionalReducer _reducer;
 
-        internal BatchTransactionalRegistration(int index, Type[] requiredFacts, IBatchTransactionalReducer reducer)
+        internal BatchTransactionalRegistration(int index, CascadeTypeId[] requiredFactIds, IBatchTransactionalReducer reducer)
         {
             Index = index;
-            RequiredFacts = requiredFacts;
+            RequiredFactIds = requiredFactIds;
             _reducer = reducer;
         }
 
         public int Index { get; private set; }
-        public Type[] RequiredFacts { get; }
+        public CascadeTypeId[] RequiredFactIds { get; }
 
         public void Reindex(int index)
             => Index = index;

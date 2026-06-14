@@ -50,7 +50,7 @@ namespace CascadeEngineApi
 
         protected OutputRegistrationBuilder<TState> Output<TState>()
             where TState : struct, IOutputState
-            => Output<TState>(typeof(TState).Name);
+            => Output<TState>(CascadeTypeIdentity<TState>.DebugName);
 
         protected OutputRegistrationBuilder<TState> Output<TState>(string name)
             where TState : struct, IOutputState

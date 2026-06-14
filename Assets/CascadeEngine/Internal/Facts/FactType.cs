@@ -9,6 +9,8 @@ namespace CascadeEngineApi
     /// </summary>
     public readonly struct FactType
     {
+        private readonly IFactBucketFactory? _bucketFactory;
+
         public FactType(Type type)
         {
             if (type == null)
@@ -21,13 +23,45 @@ namespace CascadeEngineApi
                 throw new ArgumentException("Fact type must implement IFact.", nameof(type));
             }
 
-            Type = type;
+            Id = CascadeTypeIdentity.Resolve(type);
+            _bucketFactory = null;
         }
 
-        internal Type Type { get; }
+        public FactType(CascadeTypeId id)
+        {
+            if (id.IsEmpty)
+            {
+                throw new ArgumentException("Fact type id cannot be empty.", nameof(id));
+            }
+
+            Id = id;
+            _bucketFactory = null;
+        }
+
+        private FactType(IFactBucketFactory bucketFactory)
+        {
+            _bucketFactory = bucketFactory;
+            Id = bucketFactory.Id;
+        }
+
+        internal CascadeTypeId Id { get; }
+        internal bool CanCreateBucket => _bucketFactory != null;
+        internal string DebugName => _bucketFactory != null
+            ? _bucketFactory.DebugName
+            : CascadeTypeDiagnostics.Describe(Id);
+
+        internal IFactBucket CreateBucket(int entityCapacity, int factCapacityPerEntity)
+        {
+            if (_bucketFactory == null)
+            {
+                throw new InvalidOperationException($"Fact type '{DebugName}' was registered without a typed bucket factory.");
+            }
+
+            return _bucketFactory.Create(entityCapacity, factCapacityPerEntity);
+        }
 
         public static FactType Of<TFact>()
             where TFact : struct, IFact
-            => new FactType(typeof(TFact));
+            => new FactType(FactBucketFactory<TFact>.Instance);
     }
 }

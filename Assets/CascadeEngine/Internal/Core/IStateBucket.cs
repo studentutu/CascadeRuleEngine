@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -9,7 +7,7 @@ namespace CascadeEngineApi
     /// </summary>
     internal interface IStateBucket
     {
-        Type StateType { get; }
+        CascadeTypeId StateId { get; }
         int StateCapacityHint { get; }
         int MutationCapacity { get; }
 

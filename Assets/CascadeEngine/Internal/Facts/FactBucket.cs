@@ -26,7 +26,7 @@ namespace CascadeEngineApi
             _touchedEntities = new DenseEntitySet(entityCapacity);
         }
 
-        public Type FactType => typeof(TFact);
+        public CascadeTypeId FactId => CascadeTypeIdentity.RequireId<TFact>();
         public int EntityCapacity => _factsByEntity.Capacity;
         public int TouchedEntityCapacity => _touchedEntities.Capacity;
 

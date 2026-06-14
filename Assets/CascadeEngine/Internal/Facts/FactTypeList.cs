@@ -1,23 +1,27 @@
 #nullable enable
 
-using System;
 using System.Collections.Generic;
 
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Tiny registration-time list that rejects duplicate fact types.
+    /// Tiny registration-time list that rejects duplicate fact ids.
     /// </summary>
     internal sealed class FactTypeList
     {
-        private readonly List<Type> _types = new List<Type>();
+        private readonly List<FactType> _types = new List<FactType>();
 
-        internal void Add(Type type)
+        internal void Add(FactType type)
         {
             for (var i = 0; i < _types.Count; i++)
             {
-                if (_types[i] == type)
+                if (_types[i].Id == type.Id)
                 {
+                    if (!_types[i].CanCreateBucket && type.CanCreateBucket)
+                    {
+                        _types[i] = type;
+                    }
+
                     return;
                 }
             }
@@ -25,7 +29,7 @@ namespace CascadeEngineApi
             _types.Add(type);
         }
 
-        internal Type[] ToArray()
+        internal FactType[] ToArray()
             => _types.ToArray();
 
         internal void Clear()

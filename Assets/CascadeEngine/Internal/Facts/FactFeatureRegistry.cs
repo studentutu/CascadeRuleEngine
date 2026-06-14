@@ -10,12 +10,12 @@ namespace CascadeEngineApi
     /// </summary>
     internal sealed class FactFeatureRegistry : IDisposable
     {
-        private readonly Dictionary<Type, List<IReducerInvoker>> _reducersByFact =
-            new Dictionary<Type, List<IReducerInvoker>>();
+        private readonly Dictionary<CascadeTypeId, List<IReducerInvoker>> _reducersByFact =
+            new Dictionary<CascadeTypeId, List<IReducerInvoker>>();
 
         private readonly List<IOutputRegistration> _outputs = new List<IOutputRegistration>();
-        private readonly Dictionary<Type, IOutputRegistration> _outputsByState =
-            new Dictionary<Type, IOutputRegistration>();
+        private readonly Dictionary<CascadeTypeId, IOutputRegistration> _outputsByState =
+            new Dictionary<CascadeTypeId, IOutputRegistration>();
 
         private readonly List<ITransactionalRegistration> _transactionalReducers =
             new List<ITransactionalRegistration>();
@@ -28,7 +28,7 @@ namespace CascadeEngineApi
         internal IReadOnlyList<IOutputRegistration> Outputs => _outputs;
         internal IReadOnlyList<ITransactionalRegistration> TransactionalReducers => _transactionalReducers;
         internal IReadOnlyList<IBatchTransactionalRegistration> BatchTransactionalReducers => _batchTransactionalReducers;
-        internal Type[] KnownFactTypes => _knownFactTypes.ToArray();
+        internal FactType[] KnownFactTypes => _knownFactTypes.ToArray();
 
         internal void AddReducer<TFact, TReducer>()
             where TFact : struct, IFact
@@ -36,13 +36,13 @@ namespace CascadeEngineApi
         {
             var reducer = Create<TReducer>();
             var invoker = new ReducerInvoker<TFact>(reducer);
-            var factType = typeof(TFact);
+            var factType = FactType.Of<TFact>();
             _knownFactTypes.Add(factType);
 
-            if (!_reducersByFact.TryGetValue(factType, out var reducers))
+            if (!_reducersByFact.TryGetValue(factType.Id, out var reducers))
             {
                 reducers = new List<IReducerInvoker>();
-                _reducersByFact.Add(factType, reducers);
+                _reducersByFact.Add(factType.Id, reducers);
             }
 
             reducers.Add(invoker);
@@ -56,7 +56,7 @@ namespace CascadeEngineApi
             AddKnownFacts(requiredFacts);
             _transactionalReducers.Add(new TransactionalRegistration(
                 _transactionalReducers.Count,
-                ToTypes(requiredFacts),
+                ToIds(requiredFacts),
                 reducer));
         }
 
@@ -68,44 +68,45 @@ namespace CascadeEngineApi
             AddKnownFacts(requiredFacts);
             _batchTransactionalReducers.Add(new BatchTransactionalRegistration(
                 _batchTransactionalReducers.Count,
-                ToTypes(requiredFacts),
+                ToIds(requiredFacts),
                 reducer));
         }
 
         internal OutputState<TState> AddOutput<TState, TCommitter>(
             string name,
-            Type[] affectedFacts,
+            FactType[] affectedFacts,
             CommitConflictPolicy conflictPolicy)
             where TState : struct, IOutputState
             where TCommitter : IOutputCommitter<TState>
         {
-            var stateType = typeof(TState);
-            if (_outputsByState.ContainsKey(stateType))
+            var stateId = CascadeTypeIdentity.RequireId<TState>();
+            var stateName = CascadeTypeIdentity<TState>.DebugName;
+            if (_outputsByState.ContainsKey(stateId))
             {
-                throw new InvalidOperationException($"Output state '{stateType.Name}' is already registered.");
+                throw new InvalidOperationException($"Output state '{stateName}' is already registered.");
             }
 
             if (affectedFacts == null || affectedFacts.Length == 0)
             {
-                throw new InvalidOperationException($"Output state '{stateType.Name}' must declare at least one affected fact.");
+                throw new InvalidOperationException($"Output state '{stateName}' must declare at least one affected fact.");
             }
 
             AddKnownFacts(affectedFacts);
-            var output = new OutputState<TState>(_outputs.Count, name, conflictPolicy);
+            var output = new OutputState<TState>(_outputs.Count, stateId, name, conflictPolicy);
             var committer = Create<TCommitter>();
-            var registration = new OutputRegistration<TState>(output, affectedFacts, committer);
+            var registration = new OutputRegistration<TState>(output, ToIds(affectedFacts), committer);
             _outputs.Add(registration);
-            _outputsByState.Add(stateType, registration);
+            _outputsByState.Add(stateId, registration);
             return output;
         }
 
-        internal bool TryGetReducers(Type factType, out List<IReducerInvoker> reducers)
-            => _reducersByFact.TryGetValue(factType, out reducers);
+        internal bool TryGetReducers(CascadeTypeId factId, out List<IReducerInvoker> reducers)
+            => _reducersByFact.TryGetValue(factId, out reducers);
 
         internal bool TryGetOutput<TState>(out OutputRegistration<TState> output)
             where TState : struct, IOutputState
         {
-            if (_outputsByState.TryGetValue(typeof(TState), out var registration))
+            if (_outputsByState.TryGetValue(CascadeTypeIdentity.RequireId<TState>(), out var registration))
             {
                 output = (OutputRegistration<TState>)registration;
                 return true;
@@ -118,7 +119,7 @@ namespace CascadeEngineApi
         internal bool ContainsOutput<TState>(OutputState<TState> output)
             where TState : struct, IOutputState
         {
-            return _outputsByState.TryGetValue(typeof(TState), out var registration)
+            return _outputsByState.TryGetValue(CascadeTypeIdentity.RequireId<TState>(), out var registration)
                 && ReferenceEquals(((OutputRegistration<TState>)registration).Output, output);
         }
 
@@ -173,26 +174,26 @@ namespace CascadeEngineApi
             for (var i = 0; i < other._outputs.Count; i++)
             {
                 var output = other._outputs[i];
-                if (_outputsByState.ContainsKey(output.StateType))
+                if (_outputsByState.ContainsKey(output.StateId))
                 {
-                    throw new InvalidOperationException($"Output state '{output.StateType.Name}' is already registered.");
+                    throw new InvalidOperationException($"Output state '{output.Name}' is already registered.");
                 }
 
                 output.Reindex(_outputs.Count);
                 _outputs.Add(output);
-                _outputsByState.Add(output.StateType, output);
+                _outputsByState.Add(output.StateId, output);
             }
 
             for (var i = 0; i < other._transactionalReducers.Count; i++)
             {
-                AddKnownFacts(other._transactionalReducers[i].RequiredFacts);
+                AddKnownFacts(other._transactionalReducers[i].RequiredFactIds);
                 other._transactionalReducers[i].Reindex(_transactionalReducers.Count);
                 _transactionalReducers.Add(other._transactionalReducers[i]);
             }
 
             for (var i = 0; i < other._batchTransactionalReducers.Count; i++)
             {
-                AddKnownFacts(other._batchTransactionalReducers[i].RequiredFacts);
+                AddKnownFacts(other._batchTransactionalReducers[i].RequiredFactIds);
                 other._batchTransactionalReducers[i].Reindex(_batchTransactionalReducers.Count);
                 _batchTransactionalReducers.Add(other._batchTransactionalReducers[i]);
             }
@@ -204,15 +205,15 @@ namespace CascadeEngineApi
         {
             for (var i = 0; i < factTypes.Length; i++)
             {
-                _knownFactTypes.Add(factTypes[i].Type);
+                _knownFactTypes.Add(factTypes[i]);
             }
         }
 
-        private void AddKnownFacts(Type[] factTypes)
+        private void AddKnownFacts(CascadeTypeId[] factIds)
         {
-            for (var i = 0; i < factTypes.Length; i++)
+            for (var i = 0; i < factIds.Length; i++)
             {
-                _knownFactTypes.Add(factTypes[i]);
+                _knownFactTypes.Add(new FactType(factIds[i]));
             }
         }
 
@@ -227,12 +228,12 @@ namespace CascadeEngineApi
             return (T)instance;
         }
 
-        private static Type[] ToTypes(FactType[] factTypes)
+        private static CascadeTypeId[] ToIds(FactType[] factTypes)
         {
-            var result = new Type[factTypes.Length];
+            var result = new CascadeTypeId[factTypes.Length];
             for (var i = 0; i < factTypes.Length; i++)
             {
-                result[i] = factTypes[i].Type;
+                result[i] = factTypes[i].Id;
             }
 
             return result;

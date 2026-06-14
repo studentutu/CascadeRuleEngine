@@ -17,7 +17,7 @@ namespace CascadeEngineApi
             _reducer = reducer ?? throw new ArgumentNullException(nameof(reducer));
         }
 
-        public Type FactType => typeof(TFact);
+        public CascadeTypeId FactId => CascadeTypeIdentity.RequireId<TFact>();
 
         public void Reduce(FactSimulation simulation, in QueuedFact fact)
         {

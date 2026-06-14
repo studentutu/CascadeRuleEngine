@@ -16,14 +16,14 @@ namespace CascadeEngineApi
                 throw new ArgumentNullException(nameof(factTypes));
             }
 
-            FactTypes = new Type[factTypes.Length];
+            FactIds = new CascadeTypeId[factTypes.Length];
             for (var i = 0; i < factTypes.Length; i++)
             {
-                FactTypes[i] = factTypes[i].Type;
+                FactIds[i] = factTypes[i].Id;
             }
         }
 
-        internal Type[] FactTypes { get; }
+        internal CascadeTypeId[] FactIds { get; }
 
         public static FactMask Create<TA>()
             where TA : struct, IFact

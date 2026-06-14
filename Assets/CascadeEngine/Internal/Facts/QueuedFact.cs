@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -11,7 +9,7 @@ namespace CascadeEngineApi
     {
         internal QueuedFact(
             EntityRef entity,
-            Type factType,
+            CascadeTypeId factId,
             IFactBucket bucket,
             int factIndex,
             FactPriority priority,
@@ -19,7 +17,7 @@ namespace CascadeEngineApi
             long sequence)
         {
             Entity = entity;
-            FactType = factType;
+            FactId = factId;
             Bucket = bucket;
             FactIndex = factIndex;
             Priority = priority;
@@ -28,7 +26,7 @@ namespace CascadeEngineApi
         }
 
         internal EntityRef Entity { get; }
-        internal Type FactType { get; }
+        internal CascadeTypeId FactId { get; }
         internal IFactBucket Bucket { get; }
         internal int FactIndex { get; }
         internal FactPriority Priority { get; }

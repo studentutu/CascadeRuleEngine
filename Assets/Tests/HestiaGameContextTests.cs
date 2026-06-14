@@ -453,6 +453,7 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct DisposableState : IOutputState, IDisposable, IEquatable<DisposableState>
         {
+            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DisposableState));
             internal static int DisposeCount;
 
             internal DisposableState(int value)
@@ -477,6 +478,7 @@ namespace CascadeEngineApi.Tests
 
         private readonly struct DisposableFact : IFact, IEquatable<DisposableFact>
         {
+            public static readonly CascadeTypeId CascadeId = CascadeTypeId.FromName(nameof(DisposableFact));
             internal static int DisposeCount;
 
             internal DisposableFact(int value)
@@ -498,5 +500,6 @@ namespace CascadeEngineApi.Tests
             public void Dispose()
                 => DisposeCount++;
         }
+
     }
 }
