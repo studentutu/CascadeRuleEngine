@@ -37,27 +37,21 @@
    - Add explicit capacity policy or pooling for `EntityFactList<TFact>`.
    - Measure first-use and steady-state allocations with a realistic 500+ entity scenario.
 
-2. Replace `System.Type` fact/output identity with lightweight ids.
-   - Introduce a lightweight GUID or stable type id for each fact/output type instead of storing and routing by `System.Type`.
-   - Each fact type should expose or register one static unique id with startup validation for duplicates.
-   - Don't Keep `System.Type`, full cut-out. For diagnostic purposes add a utility that will map guid to the actual type (do not use it in hotpath, only in exceptions!)
-   - Update reducer maps, affected-output maps, queued facts, fact masks, and transaction required-fact checks to use the lightweight id.
-   - Add tests proving duplicate ids fail during feature/build validation and valid ids route reducers/committers correctly.
-
-3. Add focused diagnostics for reduction failures.
+2. Add focused diagnostics for reduction failures.
    - Include current fact type, entity, causal depth, reducer type, and budget reason.
    - Make cycle/budget failures actionable instead of generic exceptions.
 
-4. Validate transactional reducer semantics with tests.
+3. Validate transactional reducer semantics with tests.
    - Add a two-fact entity-scoped reducer test.
    - Add a batch transactional reducer test with only eligible entities.
    - Verify transactional reducers do not fire twice for the same entity/fact set.
 
-5. Harden commit conflict behavior.
+4. Harden commit conflict behavior.
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
-6. Improve package examples.
+5. Improve package examples.
    - Keep Hestia as the minimal vertical slice.
    - Add one small example showing cross-entity query from a reducer.
    - Add one example showing entity creation during reduction.
+   - Review package readme and add section if limitation, examples are missing.
