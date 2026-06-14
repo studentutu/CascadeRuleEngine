@@ -21,6 +21,8 @@ namespace CascadeEngineApi
 
         void ClearMutations();
 
+        void DisposeBucket();
+
         int MutationCount { get; }
     }
 }

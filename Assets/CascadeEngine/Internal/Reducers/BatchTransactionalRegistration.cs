@@ -26,5 +26,13 @@ namespace CascadeEngineApi
 
         public void ReduceBatch(FactSimulation simulation, ReadOnlySpan<EntityRef> entities)
             => _reducer.ReduceBatch(simulation, entities);
+
+        public void DisposeRegistration()
+        {
+            if (_reducer is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
     }
 }

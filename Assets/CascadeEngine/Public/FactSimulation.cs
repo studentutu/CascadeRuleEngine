@@ -11,11 +11,13 @@ namespace CascadeEngineApi
     /// </summary>
     public sealed class FactSimulation :
         IFactSimulation,
+        IDisposable,
         ICommittedStateStore,
         IReduceContext,
         ICommitContext,
         IEntityQuery
     {
+        private readonly FactFeature _feature;
         private readonly FactFeatureRegistry _registry;
         private readonly EntityStore _entities = new EntityStore();
         private readonly FactStore _facts = new FactStore();
@@ -30,6 +32,7 @@ namespace CascadeEngineApi
         private SimulationTick _tick;
         private int _currentCausalDepth;
         private int _mutationCount;
+        private bool _disposed;
 
         /// <summary>
         /// [INTEGRATION] Range: fully constructed feature. Condition: bootstrap. Output: simulation bound to the feature registrations.
@@ -41,15 +44,50 @@ namespace CascadeEngineApi
                 throw new ArgumentNullException(nameof(feature));
             }
 
+            if (feature.IsDisposed)
+            {
+                throw new ObjectDisposedException(nameof(FactFeature));
+            }
+
+            if (feature.IsAttachedToParent)
+            {
+                throw new InvalidOperationException("Sub-feature registrations are owned by its parent feature.");
+            }
+
+            _feature = feature;
             _registry = feature.Registry;
             _factView = new EntityFactView(_facts);
             CreateRegisteredStateBuckets();
         }
 
-        public ICommittedStateStore State => this;
-        public IEntityQuery Query => this;
+        public ICommittedStateStore State
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return this;
+            }
+        }
+
+        public IEntityQuery Query
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return this;
+            }
+        }
+
         public SimulationTick Tick => _tick;
-        public int MutationCount => _mutationCount;
+        public int MutationCount
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _mutationCount;
+            }
+        }
+
         public SimulationResult LastResult { get; private set; }
 
         /// <summary>
@@ -57,6 +95,8 @@ namespace CascadeEngineApi
         /// </summary>
         public void Warmup(WarmupCapacityHints hints)
         {
+            ThrowIfDisposed();
+
             if (hints == null)
             {
                 throw new ArgumentNullException(nameof(hints));
@@ -84,6 +124,8 @@ namespace CascadeEngineApi
 
         public EntityRef CreateEntity()
         {
+            ThrowIfDisposed();
+
             var entity = _entities.Create();
             _facts.EnsureEntityCapacity(_entities.Count);
             return entity;
@@ -91,6 +133,8 @@ namespace CascadeEngineApi
 
         public void DestroyEntity(EntityRef entity)
         {
+            ThrowIfDisposed();
+
             if (!_entities.Destroy(entity))
             {
                 return;
@@ -105,18 +149,29 @@ namespace CascadeEngineApi
         }
 
         public bool IsDestroyed(EntityRef entity)
-            => _entities.IsDestroyed(entity);
+        {
+            ThrowIfDisposed();
+            return _entities.IsDestroyed(entity);
+        }
 
         public void Emit<TFact>(EntityRef entity, in TFact fact)
             where TFact : struct, IFact
-            => EmitCore(entity, in fact, _currentCausalDepth);
+        {
+            ThrowIfDisposed();
+            EmitCore(entity, in fact, _currentCausalDepth);
+        }
 
         public void EmitGlobal<TFact>(in TFact fact)
             where TFact : struct, IFact
-            => EmitCore(EntityRef.Global, in fact, _currentCausalDepth);
+        {
+            ThrowIfDisposed();
+            EmitCore(EntityRef.Global, in fact, _currentCausalDepth);
+        }
 
         public SimulationResult RunTick(ReduceOptions options)
         {
+            ThrowIfDisposed();
+
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));
@@ -206,11 +261,42 @@ namespace CascadeEngineApi
             }
         }
 
+        /// <summary>
+        /// [INTEGRATION] Range: terminal simulation lifecycle. Condition: scene/domain unload or host replacement. Output: runtime-owned stores and the bound feature registry are disposed once.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _commitActions.Clear();
+            _firedTransactional.Clear();
+            _firedBatchEntities.Clear();
+            _facts.DisposeStore();
+
+            foreach (var bucket in _stateBuckets.Values)
+            {
+                bucket.DisposeBucket();
+            }
+
+            _stateBuckets.Clear();
+            _entities.DisposeStore();
+            _feature.Dispose();
+            _currentCausalDepth = 0;
+            _mutationCount = 0;
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+
         public void ForEachMutation<TState>(
             OutputState<TState> output,
             StateMutationHandler<TState> handler)
             where TState : struct, IOutputState
         {
+            ThrowIfDisposed();
+
             if (output == null)
             {
                 throw new ArgumentNullException(nameof(output));
@@ -235,24 +321,37 @@ namespace CascadeEngineApi
         public void SetStateSilently<TState>(EntityRef entity, in TState state)
             where TState : struct, IOutputState
         {
+            ThrowIfDisposed();
             ThrowIfNotLive(entity);
             GetStateBucket<TState>().SetSilently(entity, state);
         }
 
         public bool Has<TState>(EntityRef entity)
             where TState : struct, IOutputState
-            => GetStateBucket<TState>().Has(entity);
+        {
+            ThrowIfDisposed();
+            return GetStateBucket<TState>().Has(entity);
+        }
 
         public TState Get<TState>(EntityRef entity)
             where TState : struct, IOutputState
-            => GetStateBucket<TState>().Get(entity);
+        {
+            ThrowIfDisposed();
+            return GetStateBucket<TState>().Get(entity);
+        }
 
         public bool TryGet<TState>(EntityRef entity, out TState state)
             where TState : struct, IOutputState
-            => GetStateBucket<TState>().TryGet(entity, out state);
+        {
+            ThrowIfDisposed();
+            return GetStateBucket<TState>().TryGet(entity, out state);
+        }
 
         public IEntityFactView Facts(EntityRef entity)
-            => _factView.Bind(entity);
+        {
+            ThrowIfDisposed();
+            return _factView.Bind(entity);
+        }
 
         public bool HasState<TState>(EntityRef entity)
             where TState : struct, IOutputState
@@ -269,6 +368,8 @@ namespace CascadeEngineApi
         public EntityQueryResult With<TState>()
             where TState : struct, IOutputState
         {
+            ThrowIfDisposed();
+
             var count = 0;
             EnsureQueryCapacity(_entities.Count);
             for (var i = 0; i < _entities.Count; i++)
@@ -288,6 +389,8 @@ namespace CascadeEngineApi
             where TStateA : struct, IOutputState
             where TStateB : struct, IOutputState
         {
+            ThrowIfDisposed();
+
             var count = 0;
             EnsureQueryCapacity(_entities.Count);
             for (var i = 0; i < _entities.Count; i++)
@@ -306,6 +409,8 @@ namespace CascadeEngineApi
         public EntityQueryResult WithFact<TFact>()
             where TFact : struct, IFact
         {
+            ThrowIfDisposed();
+
             EnsureTransactionCapacity();
             _facts.CopyTouchedEntities(_transactionBuffer, out var touchedCount);
 
@@ -337,6 +442,8 @@ namespace CascadeEngineApi
 
         internal CascadeCapacitySnapshot CaptureCapacitySnapshot(int warmedEntityCapacity)
         {
+            ThrowIfDisposed();
+
             var minimumStateCapacityHint = int.MaxValue;
             var minimumMutationCapacity = int.MaxValue;
 
@@ -603,6 +710,14 @@ namespace CascadeEngineApi
             if (_entities.IsDestroyed(entity))
             {
                 throw new InvalidOperationException($"Destroyed entity '{entity}' cannot receive output state.");
+            }
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed || _feature.IsDisposed)
+            {
+                throw new ObjectDisposedException(nameof(FactSimulation));
             }
         }
 

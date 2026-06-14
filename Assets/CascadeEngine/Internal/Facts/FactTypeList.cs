@@ -27,5 +27,8 @@ namespace CascadeEngineApi
 
         internal Type[] ToArray()
             => _types.ToArray();
+
+        internal void Clear()
+            => _types.Clear();
     }
 }

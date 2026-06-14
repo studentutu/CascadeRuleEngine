@@ -12,5 +12,7 @@ namespace CascadeEngineApi
         Type FactType { get; }
 
         void Reduce(FactSimulation simulation, in QueuedFact fact);
+
+        void DisposeRegistration();
     }
 }

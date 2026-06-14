@@ -25,5 +25,7 @@ namespace CascadeEngineApi
         void ClearMutations(FactSimulation simulation);
 
         int MutationCount(FactSimulation simulation);
+
+        void DisposeRegistration();
     }
 }

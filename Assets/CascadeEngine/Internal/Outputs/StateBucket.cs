@@ -124,6 +124,19 @@ namespace CascadeEngineApi
         public void ClearMutations()
             => _mutations.Clear();
 
+        public void DisposeBucket()
+        {
+            foreach (var pair in _values)
+            {
+                DisposeIfNeeded(pair.Value);
+            }
+
+            _values = new Dictionary<int, TState>();
+            _mutations.Clear();
+            _mutations.Capacity = 0;
+            _stateCapacityHint = 0;
+        }
+
         internal void ForEachMutation(StateMutationHandler<TState> handler)
         {
             for (var i = 0; i < _mutations.Count; i++)
@@ -139,6 +152,14 @@ namespace CascadeEngineApi
             if (required > _stateCapacityHint)
             {
                 _stateCapacityHint = required;
+            }
+        }
+
+        private static void DisposeIfNeeded(TState state)
+        {
+            if (state is IDisposable disposable)
+            {
+                disposable.Dispose();
             }
         }
     }

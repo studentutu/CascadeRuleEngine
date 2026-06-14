@@ -15,5 +15,7 @@ namespace CascadeEngineApi
         void Reindex(int index);
 
         void ReduceBatch(FactSimulation simulation, ReadOnlySpan<EntityRef> entities);
+
+        void DisposeRegistration();
     }
 }

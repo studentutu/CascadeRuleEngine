@@ -60,5 +60,11 @@ namespace CascadeEngineApi
             Validate(entity);
             return !_destroyed.Contains(entity.Value);
         }
+
+        internal void DisposeStore()
+        {
+            _destroyed.Clear();
+            _createdCount = 0;
+        }
     }
 }

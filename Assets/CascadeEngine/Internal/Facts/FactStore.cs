@@ -245,6 +245,14 @@ namespace CascadeEngineApi
             RejectedDestroyedEntityFacts = 0;
         }
 
+        internal void DisposeStore()
+        {
+            Clear();
+            _buckets.Clear();
+            _queue.Clear();
+            _queue.Capacity = 0;
+        }
+
         private FactBucket<TFact> GetOrCreateBucket<TFact>()
             where TFact : struct, IFact
         {

@@ -8,7 +8,7 @@ namespace CascadeEngineApi
     /// <summary>
     /// Registration-time container for reducer and output mappings.
     /// </summary>
-    internal sealed class FactFeatureRegistry
+    internal sealed class FactFeatureRegistry : IDisposable
     {
         private readonly Dictionary<Type, List<IReducerInvoker>> _reducersByFact =
             new Dictionary<Type, List<IReducerInvoker>>();
@@ -122,7 +122,40 @@ namespace CascadeEngineApi
                 && ReferenceEquals(((OutputRegistration<TState>)registration).Output, output);
         }
 
-        internal void MergeFrom(FactFeatureRegistry other)
+        public void Dispose()
+        {
+            foreach (var reducerList in _reducersByFact.Values)
+            {
+                for (var i = 0; i < reducerList.Count; i++)
+                {
+                    reducerList[i].DisposeRegistration();
+                }
+            }
+
+            for (var i = 0; i < _outputs.Count; i++)
+            {
+                _outputs[i].DisposeRegistration();
+            }
+
+            for (var i = 0; i < _transactionalReducers.Count; i++)
+            {
+                _transactionalReducers[i].DisposeRegistration();
+            }
+
+            for (var i = 0; i < _batchTransactionalReducers.Count; i++)
+            {
+                _batchTransactionalReducers[i].DisposeRegistration();
+            }
+
+            _reducersByFact.Clear();
+            _outputs.Clear();
+            _outputsByState.Clear();
+            _transactionalReducers.Clear();
+            _batchTransactionalReducers.Clear();
+            _knownFactTypes.Clear();
+        }
+
+        internal void AbsorbFrom(FactFeatureRegistry other)
         {
             AddKnownFacts(other._knownFactTypes.ToArray());
 
@@ -163,6 +196,8 @@ namespace CascadeEngineApi
                 other._batchTransactionalReducers[i].Reindex(_batchTransactionalReducers.Count);
                 _batchTransactionalReducers.Add(other._batchTransactionalReducers[i]);
             }
+
+            other.ClearWithoutDisposing();
         }
 
         private void AddKnownFacts(FactType[] factTypes)
@@ -209,6 +244,16 @@ namespace CascadeEngineApi
             {
                 throw new InvalidOperationException("Transactional reducer must declare at least one required fact.");
             }
+        }
+
+        private void ClearWithoutDisposing()
+        {
+            _reducersByFact.Clear();
+            _outputs.Clear();
+            _outputsByState.Clear();
+            _transactionalReducers.Clear();
+            _batchTransactionalReducers.Clear();
+            _knownFactTypes.Clear();
         }
     }
 }

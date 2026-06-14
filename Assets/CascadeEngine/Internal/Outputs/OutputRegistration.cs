@@ -71,5 +71,13 @@ namespace CascadeEngineApi
 
         public int MutationCount(FactSimulation simulation)
             => simulation.GetStateBucket<TState>().MutationCount;
+
+        public void DisposeRegistration()
+        {
+            if (_committer is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
     }
 }

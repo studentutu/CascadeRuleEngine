@@ -25,5 +25,13 @@ namespace CascadeEngineApi
             ref readonly var typedFact = ref bucket.Get(fact.Entity, fact.FactIndex);
             _reducer.Reduce(simulation, fact.Entity, in typedFact);
         }
+
+        public void DisposeRegistration()
+        {
+            if (_reducer is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
     }
 }

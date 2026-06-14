@@ -26,5 +26,13 @@ namespace CascadeEngineApi
 
         public void Reduce(FactSimulation simulation, EntityRef entity)
             => _reducer.Reduce(simulation, entity);
+
+        public void DisposeRegistration()
+        {
+            if (_reducer is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
     }
 }
