@@ -22,6 +22,10 @@
 - `FactSimulation.Dispose()` is now the only terminal simulation lifecycle API. It releases simulation-owned tick facts, output state buckets, mutation buffers, entity lifecycle data, commit buffers, fired reducer caches, and the bound feature registry tree exactly once.
 - `SubFeature` transfers registration ownership into the parent feature and drains the child registry. Attached sub-features are not valid simulation roots.
 - `FactFeature.Dispose()` clears its registry and attached sub-features. Reducer and committer instances that implement `IDisposable` are disposed before registration maps are cleared.
+- Transactional reducer semantics are covered by focused edit-mode tests:
+  - two-fact entity-scoped reducer fires once when both required facts exist.
+  - batch transactional reducer receives only eligible entities.
+  - batch transactional reducer fires exactly once per entity when entities become eligible across different passes, while incomplete entities stay excluded.
 
 ## Known Gaps
 
@@ -33,21 +37,16 @@
 
 ## Next Work
 
-1. Validate transactional reducer semantics with tests.
-   - Add a two-fact entity-scoped reducer test.
-   - Add a batch transactional reducer test with only eligible entities.
-   - Verify transactional reducers do not fire twice for the same entity/fact set when separate entities concluded the same fact via separate strategies(1 pass for entity_1, 2 pass for entity_2).
-
-2. Add focused diagnostics for reduction failures along with hot-path tightening.
+1. Add focused diagnostics for reduction failures along with hot-path tightening.
    - Fact/type routing still uses `System.Type` references in several internal maps and descriptors. This is heavier than needed for hot-path fact identity and routing.
    - Include current fact, entity, causal depth, reducer type, and budget reason.
    - Make cycle/budget failures actionable instead of generic exceptions.
 
-3. Harden commit conflict behavior.
+2. Harden commit conflict behavior.
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
-4. Improve package examples.
+3. Improve package examples.
    - Keep Hestia as the minimal vertical slice.
    - Add one small example showing cross-entity query from a reducer.
    - Add one example showing entity creation during reduction.
