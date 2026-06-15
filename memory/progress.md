@@ -37,10 +37,10 @@
 
 ## Next Work
 
-1. Add focused diagnostics for reduction failures along with hot-path tightening.
+1. Hot-path tightening.
    - Fact/type routing still uses `System.Type` references in several internal maps and descriptors. This is heavier than needed for hot-path fact identity and routing.
-   - Include current fact, entity, causal depth, reducer type, and budget reason.
-   - Make cycle/budget failures actionable instead of generic exceptions.
+   - Make cycle/budget failures actionable instead of generic exceptions (we need to add incremental Loop, meaning  RunTick makes full loop, while RunTickIncremental makes a single loop and returns whether it is done or not). This is needed for projects with broad and complex reducers and single full loop may be too heavy. Incremental loop allows to have a strict budget per single reducer loop iteration and act on it, allowing main-thread to go do other job and return to the loop in the next frame.
+   - Diagnostics: Include current fact, entity, causal depth, reducer type, and budget reason.
 
 2. Harden commit conflict behavior.
    - Add tests for equal-priority conflicts across multiple facts.
