@@ -46,8 +46,11 @@
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
-3. Improve package examples.
+3. Improve package:
+   - minimal examples
+   - improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
+   - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)
    - Keep Hestia as the minimal vertical slice.
    - Add one small example showing cross-entity query from a reducer.
-   - Add one example showing entity creation during reduction.
+   - Add one example showing entity creation/deletion during reduction.
    - Review package readme and add section if limitation, examples are missing.

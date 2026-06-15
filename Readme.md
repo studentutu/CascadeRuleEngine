@@ -20,6 +20,9 @@ Core:
 - reducers never write durable state.
 - reducers only read committed state plus accumulated tick facts, then emit more facts.
 - committers are the only code that writes `IOutputState`.
+- zero memory-allocation on hot path.
+- reducer loop is commutative and idempotent, order of reducers doesn't change output.
+- minimal and clean API (full feature parity to Entitas ECS).
 
 ## The key rule
 
@@ -31,7 +34,7 @@ The concept:
 Facts are what happened or what was requested.
 Reducers derive consequences.
 Committers decide durable truth.
-OutputState is the only thing consumers trust.
+OutputState is the only thing consumers trust and consume.
 ```
 
 That is the closest ECS equivalent to React-style reconciliation:
@@ -47,7 +50,7 @@ Fact ECS
   -> reducers/fact derivation
   -> fact closure
   -> committers
-  -> dirty output component update
+  -> dirty output component published
 ```
 
 ## Minimal Host Flow
@@ -123,7 +126,9 @@ Warmup pre-creates buckets for fact types known from feature registration: reduc
 
 ## Dispose Ownership Rules
 
-`FactSimulation` owns runtime data and the feature registry tree passed into it. `Dispose()` is terminal and idempotent: call it during scene unload, domain replacement, or editor-session cleanup. After disposal, public simulation APIs throw `ObjectDisposedException`.
+`FactSimulation` owns runtime data and the feature registry tree passed into it.
+
+`Dispose()` is terminal and idempotent: call it during scene unload, domain replacement, or editor-session cleanup. After disposal, public simulation APIs throw `ObjectDisposedException`.
 
 Ownership rules:
 
@@ -159,7 +164,6 @@ public sealed class GameplayFeature : FactFeature
 | Type | Role |
 | --- | --- |
 | `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
-| `CascadeTypeDiagnostics` | diagnostic-only id-to-`System.Type` lookup for exceptions/tooling |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
