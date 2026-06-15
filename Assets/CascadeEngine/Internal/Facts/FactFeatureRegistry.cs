@@ -55,6 +55,22 @@ namespace CascadeEngineApi
             reducers.Add(invoker);
         }
 
+        internal void AddPriorityResolver<TFact, TResolver>()
+            where TFact : struct, IFact
+            where TResolver : IFactPriorityResolver<TFact>, new()
+        {
+            var factType = FactType.Of<TFact>();
+            AddKnownFact(factType);
+
+            if (_priorityResolvers.ContainsKey(factType.Id))
+            {
+                throw new InvalidOperationException($"Fact '{_typeCatalog.Describe(factType.Id)}' already has a priority resolver.");
+            }
+
+            _priorityResolvers.Add(factType.Id, Create<TResolver>());
+        }
+
+
         internal void AddTransactionalReducer<TReducer>(FactType[] requiredFacts)
             where TReducer : ITransactionalReducer, new()
         {
@@ -275,13 +291,6 @@ namespace CascadeEngineApi
         {
             factType.Register(_typeCatalog);
             _knownFactTypes.Add(factType);
-
-            if (!factType.CanCreatePriorityResolver || _priorityResolvers.ContainsKey(factType.Id))
-            {
-                return;
-            }
-
-            _priorityResolvers.Add(factType.Id, factType.CreatePriorityResolver());
         }
 
         private void AddKnownFacts(CascadeTypeId[] factIds)

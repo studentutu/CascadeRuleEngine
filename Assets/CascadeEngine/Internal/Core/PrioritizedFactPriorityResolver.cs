@@ -3,7 +3,7 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Typed bridge for legacy IPrioritizedFact structs without runtime boxing.
+    /// Typed bridge for explicitly registered IPrioritizedFact structs without runtime boxing.
     /// </summary>
     internal sealed class PrioritizedFactPriorityResolver<TFact> : IFactPriorityResolver<TFact>
         where TFact : struct, IFact, IPrioritizedFact

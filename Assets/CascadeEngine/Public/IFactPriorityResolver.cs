@@ -3,9 +3,9 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Internal typed fact priority resolver used by the work queue without boxing struct facts.
+    /// Typed fact priority resolver used by the work queue without boxing struct facts.
     /// </summary>
-    internal interface IFactPriorityResolver<TFact>
+    public interface IFactPriorityResolver<TFact>
         where TFact : struct, IFact
     {
         FactPriority Resolve(in TFact fact);

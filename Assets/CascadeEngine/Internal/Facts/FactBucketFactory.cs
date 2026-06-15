@@ -1,7 +1,5 @@
 #nullable enable
 
-using System;
-
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -18,21 +16,9 @@ namespace CascadeEngineApi
 
         public CascadeTypeId Id => CascadeTypeId.FromName(DebugName);
         public string DebugName => typeof(TFact).Name;
-        public bool CanCreatePriorityResolver => typeof(IPrioritizedFact).IsAssignableFrom(typeof(TFact));
 
         public void Register(CascadeTypeCatalog catalog)
             => catalog.Register<TFact>();
-
-        public object CreatePriorityResolver()
-        {
-            if (!CanCreatePriorityResolver)
-            {
-                throw new InvalidOperationException($"Fact '{DebugName}' does not implement '{nameof(IPrioritizedFact)}'.");
-            }
-
-            var resolverType = typeof(PrioritizedFactPriorityResolver<>).MakeGenericType(typeof(TFact));
-            return Activator.CreateInstance(resolverType);
-        }
 
         public IFactBucket Create(
             CascadeTypeId id,

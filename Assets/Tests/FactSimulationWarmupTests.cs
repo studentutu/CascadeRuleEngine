@@ -148,6 +148,9 @@ namespace CascadeEngineApi.Tests
         {
             public WarmupFeature()
             {
+                Priority<WarmupStartFact>()
+                    .FromFact();
+
                 Reduce<WarmupStartFact>()
                     .With<WarmupStartReducer>();
 

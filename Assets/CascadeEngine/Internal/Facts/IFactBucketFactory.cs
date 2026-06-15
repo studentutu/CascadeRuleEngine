@@ -9,11 +9,8 @@ namespace CascadeEngineApi
     {
         CascadeTypeId Id { get; }
         string DebugName { get; }
-        bool CanCreatePriorityResolver { get; }
 
         void Register(CascadeTypeCatalog catalog);
-
-        object CreatePriorityResolver();
 
         IFactBucket Create(
             CascadeTypeId id,
