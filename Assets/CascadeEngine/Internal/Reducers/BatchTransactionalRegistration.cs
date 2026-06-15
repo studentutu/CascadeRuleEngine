@@ -10,15 +10,22 @@ namespace CascadeEngineApi
     internal sealed class BatchTransactionalRegistration : IBatchTransactionalRegistration
     {
         private readonly IBatchTransactionalReducer _reducer;
+        private readonly string _debugName;
 
-        internal BatchTransactionalRegistration(int index, CascadeTypeId[] requiredFactIds, IBatchTransactionalReducer reducer)
+        internal BatchTransactionalRegistration(
+            int index,
+            CascadeTypeId[] requiredFactIds,
+            IBatchTransactionalReducer reducer,
+            string debugName)
         {
             Index = index;
             RequiredFactIds = requiredFactIds;
             _reducer = reducer;
+            _debugName = debugName ?? string.Empty;
         }
 
         public int Index { get; private set; }
+        public string DebugName => _debugName;
         public CascadeTypeId[] RequiredFactIds { get; }
 
         public void Reindex(int index)

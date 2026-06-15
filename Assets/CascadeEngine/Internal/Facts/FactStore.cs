@@ -240,6 +240,21 @@ namespace CascadeEngineApi
         internal void CopyTouchedEntities(EntityRefBuffer destination, out int count)
             => _touchedEntities.CopyTo(destination, out count);
 
+        internal void CopyFactIds(EntityRef entity, CascadeTypeId[] destination, out int count)
+        {
+            count = 0;
+            foreach (var pair in _buckets)
+            {
+                if (!pair.Value.Has(entity))
+                {
+                    continue;
+                }
+
+                destination[count] = pair.Key;
+                count++;
+            }
+        }
+
         internal void Clear()
         {
             foreach (var bucket in _buckets.Values)

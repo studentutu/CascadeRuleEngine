@@ -8,7 +8,9 @@ namespace CascadeEngineApi
     internal interface IOutputRegistration
     {
         CascadeTypeId StateId { get; }
+        int Index { get; }
         string Name { get; }
+        CascadeTypeId[] AffectedFactIds { get; }
 
         void Reindex(int index);
 

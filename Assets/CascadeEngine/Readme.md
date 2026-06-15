@@ -64,6 +64,22 @@ SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
+## Incremental Host Flow
+
+`RunTick` keeps the original full-closure contract. `RunTickIncremental` runs one reduction pass on `FactSimulation` and returns `true` only when the tick closes and commit has been applied.
+
+```csharp
+while (!simulation.RunTickIncremental(options, out SimulationResult result))
+{
+    // No durable output state has been committed yet.
+    // Yield to the host frame loop, then continue the same open tick.
+}
+
+simulation.ForEachMutation(feature.Position, OnPositionChanged);
+```
+
+Incomplete incremental results are diagnostic only. Consumers must keep trusting committed `IOutputState`; commit still happens only after reduction closure.
+
 ## Stable Type Ids
 
 Fact and output ids are derived during feature registration from the CLR type name. Do not add static ids to fact or output structs. The feature registry owns the initialized name-to-id catalog and validates duplicates before a simulation can use it.
@@ -159,6 +175,7 @@ Fact queue priority is inferred during feature registration. Facts that implemen
 | Type | Role |
 | --- | --- |
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
+| `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
@@ -169,6 +186,8 @@ Fact queue priority is inferred during feature registration. Facts that implemen
 | `FactListCapacityMode` | grow or fixed capacity policy for per-entity fact lists |
 | `OutputState<TState>` | typed mutation stream descriptor |
 | `StateMutation<TState>` | create/update/delete diff for one output state |
+| `SimulationResultCounters` | numeric tick counters grouped away from result construction |
+| `SimulationResultDiagnostics` | incomplete-tick and guardrail context grouped away from result construction |
 
 ## Package Boundary
 

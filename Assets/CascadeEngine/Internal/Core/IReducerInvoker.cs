@@ -8,6 +8,7 @@ namespace CascadeEngineApi
     internal interface IReducerInvoker
     {
         CascadeTypeId FactId { get; }
+        string DebugName { get; }
 
         void Reduce(FactSimulation simulation, in QueuedFact fact);
 

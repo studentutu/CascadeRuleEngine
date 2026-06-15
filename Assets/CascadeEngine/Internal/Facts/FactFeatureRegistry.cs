@@ -18,6 +18,9 @@ namespace CascadeEngineApi
         private readonly Dictionary<CascadeTypeId, IOutputRegistration> _outputsByState =
             new Dictionary<CascadeTypeId, IOutputRegistration>();
 
+        private readonly Dictionary<CascadeTypeId, List<IOutputRegistration>> _outputsByAffectedFact =
+            new Dictionary<CascadeTypeId, List<IOutputRegistration>>();
+
         private readonly Dictionary<CascadeTypeId, object> _priorityResolvers =
             new Dictionary<CascadeTypeId, object>();
 
@@ -41,7 +44,7 @@ namespace CascadeEngineApi
             var factType = FactType.Of<TFact>();
             AddKnownFact(factType);
             var reducer = Create<TReducer>();
-            var invoker = new ReducerInvoker<TFact>(factType.Id, reducer);
+            var invoker = new ReducerInvoker<TFact>(factType.Id, reducer, typeof(TReducer).Name);
 
             if (!_reducersByFact.TryGetValue(factType.Id, out var reducers))
             {
@@ -61,7 +64,8 @@ namespace CascadeEngineApi
             _transactionalReducers.Add(new TransactionalRegistration(
                 _transactionalReducers.Count,
                 ToIds(requiredFacts),
-                reducer));
+                reducer,
+                typeof(TReducer).Name));
         }
 
         internal void AddBatchTransactionalReducer<TReducer>(FactType[] requiredFacts)
@@ -73,7 +77,8 @@ namespace CascadeEngineApi
             _batchTransactionalReducers.Add(new BatchTransactionalRegistration(
                 _batchTransactionalReducers.Count,
                 ToIds(requiredFacts),
-                reducer));
+                reducer,
+                typeof(TReducer).Name));
         }
 
         internal OutputState<TState> AddOutput<TState, TCommitter>(
@@ -96,16 +101,21 @@ namespace CascadeEngineApi
             }
 
             AddKnownFacts(affectedFacts);
+            var affectedFactIds = ToIds(affectedFacts);
             var output = new OutputState<TState>(_outputs.Count, stateId, name, conflictPolicy);
             var committer = Create<TCommitter>();
-            var registration = new OutputRegistration<TState>(output, ToIds(affectedFacts), committer);
+            var registration = new OutputRegistration<TState>(output, affectedFactIds, committer);
             _outputs.Add(registration);
             _outputsByState.Add(stateId, registration);
+            AddAffectedOutputMappings(affectedFactIds, registration);
             return output;
         }
 
         internal bool TryGetReducers(CascadeTypeId factId, out List<IReducerInvoker> reducers)
             => _reducersByFact.TryGetValue(factId, out reducers);
+
+        internal bool TryGetAffectedOutputs(CascadeTypeId factId, out List<IOutputRegistration> outputs)
+            => _outputsByAffectedFact.TryGetValue(factId, out outputs);
 
         internal bool TryGetOutput<TState>(out OutputRegistration<TState> output)
             where TState : struct, IOutputState
@@ -188,6 +198,7 @@ namespace CascadeEngineApi
             _reducersByFact.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
+            _outputsByAffectedFact.Clear();
             _priorityResolvers.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
@@ -232,6 +243,7 @@ namespace CascadeEngineApi
                 output.Reindex(_outputs.Count);
                 _outputs.Add(output);
                 _outputsByState.Add(output.StateId, output);
+                AddAffectedOutputMappings(output.AffectedFactIds, output);
             }
 
             for (var i = 0; i < other._transactionalReducers.Count; i++)
@@ -286,6 +298,20 @@ namespace CascadeEngineApi
             return new T();
         }
 
+        private void AddAffectedOutputMappings(CascadeTypeId[] factIds, IOutputRegistration output)
+        {
+            for (var i = 0; i < factIds.Length; i++)
+            {
+                if (!_outputsByAffectedFact.TryGetValue(factIds[i], out var outputs))
+                {
+                    outputs = new List<IOutputRegistration>();
+                    _outputsByAffectedFact.Add(factIds[i], outputs);
+                }
+
+                outputs.Add(output);
+            }
+        }
+
         private static CascadeTypeId[] ToIds(FactType[] factTypes)
         {
             var result = new CascadeTypeId[factTypes.Length];
@@ -310,6 +336,7 @@ namespace CascadeEngineApi
             _reducersByFact.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
+            _outputsByAffectedFact.Clear();
             _priorityResolvers.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();

@@ -12,14 +12,17 @@ namespace CascadeEngineApi
     {
         private readonly CascadeTypeId _factId;
         private readonly IFactReducer<TFact> _reducer;
+        private readonly string _debugName;
 
-        internal ReducerInvoker(CascadeTypeId factId, IFactReducer<TFact> reducer)
+        internal ReducerInvoker(CascadeTypeId factId, IFactReducer<TFact> reducer, string debugName)
         {
             _factId = factId;
             _reducer = reducer ?? throw new ArgumentNullException(nameof(reducer));
+            _debugName = debugName ?? string.Empty;
         }
 
         public CascadeTypeId FactId => _factId;
+        public string DebugName => _debugName;
 
         public void Reduce(FactSimulation simulation, in QueuedFact fact)
         {

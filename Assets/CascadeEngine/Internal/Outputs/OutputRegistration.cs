@@ -28,7 +28,9 @@ namespace CascadeEngineApi
         internal OutputState<TState> Output { get; }
 
         public CascadeTypeId StateId => Output.Id;
+        public int Index => Output.Index;
         public string Name => Output.Name;
+        public CascadeTypeId[] AffectedFactIds => _affectedFactIds;
         public int CommitActionCapacity => _commitActions.Capacity;
 
         public void Reindex(int index)
