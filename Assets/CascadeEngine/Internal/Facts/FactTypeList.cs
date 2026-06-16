@@ -11,7 +11,7 @@ namespace CascadeEngineApi
     {
         private readonly List<FactType> _types = new List<FactType>();
 
-        internal void Add(FactType type)
+        internal bool Add(FactType type)
         {
             for (var i = 0; i < _types.Count; i++)
             {
@@ -20,13 +20,15 @@ namespace CascadeEngineApi
                     if (!_types[i].CanCreateBucket && type.CanCreateBucket)
                     {
                         _types[i] = type;
+                        return true;
                     }
 
-                    return;
+                    return false;
                 }
             }
 
             _types.Add(type);
+            return true;
         }
 
         internal FactType[] ToArray()

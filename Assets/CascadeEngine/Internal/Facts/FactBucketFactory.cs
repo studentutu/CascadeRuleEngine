@@ -20,6 +20,12 @@ namespace CascadeEngineApi
         public void Register(CascadeTypeCatalog catalog)
             => catalog.Register<TFact>();
 
+        public void BindRoute(FactFeatureRegistry registry, CascadeTypeId id)
+            => FactEmitRouteCache<TFact>.Add(registry, id);
+
+        public void UnbindRoute(FactFeatureRegistry registry)
+            => FactEmitRouteCache<TFact>.Remove(registry);
+
         public IFactBucket Create(
             CascadeTypeId id,
             int entityCapacity,

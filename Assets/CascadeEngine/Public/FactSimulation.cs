@@ -225,6 +225,7 @@ namespace CascadeEngineApi
             _commitFactIds = Array.Empty<CascadeTypeId>();
             _commitOutputMarks = Array.Empty<int>();
 
+            UnbindRegisteredStateBuckets();
             foreach (var bucket in _stateBuckets.Values)
             {
                 bucket.DisposeBucket();
@@ -256,12 +257,13 @@ namespace CascadeEngineApi
                 throw new ArgumentNullException(nameof(handler));
             }
 
-            if (!_registry.ContainsOutput(output))
+            var route = OutputStateRouteCache<TState>.Require(this);
+            if (!ReferenceEquals(route.Output, output))
             {
                 throw new InvalidOperationException($"Output '{output.Name}' belongs to a different feature registration.");
             }
 
-            GetStateBucket<TState>().ForEachMutation(handler);
+            route.Bucket.ForEachMutation(handler);
         }
 
         /// <summary>
@@ -319,12 +321,13 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
 
+            var bucket = GetStateBucket<TState>();
             var count = 0;
             EnsureQueryCapacity(_entities.Count);
             for (var i = 0; i < _entities.Count; i++)
             {
                 var entity = new EntityRef(i);
-                if (_entities.IsLive(entity) && Has<TState>(entity))
+                if (_entities.IsLive(entity) && bucket.Has(entity))
                 {
                     _queryBuffer[count] = entity;
                     count++;
@@ -340,12 +343,14 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
 
+            var bucketA = GetStateBucket<TStateA>();
+            var bucketB = GetStateBucket<TStateB>();
             var count = 0;
             EnsureQueryCapacity(_entities.Count);
             for (var i = 0; i < _entities.Count; i++)
             {
                 var entity = new EntityRef(i);
-                if (_entities.IsLive(entity) && Has<TStateA>(entity) && Has<TStateB>(entity))
+                if (_entities.IsLive(entity) && bucketA.Has(entity) && bucketB.Has(entity))
                 {
                     _queryBuffer[count] = entity;
                     count++;
@@ -380,15 +385,7 @@ namespace CascadeEngineApi
 
         internal StateBucket<TState> GetStateBucket<TState>()
             where TState : struct, IOutputState
-        {
-            var stateId = _registry.RequireOutput<TState>();
-            if (_stateBuckets.TryGetValue(stateId, out var bucket))
-            {
-                return (StateBucket<TState>)bucket;
-            }
-
-            throw new InvalidOperationException($"Output state '{_registry.Describe(stateId)}' is not registered.");
-        }
+            => OutputStateRouteCache<TState>.Require(this).Bucket;
 
         internal CascadeCapacitySnapshot CaptureCapacitySnapshot(int warmedEntityCapacity)
         {
@@ -429,7 +426,8 @@ namespace CascadeEngineApi
         private void EmitCore<TFact>(EntityRef entity, in TFact fact, int parentDepth)
             where TFact : struct, IFact
         {
-            var factId = _registry.RequireFact<TFact>();
+            var route = _registry.RequireFactRoute<TFact>();
+            var factId = route.FactId;
             try
             {
                 _facts.Emit(
@@ -437,7 +435,7 @@ namespace CascadeEngineApi
                     entity,
                     factId,
                     in fact,
-                    _registry.ResolvePriority(in fact),
+                    route.ResolvePriority(in fact),
                     parentDepth,
                     _partial.CurrentGuardrails);
             }
@@ -489,7 +487,17 @@ namespace CascadeEngineApi
                     throw new InvalidOperationException($"Output state '{output.Name}' registered twice.");
                 }
 
-                _stateBuckets.Add(output.StateId, output.CreateStateBucket());
+                var bucket = output.CreateStateBucket();
+                _stateBuckets.Add(output.StateId, bucket);
+                output.BindStateBucket(this, bucket);
+            }
+        }
+
+        private void UnbindRegisteredStateBuckets()
+        {
+            for (var i = 0; i < _registry.Outputs.Count; i++)
+            {
+                _registry.Outputs[i].UnbindStateBucket(this);
             }
         }
 

@@ -81,6 +81,12 @@ namespace CascadeEngineApi
         public IStateBucket CreateStateBucket()
             => new StateBucket<TState>(Output.Id, Output.Name);
 
+        public void BindStateBucket(FactSimulation simulation, IStateBucket bucket)
+            => OutputStateRouteCache<TState>.Add(simulation, Output, (StateBucket<TState>)bucket);
+
+        public void UnbindStateBucket(FactSimulation simulation)
+            => OutputStateRouteCache<TState>.Remove(simulation);
+
         public void DeleteState(FactSimulation simulation, EntityRef entity)
             => simulation.GetStateBucket<TState>().Delete(entity);
 

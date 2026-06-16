@@ -12,6 +12,10 @@ namespace CascadeEngineApi
 
         void Register(CascadeTypeCatalog catalog);
 
+        void BindRoute(FactFeatureRegistry registry, CascadeTypeId id);
+
+        void UnbindRoute(FactFeatureRegistry registry);
+
         IFactBucket Create(
             CascadeTypeId id,
             int entityCapacity,

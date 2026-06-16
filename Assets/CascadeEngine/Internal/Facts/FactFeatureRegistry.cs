@@ -134,43 +134,19 @@ namespace CascadeEngineApi
         internal bool TryGetAffectedOutputs(CascadeTypeId factId, out List<IOutputRegistration> outputs)
             => _outputsByAffectedFact.TryGetValue(factId, out outputs);
 
-        internal bool TryGetOutput<TState>(out OutputRegistration<TState> output)
-            where TState : struct, IOutputState
-        {
-            if (_outputsByState.TryGetValue(RequireOutput<TState>(), out var registration))
-            {
-                output = (OutputRegistration<TState>)registration;
-                return true;
-            }
-
-            output = null!;
-            return false;
-        }
-
-        internal bool ContainsOutput<TState>(OutputState<TState> output)
-            where TState : struct, IOutputState
-        {
-            return _outputsByState.TryGetValue(RequireOutput<TState>(), out var registration)
-                && ReferenceEquals(((OutputRegistration<TState>)registration).Output, output);
-        }
-
         internal CascadeTypeId RequireFact<TFact>()
             where TFact : struct, IFact
-            => _typeCatalog.Require<TFact>();
+            => RequireFactRoute<TFact>().FactId;
 
-        internal CascadeTypeId RequireOutput<TState>()
-            where TState : struct, IOutputState
-            => _typeCatalog.Require<TState>();
+        internal FactEmitRoute<TFact> RequireFactRoute<TFact>()
+            where TFact : struct, IFact
+            => FactEmitRouteCache<TFact>.Require(this);
 
         internal string TypeName<T>()
             => _typeCatalog.NameOf<T>();
 
         internal string Describe(CascadeTypeId id)
             => _typeCatalog.Describe(id);
-
-        internal FactPriority ResolvePriority<TFact>(in TFact fact)
-            where TFact : struct, IFact
-            => FactPriorityResolverCache<TFact>.Resolve(this, in fact);
 
         public void Dispose()
         {
@@ -203,6 +179,7 @@ namespace CascadeEngineApi
                 registration.DisposeRegistration();
             }
 
+            UnbindKnownFactRoutes();
             _reducersByFact.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
@@ -287,7 +264,10 @@ namespace CascadeEngineApi
         private void AddKnownFact(FactType factType)
         {
             factType.Register(_typeCatalog);
-            _knownFactTypes.Add(factType);
+            if (_knownFactTypes.Add(factType))
+            {
+                factType.BindRoute(this);
+            }
         }
 
         private void AddKnownFacts(CascadeTypeId[] factIds)
@@ -339,6 +319,7 @@ namespace CascadeEngineApi
 
         private void ClearWithoutDisposing()
         {
+            UnbindKnownFactRoutes();
             _reducersByFact.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
@@ -348,6 +329,15 @@ namespace CascadeEngineApi
             _batchTransactionalReducers.Clear();
             _knownFactTypes.Clear();
             _typeCatalog.Clear();
+        }
+
+        private void UnbindKnownFactRoutes()
+        {
+            var knownFacts = _knownFactTypes.ToArray();
+            for (var i = 0; i < knownFacts.Length; i++)
+            {
+                knownFacts[i].UnbindRoute(this);
+            }
         }
     }
 }

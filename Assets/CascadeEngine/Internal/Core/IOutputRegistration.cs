@@ -24,6 +24,10 @@ namespace CascadeEngineApi
 
         IStateBucket CreateStateBucket();
 
+        void BindStateBucket(FactSimulation simulation, IStateBucket bucket);
+
+        void UnbindStateBucket(FactSimulation simulation);
+
         void DeleteState(FactSimulation simulation, EntityRef entity);
 
         void Warmup(

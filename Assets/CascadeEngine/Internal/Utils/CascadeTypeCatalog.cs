@@ -86,19 +86,6 @@ namespace CascadeEngineApi
             return id;
         }
 
-        internal CascadeTypeId Require<T>()
-        {
-            var name = typeof(T).Name;
-
-            if (!_idsByName.TryGetValue(name, out var id))
-            {
-                throw new InvalidOperationException(
-                    $"Cascade type '{name}' is not registered in this feature. Register it with Reduce<TFact>(), AffectedBy<TFact>(), ReduceWhen(...), or Output<TState>() before using it.");
-            }
-
-            return id;
-        }
-
         internal string NameOf<T>()
             => typeof(T).Name;
 

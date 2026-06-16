@@ -43,6 +43,16 @@ namespace CascadeEngineApi
             _bucketFactory?.Register(catalog);
         }
 
+        internal void BindRoute(FactFeatureRegistry registry)
+        {
+            _bucketFactory?.BindRoute(registry, Id);
+        }
+
+        internal void UnbindRoute(FactFeatureRegistry registry)
+        {
+            _bucketFactory?.UnbindRoute(registry);
+        }
+
         internal IFactBucket CreateBucket(
             int entityCapacity,
             int factCapacityPerEntity,

@@ -18,10 +18,10 @@ namespace CascadeEngineApi
         }
 
         public void Bind(FactFeatureRegistry registry)
-            => FactPriorityResolverCache<TFact>.Add(registry, _resolver);
+            => FactEmitRouteCache<TFact>.Require(registry).SetPriorityResolver(_resolver);
 
         public void Unbind(FactFeatureRegistry registry)
-            => FactPriorityResolverCache<TFact>.Remove(registry);
+            => FactEmitRouteCache<TFact>.Require(registry).ClearPriorityResolver();
 
         public void DisposeRegistration()
         {
