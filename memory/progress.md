@@ -49,6 +49,11 @@
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
+3. Add BudgetMode:
+   - Reducer loop is currently broad for every fact across all entities, we need to make a budget mode so that only-relevant entities (entity marker as relevant in a entity flags) are fully reduced.
+   - Add test coverage to verify that.
+   - should work both modes of simulation for both full and partial(incremental).
+
 3. Improve package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
