@@ -8,7 +8,7 @@ namespace Hestia
     /// <summary>
     /// Input fact: gameplay requested ammo spend this tick.
     /// </summary>
-    public readonly struct AmmoSpendRequestedFact : IFact, IPrioritizedFact, IEquatable<AmmoSpendRequestedFact>
+    public readonly struct AmmoSpendRequestedFact : IFact, IEquatable<AmmoSpendRequestedFact>
     {
         public AmmoSpendRequestedFact(int amount, FactPriority priority)
         {

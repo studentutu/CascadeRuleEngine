@@ -437,7 +437,7 @@ namespace CascadeEngineApi
                     entity,
                     factId,
                     in fact,
-                    _registry.ResolvePriority(factId, in fact),
+                    _registry.ResolvePriority(in fact),
                     parentDepth,
                     _partial.CurrentGuardrails);
             }

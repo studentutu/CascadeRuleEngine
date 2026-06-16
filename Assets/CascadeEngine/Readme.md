@@ -156,10 +156,10 @@ public sealed class GameplayFeature : FactFeature
     public GameplayFeature()
     {
         Priority<MoveRequestedFact>()
-            .FromFact();
+            .With<MoveRequestedFactPriorityResolver>();
 
         Priority<MoveResolvedFact>()
-            .FromFact();
+            .With<MoveResolvedFactPriorityResolver>();
 
         Reduce<MoveRequestedFact>()
             .With<MoveRequestReducer>();
@@ -178,13 +178,10 @@ Fact queue priority is explicit during feature registration. Facts without a pri
 
 ```csharp
 Priority<MoveRequestedFact>()
-    .FromFact();
-
-Priority<CustomPriorityFact>()
     .With<CustomPriorityResolver>();
 ```
 
-`FromFact()` is a zero-reflection convenience for facts that implement `IPrioritizedFact`. `With<TResolver>()` registers a typed `IFactPriorityResolver<TFact>` and keeps the `Emit` path non-boxing.
+`With<TResolver>()` registers a typed `IFactPriorityResolver<TFact>` and keeps the `Emit` path non-boxing. There is no built-in priority marker interface; fact priority is always explicit feature registration.
 
 ## Public API contract
 

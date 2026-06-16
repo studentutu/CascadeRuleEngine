@@ -21,8 +21,8 @@ namespace CascadeEngineApi
         private readonly Dictionary<CascadeTypeId, List<IOutputRegistration>> _outputsByAffectedFact =
             new Dictionary<CascadeTypeId, List<IOutputRegistration>>();
 
-        private readonly Dictionary<CascadeTypeId, object> _priorityResolvers =
-            new Dictionary<CascadeTypeId, object>();
+        private readonly Dictionary<CascadeTypeId, IFactPriorityRegistration> _priorityRegistrations =
+            new Dictionary<CascadeTypeId, IFactPriorityRegistration>();
 
         private readonly List<ITransactionalRegistration> _transactionalReducers =
             new List<ITransactionalRegistration>();
@@ -62,14 +62,15 @@ namespace CascadeEngineApi
             var factType = FactType.Of<TFact>();
             AddKnownFact(factType);
 
-            if (_priorityResolvers.ContainsKey(factType.Id))
+            if (_priorityRegistrations.ContainsKey(factType.Id))
             {
                 throw new InvalidOperationException($"Fact '{_typeCatalog.Describe(factType.Id)}' already has a priority resolver.");
             }
 
-            _priorityResolvers.Add(factType.Id, Create<TResolver>());
+            var registration = new FactPriorityRegistration<TFact>(Create<TResolver>());
+            registration.Bind(this);
+            _priorityRegistrations.Add(factType.Id, registration);
         }
-
 
         internal void AddTransactionalReducer<TReducer>(FactType[] requiredFacts)
             where TReducer : ITransactionalReducer, new()
@@ -167,16 +168,9 @@ namespace CascadeEngineApi
         internal string Describe(CascadeTypeId id)
             => _typeCatalog.Describe(id);
 
-        internal FactPriority ResolvePriority<TFact>(CascadeTypeId factId, in TFact fact)
+        internal FactPriority ResolvePriority<TFact>(in TFact fact)
             where TFact : struct, IFact
-        {
-            if (_priorityResolvers.TryGetValue(factId, out var resolver))
-            {
-                return ((IFactPriorityResolver<TFact>)resolver).Resolve(in fact);
-            }
-
-            return FactPriority.Normal;
-        }
+            => FactPriorityResolverCache<TFact>.Resolve(this, in fact);
 
         public void Dispose()
         {
@@ -203,19 +197,17 @@ namespace CascadeEngineApi
                 _batchTransactionalReducers[i].DisposeRegistration();
             }
 
-            foreach (var resolver in _priorityResolvers.Values)
+            foreach (var registration in _priorityRegistrations.Values)
             {
-                if (resolver is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
+                registration.Unbind(this);
+                registration.DisposeRegistration();
             }
 
             _reducersByFact.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
             _outputsByAffectedFact.Clear();
-            _priorityResolvers.Clear();
+            _priorityRegistrations.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
             _knownFactTypes.Clear();
@@ -227,14 +219,19 @@ namespace CascadeEngineApi
             _typeCatalog.AbsorbFrom(other._typeCatalog);
             AddKnownFacts(other._knownFactTypes.ToArray());
 
-            foreach (var pair in other._priorityResolvers)
+            foreach (var pair in other._priorityRegistrations)
             {
-                if (_priorityResolvers.ContainsKey(pair.Key))
+                if (_priorityRegistrations.ContainsKey(pair.Key))
                 {
                     throw new InvalidOperationException($"Fact '{_typeCatalog.Describe(pair.Key)}' already has a priority resolver.");
                 }
+            }
 
-                _priorityResolvers.Add(pair.Key, pair.Value);
+            foreach (var pair in other._priorityRegistrations)
+            {
+                pair.Value.Bind(this);
+                pair.Value.Unbind(other);
+                _priorityRegistrations.Add(pair.Key, pair.Value);
             }
 
             foreach (var pair in other._reducersByFact)
@@ -346,7 +343,7 @@ namespace CascadeEngineApi
             _outputs.Clear();
             _outputsByState.Clear();
             _outputsByAffectedFact.Clear();
-            _priorityResolvers.Clear();
+            _priorityRegistrations.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
             _knownFactTypes.Clear();

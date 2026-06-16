@@ -8,7 +8,7 @@ namespace Hestia
     /// <summary>
     /// Input fact: relevant entity should publish a footstep cue.
     /// </summary>
-    public readonly struct FootstepCueFact : IFact, IPrioritizedFact, IEquatable<FootstepCueFact>
+    public readonly struct FootstepCueFact : IFact, IEquatable<FootstepCueFact>
     {
         public FootstepCueFact(FactPriority priority)
         {

@@ -8,7 +8,7 @@ namespace Hestia
     /// <summary>
     /// Input fact: gameplay requested a position change.
     /// </summary>
-    public readonly struct MoveRequestedFact : IFact, IPrioritizedFact, IEquatable<MoveRequestedFact>
+    public readonly struct MoveRequestedFact : IFact, IEquatable<MoveRequestedFact>
     {
         public MoveRequestedFact(float position, FactPriority priority)
         {

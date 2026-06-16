@@ -8,7 +8,7 @@ namespace Hestia
     /// <summary>
     /// Derived fact: movement request resolved to a candidate durable position.
     /// </summary>
-    public readonly struct MoveResolvedFact : IFact, IPrioritizedFact, IEquatable<MoveResolvedFact>
+    public readonly struct MoveResolvedFact : IFact, IEquatable<MoveResolvedFact>
     {
         public MoveResolvedFact(float position, FactPriority priority)
         {

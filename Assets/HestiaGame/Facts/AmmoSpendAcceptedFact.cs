@@ -8,7 +8,7 @@ namespace Hestia
     /// <summary>
     /// Derived fact: ammo spend passed reducer validation and can be folded by committers.
     /// </summary>
-    public readonly struct AmmoSpendAcceptedFact : IFact, IPrioritizedFact, IEquatable<AmmoSpendAcceptedFact>
+    public readonly struct AmmoSpendAcceptedFact : IFact, IEquatable<AmmoSpendAcceptedFact>
     {
         public AmmoSpendAcceptedFact(int amount, FactPriority priority)
         {

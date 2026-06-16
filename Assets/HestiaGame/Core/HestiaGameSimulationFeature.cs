@@ -12,19 +12,19 @@ namespace Hestia
         public HestiaGameSimulationFeature()
         {
             Priority<AmmoSpendRequestedFact>()
-                .FromFact();
+                .With<AmmoSpendRequestedFactPriorityResolver>();
 
             Priority<AmmoSpendAcceptedFact>()
-                .FromFact();
+                .With<AmmoSpendAcceptedFactPriorityResolver>();
 
             Priority<MoveRequestedFact>()
-                .FromFact();
+                .With<MoveRequestedFactPriorityResolver>();
 
             Priority<MoveResolvedFact>()
-                .FromFact();
+                .With<MoveResolvedFactPriorityResolver>();
 
             Priority<FootstepCueFact>()
-                .FromFact();
+                .With<FootstepCueFactPriorityResolver>();
 
             Reduce<AmmoSpendRequestedFact>()
                 .With<HestiaAmmoSpendRequestReducer>();

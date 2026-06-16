@@ -15,7 +15,7 @@
 - `IFact` now inherits `IDisposable`; accepted stored facts are disposed when tick-local fact storage clears.
 - `EntityStore` now tracks destroyed entity ids with `HashSet<int>` while preserving monotonic created entity ids through `Count`.
 - `FactSimulation.Warmup(WarmupCapacityHints)` now pre-sizes dense fact stores, query/transaction/batch buffers, commit and mutation buffers, the fact queue, and registered fact buckets for expected gameplay load.
-- Fact queue priority now uses internal typed resolver registration inferred from `IPrioritizedFact`, avoiding boxed priority checks for struct facts without adding public API.
+- Fact queue priority now uses explicit `IFactPriorityResolver<TFact>` registrations only; registrations bind into per-fact typed caches so emit avoids erased object resolver casts.
 - `EntityFactList<TFact>` now has explicit grow/fixed capacity behavior. `FactListCapacityMode.Fixed` turns underestimated per-entity fact capacity into a setup error instead of hidden gameplay allocation.
 - Commit actions are buffered per output as reusable value-type lists, preserving delayed reconciliation without per-mutation action object allocation.
 - A 512-entity warmup allocation test now measures first-use and steady-state emit/tick execution; result should be (any or zero) bytes first-use and 0 bytes steady-state in edit-mode test output.

@@ -149,7 +149,7 @@ namespace CascadeEngineApi.Tests
             public WarmupFeature()
             {
                 Priority<WarmupStartFact>()
-                    .FromFact();
+                    .With<WarmupStartFactPriorityResolver>();
 
                 Reduce<WarmupStartFact>()
                     .With<WarmupStartReducer>();
@@ -298,7 +298,13 @@ namespace CascadeEngineApi.Tests
                 => unchecked((Value * 397) ^ SourceCount);
         }
 
-        public readonly struct WarmupStartFact : IFact, IPrioritizedFact, IEquatable<WarmupStartFact>
+        public sealed class WarmupStartFactPriorityResolver : IFactPriorityResolver<WarmupStartFact>
+        {
+            public FactPriority Resolve(in WarmupStartFact fact)
+                => fact.Priority;
+        }
+
+        public readonly struct WarmupStartFact : IFact, IEquatable<WarmupStartFact>
         {
             public WarmupStartFact(int value)
             {
