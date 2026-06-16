@@ -15,6 +15,7 @@ namespace CascadeEngineApi
         bool TryGetLatest<TFact>(out TFact fact)
             where TFact : struct, IFact;
 
+        // TODO: if this is only for a single entity for a single fact then remove and just use Has<TFact> instead
         ReadOnlySpan<TFact> All<TFact>()
             where TFact : struct, IFact;
     }

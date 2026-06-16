@@ -5,10 +5,9 @@ namespace CascadeEngineApi
     /// <summary>
     /// Strategy on how output is resolved if committers have competing facts.
     /// </summary>
-    public enum CommitConflictPolicy
+    public enum CommitConflictPolicy : byte
     {
-        None,
-        PriorityWinnerOrThrowOnTie,
-        CollapseToLatestMarker
+        PriorityWinnerOrThrowOnTie = 0,
+        CollapseToLatestMarker = 1,
     }
 }

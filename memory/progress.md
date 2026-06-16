@@ -40,7 +40,10 @@
 
 ## Next Work
 
-1. Harden commit conflict behavior.
+1. Harden core policy:
+   - fix todo in IEnityFactView
+   - do we support multiple FactType on the same Entity per Reduction-loop? (e.g. example multiple input fact/multiple sound cure facts). Should we do the same as ECS feature parity and always have 1 fact of the same type per entity? But then how would we decide if we need to overwrite or leave existing fact while preserving package concept of the fact-reduction order independence?
+   - commit conflict behavior: CommitConflictPolicy enum exists but can't do anything as Reducers/Fact/something must set the order/priority. This is orthogonal to the package concept: Fact-> Reducer-Loop must be order-independent and idempotent even when we have un-ordered facts and reducer will produce more un-ordered facts.
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
