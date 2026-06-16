@@ -187,12 +187,8 @@ namespace CascadeEngineApi
                     continue;
                 }
 
-                if (!_registry.TryGetReducers(queued.FactId, out var reducers))
-                {
-                    continue;
-                }
-
-                for (var i = 0; i < reducers.Count; i++)
+                var reduceRoute = queued.ReduceRoute;
+                for (var i = 0; i < reduceRoute.ReducerCount; i++)
                 {
                     if (TimeBudgetExceeded(options, startTimestamp, out budgetReason))
                     {
@@ -200,7 +196,7 @@ namespace CascadeEngineApi
                     }
 
                     _reducerInvocations++;
-                    var reducer = reducers[i];
+                    var reducer = reduceRoute.ReducerAt(i);
                     SetCurrentFactContext(in queued, reducer.DebugName);
                     if (_reducerInvocations > options.Guardrails.MaxReducerInvocationsPerTick)
                     {

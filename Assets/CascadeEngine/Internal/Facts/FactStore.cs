@@ -193,6 +193,7 @@ namespace CascadeEngineApi
             _queue.Add(new QueuedFact(
                 entity,
                 factId,
+                route,
                 bucket,
                 factIndex,
                 priority,

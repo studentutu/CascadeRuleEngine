@@ -10,6 +10,7 @@ namespace CascadeEngineApi
         internal QueuedFact(
             EntityRef entity,
             CascadeTypeId factId,
+            IFactReduceRoute reduceRoute,
             IFactBucket bucket,
             int factIndex,
             FactPriority priority,
@@ -18,6 +19,7 @@ namespace CascadeEngineApi
         {
             Entity = entity;
             FactId = factId;
+            ReduceRoute = reduceRoute;
             Bucket = bucket;
             FactIndex = factIndex;
             Priority = priority;
@@ -27,6 +29,7 @@ namespace CascadeEngineApi
 
         internal EntityRef Entity { get; }
         internal CascadeTypeId FactId { get; }
+        internal IFactReduceRoute ReduceRoute { get; }
         internal IFactBucket Bucket { get; }
         internal int FactIndex { get; }
         internal FactPriority Priority { get; }

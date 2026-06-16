@@ -11,8 +11,7 @@ namespace CascadeEngineApi
     internal sealed class FactFeatureRegistry : IDisposable
     {
         private readonly CascadeTypeCatalog _typeCatalog = new CascadeTypeCatalog();
-        private readonly Dictionary<CascadeTypeId, List<IReducerInvoker>> _reducersByFact =
-            new Dictionary<CascadeTypeId, List<IReducerInvoker>>();
+        private readonly List<IReducerInvoker> _reducers = new List<IReducerInvoker>();
 
         private readonly List<IOutputRegistration> _outputs = new List<IOutputRegistration>();
         private readonly Dictionary<CascadeTypeId, IOutputRegistration> _outputsByState =
@@ -41,15 +40,9 @@ namespace CascadeEngineApi
             var factType = FactType.Of<TFact>();
             AddKnownFact(factType);
             var reducer = Create<TReducer>();
-            var invoker = new ReducerInvoker<TFact>(factType.Id, reducer, typeof(TReducer).Name);
-
-            if (!_reducersByFact.TryGetValue(factType.Id, out var reducers))
-            {
-                reducers = new List<IReducerInvoker>();
-                _reducersByFact.Add(factType.Id, reducers);
-            }
-
-            reducers.Add(invoker);
+            var invoker = new ReducerInvoker<TFact>(reducer, typeof(TReducer).Name);
+            invoker.BindRoute(this);
+            _reducers.Add(invoker);
         }
 
         internal void AddPriorityResolver<TFact, TResolver>()
@@ -124,9 +117,6 @@ namespace CascadeEngineApi
             return output;
         }
 
-        internal bool TryGetReducers(CascadeTypeId factId, out List<IReducerInvoker> reducers)
-            => _reducersByFact.TryGetValue(factId, out reducers);
-
         internal CascadeTypeId RequireFact<TFact>()
             where TFact : struct, IFact
             => RequireFactRoute<TFact>().FactId;
@@ -143,12 +133,9 @@ namespace CascadeEngineApi
 
         public void Dispose()
         {
-            foreach (var reducerList in _reducersByFact.Values)
+            for (var i = 0; i < _reducers.Count; i++)
             {
-                for (var i = 0; i < reducerList.Count; i++)
-                {
-                    reducerList[i].DisposeRegistration();
-                }
+                _reducers[i].DisposeRegistration();
             }
 
             for (var i = 0; i < _outputs.Count; i++)
@@ -173,7 +160,7 @@ namespace CascadeEngineApi
             }
 
             UnbindKnownFactRoutes();
-            _reducersByFact.Clear();
+            _reducers.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
             _priorityRegistrations.Clear();
@@ -203,15 +190,10 @@ namespace CascadeEngineApi
                 _priorityRegistrations.Add(pair.Key, pair.Value);
             }
 
-            foreach (var pair in other._reducersByFact)
+            for (var i = 0; i < other._reducers.Count; i++)
             {
-                if (!_reducersByFact.TryGetValue(pair.Key, out var reducers))
-                {
-                    reducers = new List<IReducerInvoker>();
-                    _reducersByFact.Add(pair.Key, reducers);
-                }
-
-                reducers.AddRange(pair.Value);
+                other._reducers[i].BindRoute(this);
+                _reducers.Add(other._reducers[i]);
             }
 
             for (var i = 0; i < other._outputs.Count; i++)
@@ -306,7 +288,7 @@ namespace CascadeEngineApi
         private void ClearWithoutDisposing()
         {
             UnbindKnownFactRoutes();
-            _reducersByFact.Clear();
+            _reducers.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
             _priorityRegistrations.Clear();

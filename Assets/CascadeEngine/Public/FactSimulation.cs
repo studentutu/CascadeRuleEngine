@@ -6,7 +6,7 @@ using System.Collections.Generic;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Concrete fact-reduction-mutation engine: facts reduce to closure, committers write durable output state once.
+    /// Concrete fact-reduction-mutation engine: facts reduce to completion, committers write durable output state once.
     /// </summary>
     public sealed class FactSimulation :
         IFactSimulation,
