@@ -17,6 +17,7 @@
 - `FactSimulation.Warmup(WarmupCapacityHints)` now pre-sizes dense fact stores, query/transaction/batch buffers, commit and mutation buffers, the fact queue, and registered fact buckets for expected gameplay load.
 - Fact emit routing now uses per-fact typed routes containing the fact id and optional explicit `IFactPriorityResolver<TFact>`, so emit avoids type-catalog fact id lookup and erased object resolver casts.
 - Output state routing now binds simulation-owned typed state buckets, so `GetStateBucket<TState>()` and query/state access avoid type-catalog output id lookup.
+- Commit routing now records accepted fact type ids per touched entity during emit, so commit reconciliation no longer scans every fact bucket for every touched entity.
 - `EntityFactList<TFact>` now has explicit grow/fixed capacity behavior. `FactListCapacityMode.Fixed` turns underestimated per-entity fact capacity into a setup error instead of hidden gameplay allocation.
 - Commit actions are buffered per output as reusable value-type lists, preserving delayed reconciliation without per-mutation action object allocation.
 - A 512-entity warmup allocation test now measures first-use and steady-state emit/tick execution; result should be (any or zero) bytes first-use and 0 bytes steady-state in edit-mode test output.

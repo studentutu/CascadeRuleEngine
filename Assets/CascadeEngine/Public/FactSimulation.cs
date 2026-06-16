@@ -28,7 +28,6 @@ namespace CascadeEngineApi
         private readonly FiredReducerTracker _firedTransactional;
         private readonly FiredReducerTracker _firedBatchEntities;
         private readonly PartialSimulation _partial;
-        private CascadeTypeId[] _commitFactIds = new CascadeTypeId[16];
         private int[] _commitOutputMarks = new int[0];
         private int _commitOutputMark;
         private int _mutationCount;
@@ -124,7 +123,6 @@ namespace CascadeEngineApi
             _queryBuffer.EnsureCapacity(NormalizeCapacity(hints.QueryEntityCapacity));
             _transactionBuffer.EnsureCapacity(NormalizeCapacity(hints.TransactionEntityCapacity));
             _batchBuffer.EnsureCapacity(NormalizeCapacity(hints.BatchEntityCapacity));
-            EnsureCommitFactIdCapacity(_registry.KnownFactTypes.Length);
             EnsureCommitOutputMarkCapacity();
             _firedTransactional.Warmup(_registry.TransactionalReducers.Count, entityCapacity);
             _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, entityCapacity);
@@ -222,7 +220,6 @@ namespace CascadeEngineApi
             _firedTransactional.DisposeTracker();
             _firedBatchEntities.DisposeTracker();
             _facts.DisposeStore();
-            _commitFactIds = Array.Empty<CascadeTypeId>();
             _commitOutputMarks = Array.Empty<int>();
 
             UnbindRegisteredStateBuckets();
@@ -456,6 +453,7 @@ namespace CascadeEngineApi
         {
             ClearQueuedCommitActions();
             EnsureTransactionCapacity();
+            EnsureCommitOutputMarkCapacity();
             _facts.CopyTouchedEntities(_transactionBuffer, out var touchedCount);
 
             for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
@@ -580,17 +578,6 @@ namespace CascadeEngineApi
             _batchBuffer.EnsureCapacity(required);
         }
 
-        private void EnsureCommitFactIdCapacity(int required)
-        {
-            required = NormalizeCapacity(required);
-            if (_commitFactIds.Length >= required)
-            {
-                return;
-            }
-
-            Array.Resize(ref _commitFactIds, required);
-        }
-
         private void EnsureCommitOutputMarkCapacity()
         {
             var required = NormalizeCapacity(_registry.Outputs.Count);
@@ -604,14 +591,12 @@ namespace CascadeEngineApi
 
         private void QueueAffectedOutputCommits(EntityRef entity)
         {
-            EnsureCommitFactIdCapacity(_facts.BucketCount);
-            EnsureCommitOutputMarkCapacity();
-            _facts.CopyFactIds(entity, _commitFactIds, out var factCount);
+            var factIds = _facts.FactIds(entity);
             var mark = NextCommitOutputMark();
 
-            for (var factIndex = 0; factIndex < factCount; factIndex++)
+            for (var factIndex = 0; factIndex < factIds.Length; factIndex++)
             {
-                if (!_registry.TryGetAffectedOutputs(_commitFactIds[factIndex], out var outputs))
+                if (!_registry.TryGetAffectedOutputs(factIds[factIndex], out var outputs))
                 {
                     continue;
                 }

@@ -14,10 +14,19 @@ namespace CascadeEngineApi
         private readonly List<QueuedFact> _queue = new List<QueuedFact>();
         private readonly DenseEntitySet _touchedEntities = new DenseEntitySet(64);
         private readonly DenseEntityCounter _factCountsByEntity = new DenseEntityCounter(64);
+        private readonly DenseEntityObjectStore<EntityFactIdList> _factIdsByEntity;
         private int _entityCapacity = 64;
         private int _factCapacityPerEntity = 4;
+        private int _factIdCapacityPerEntity = 4;
         private FactListCapacityMode _factListCapacityMode = FactListCapacityMode.GrowOnDemand;
         private long _nextSequence;
+
+        internal FactStore()
+        {
+            _factIdsByEntity = new DenseEntityObjectStore<EntityFactIdList>(
+                CreateFactIdList,
+                _entityCapacity);
+        }
 
         internal int AcceptedFacts { get; private set; }
         internal int DeduplicatedFacts { get; private set; }
@@ -41,6 +50,7 @@ namespace CascadeEngineApi
             var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
 
             EnsureEntityCapacity(normalizedEntityCapacity);
+            WarmupFactIdLists(normalizedEntityCapacity, NormalizeCapacity(knownFactTypes.Length));
             if (_queue.Capacity < factQueueCapacity)
             {
                 _queue.Capacity = factQueueCapacity;
@@ -77,6 +87,7 @@ namespace CascadeEngineApi
             _entityCapacity = entityCapacity;
             _touchedEntities.EnsureCapacity(entityCapacity);
             _factCountsByEntity.EnsureCapacity(entityCapacity);
+            _factIdsByEntity.EnsureCapacity(entityCapacity);
 
             foreach (var bucket in _buckets.Values)
             {
@@ -155,7 +166,8 @@ namespace CascadeEngineApi
                 return false;
             }
 
-            if (bucket.CountFor(entity) >= guardrails.MaxFactsPerTypePerEntity)
+            var factCountForType = bucket.CountFor(entity);
+            if (factCountForType >= guardrails.MaxFactsPerTypePerEntity)
             {
                 throw new InvalidOperationException($"Fact type id '{factId}' exceeded per-entity limit '{guardrails.MaxFactsPerTypePerEntity}' for entity '{entity}'.");
             }
@@ -166,6 +178,11 @@ namespace CascadeEngineApi
             if (!entity.IsGlobal)
             {
                 TrackTouchedEntity(entity);
+                if (factCountForType == 0)
+                {
+                    TrackTouchedFactId(entity, factId);
+                }
+
                 if (IncrementFactCount(entity) > guardrails.MaxFactsPerEntity)
                 {
                     throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
@@ -240,19 +257,14 @@ namespace CascadeEngineApi
         internal void CopyTouchedEntities(EntityRefBuffer destination, out int count)
             => _touchedEntities.CopyTo(destination, out count);
 
-        internal void CopyFactIds(EntityRef entity, CascadeTypeId[] destination, out int count)
+        internal ReadOnlySpan<CascadeTypeId> FactIds(EntityRef entity)
         {
-            count = 0;
-            foreach (var pair in _buckets)
+            if (_factIdsByEntity.TryGet(entity, out var ids))
             {
-                if (!pair.Value.Has(entity))
-                {
-                    continue;
-                }
-
-                destination[count] = pair.Key;
-                count++;
+                return ids.AsSpan();
             }
+
+            return ReadOnlySpan<CascadeTypeId>.Empty;
         }
 
         internal void Clear()
@@ -264,6 +276,7 @@ namespace CascadeEngineApi
 
             _queue.Clear();
             _factCountsByEntity.Clear(_touchedEntities);
+            ClearTouchedFactIds();
             _touchedEntities.Clear();
             _nextSequence = 0;
             AcceptedFacts = 0;
@@ -316,9 +329,38 @@ namespace CascadeEngineApi
             _touchedEntities.Add(entity);
         }
 
+        private void TrackTouchedFactId(EntityRef entity, CascadeTypeId factId)
+        {
+            _factIdsByEntity.GetOrCreate(entity).Add(factId);
+        }
+
         private int IncrementFactCount(EntityRef entity)
         {
             return _factCountsByEntity.Increment(entity);
+        }
+
+        private void WarmupFactIdLists(int entityCapacity, int factTypeCapacity)
+        {
+            if (factTypeCapacity > _factIdCapacityPerEntity)
+            {
+                _factIdCapacityPerEntity = factTypeCapacity;
+            }
+
+            for (var i = 0; i < entityCapacity; i++)
+            {
+                _factIdsByEntity.GetOrCreate(new EntityRef(i)).EnsureCapacity(_factIdCapacityPerEntity);
+            }
+        }
+
+        private void ClearTouchedFactIds()
+        {
+            for (var i = 0; i < _touchedEntities.Count; i++)
+            {
+                if (_factIdsByEntity.TryGet(_touchedEntities[i], out var ids))
+                {
+                    ids.Clear();
+                }
+            }
         }
 
         private int SelectIndex(BudgetMode mode)
@@ -353,5 +395,8 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);
+
+        private EntityFactIdList CreateFactIdList()
+            => new EntityFactIdList(_factIdCapacityPerEntity);
     }
 }
