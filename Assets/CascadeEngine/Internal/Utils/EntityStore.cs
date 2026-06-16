@@ -23,15 +23,10 @@ namespace CascadeEngineApi
         }
 
         internal bool IsKnown(EntityRef entity)
-            => !entity.IsGlobal && (uint)entity.Value < _createdCount;
+            => (uint)entity.Value < _createdCount;
 
         internal void Validate(EntityRef entity)
         {
-            if (entity.IsGlobal)
-            {
-                throw new InvalidOperationException("Global entity cannot be used for entity state or lifecycle operations.");
-            }
-
             if ((uint)entity.Value >= _createdCount)
             {
                 throw new ArgumentOutOfRangeException(nameof(entity), $"Unknown entity '{entity}'. Create entities through FactSimulation.CreateEntity.");
@@ -40,11 +35,6 @@ namespace CascadeEngineApi
 
         internal bool IsDestroyed(EntityRef entity)
         {
-            if (entity.IsGlobal)
-            {
-                return false;
-            }
-
             Validate(entity);
             return _destroyed.Contains(entity.Value);
         }

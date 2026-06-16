@@ -79,7 +79,7 @@ namespace CascadeEngineApi
 
                     if (step == ReductionStepStatus.BudgetExceeded)
                     {
-                        return HandleIncomplete(options, budgetReason);
+                        throw CreateReductionException(budgetReason);
                     }
                 }
             }
@@ -145,19 +145,6 @@ namespace CascadeEngineApi
                 innerException);
         }
 
-        private SimulationResult HandleIncomplete(ReduceOptions options, string reason)
-        {
-            if (options.IncompleteCommitMode == IncompleteCommitMode.Throw)
-            {
-                throw CreateReductionException(reason);
-            }
-
-            _simulation.ClearMutations();
-            var result = CreateResult(false, reason);
-            EndActiveTick();
-            return result;
-        }
-
         private ReductionStepStatus RunReductionPass(
             ReduceOptions options,
             long startTimestamp,
@@ -182,7 +169,7 @@ namespace CascadeEngineApi
                 _processedFacts++;
                 SetLastFactContext(in queued);
 
-                if (!queued.Entity.IsGlobal && _entities.IsDestroyed(queued.Entity))
+                if (_entities.IsDestroyed(queued.Entity))
                 {
                     continue;
                 }

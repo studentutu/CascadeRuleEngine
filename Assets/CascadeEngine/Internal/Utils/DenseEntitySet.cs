@@ -6,7 +6,7 @@ using System.Collections.Generic;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Dense non-global entity set optimized for per-tick add-once and clear-by-touched operations.
+    /// Dense entity set optimized for per-tick add-once and clear-by-touched operations.
     /// </summary>
     internal sealed class DenseEntitySet
     {
@@ -41,7 +41,6 @@ namespace CascadeEngineApi
 
         internal bool Add(EntityRef entity)
         {
-            ThrowIfGlobal(entity);
             EnsureCapacity(entity.Value + 1);
 
             if (_contains[entity.Value])
@@ -56,7 +55,6 @@ namespace CascadeEngineApi
 
         internal bool Contains(EntityRef entity)
         {
-            ThrowIfGlobal(entity);
             return (uint)entity.Value < _contains.Length && _contains[entity.Value];
         }
 
@@ -82,13 +80,5 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => capacity > 0 ? capacity : 1;
-
-        private static void ThrowIfGlobal(EntityRef entity)
-        {
-            if (entity.IsGlobal)
-            {
-                throw new InvalidOperationException("Global entity is not valid for dense entity sets.");
-            }
-        }
     }
 }

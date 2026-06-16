@@ -19,6 +19,7 @@
 - Output state routing now binds simulation-owned typed state buckets, so `GetStateBucket<TState>()` and query/state access avoid type-catalog output id lookup.
 - Commit routing now records accepted fact routes per touched entity and reads affected outputs directly from those routes, so commit reconciliation no longer scans fact buckets or looks up affected outputs by fact id.
 - Reducer routing now binds reducer invokers into per-fact typed routes, so the reduction loop no longer performs a reducer dictionary lookup by fact id for each queued fact.
+- No Global facts should exists in package API and storage model. All emitted facts must belong to concrete entities.
 - Commit actions are buffered per output as reusable value-type lists, preserving delayed reconciliation without per-mutation action object allocation.
 - A 512-entity warmup allocation test now measures first-use and steady-state emit/tick execution; result should be (any or zero) bytes first-use and 0 bytes steady-state in edit-mode test output.
 - `FactSimulation.Dispose()` is now the only terminal simulation lifecycle API. It releases simulation-owned tick facts, output state buckets, mutation buffers, entity lifecycle data, commit buffers, fired reducer caches, and the bound feature registry tree exactly once.

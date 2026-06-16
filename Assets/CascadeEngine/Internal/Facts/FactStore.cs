@@ -149,7 +149,7 @@ namespace CascadeEngineApi
             where TFact : struct, IFact
         {
             var factId = route.FactId;
-            if (!entity.IsGlobal && entities.IsDestroyed(entity))
+            if (entities.IsDestroyed(entity))
             {
                 RejectedDestroyedEntityFacts++;
                 return false;
@@ -176,18 +176,15 @@ namespace CascadeEngineApi
             var factIndex = bucket.Add(entity, in fact);
             AcceptedFacts++;
 
-            if (!entity.IsGlobal)
+            TrackTouchedEntity(entity);
+            if (factCountForType == 0)
             {
-                TrackTouchedEntity(entity);
-                if (factCountForType == 0)
-                {
-                    TrackTouchedFactRoute(entity, route);
-                }
+                TrackTouchedFactRoute(entity, route);
+            }
 
-                if (IncrementFactCount(entity) > guardrails.MaxFactsPerEntity)
-                {
-                    throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
-                }
+            if (IncrementFactCount(entity) > guardrails.MaxFactsPerEntity)
+            {
+                throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
             }
 
             _queue.Add(new QueuedFact(

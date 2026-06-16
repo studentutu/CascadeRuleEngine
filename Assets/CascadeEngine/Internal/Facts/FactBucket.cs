@@ -13,10 +13,8 @@ namespace CascadeEngineApi
         private readonly CascadeTypeId _factId;
         private readonly DenseEntityObjectStore<EntityFactList<TFact>> _factsByEntity;
         private readonly DenseEntitySet _touchedEntities;
-        private readonly EntityFactList<TFact> _globalFacts;
         private int _factCapacityPerEntity;
         private FactListCapacityMode _factListCapacityMode;
-        private bool _globalTouched;
 
         public FactBucket(
             CascadeTypeId factId,
@@ -27,7 +25,6 @@ namespace CascadeEngineApi
             _factId = factId;
             _factCapacityPerEntity = NormalizeCapacity(factCapacityPerEntity);
             _factListCapacityMode = factListCapacityMode;
-            _globalFacts = new EntityFactList<TFact>(_factCapacityPerEntity, _factListCapacityMode);
             _factsByEntity = new DenseEntityObjectStore<EntityFactList<TFact>>(
                 CreateFactList,
                 entityCapacity);
@@ -97,13 +94,11 @@ namespace CascadeEngineApi
         {
             EnsureEntityCapacity(entityCapacity);
             _factListCapacityMode = factListCapacityMode;
-            _globalFacts.SetCapacityMode(_factListCapacityMode);
 
             var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
             if (normalizedFactCapacity > _factCapacityPerEntity)
             {
                 _factCapacityPerEntity = normalizedFactCapacity;
-                _globalFacts.EnsureCapacity(_factCapacityPerEntity);
             }
 
             for (var i = 0; i < entityCapacity; i++)
@@ -116,7 +111,7 @@ namespace CascadeEngineApi
 
         public int MinimumFactListCapacity(int entityCapacity)
         {
-            var minimum = _globalFacts.Capacity;
+            var minimum = int.MaxValue;
             for (var i = 0; i < entityCapacity; i++)
             {
                 if (!_factsByEntity.TryGet(new EntityRef(i), out var facts))
@@ -130,7 +125,7 @@ namespace CascadeEngineApi
                 }
             }
 
-            return minimum;
+            return minimum == int.MaxValue ? 0 : minimum;
         }
 
         public void Clear()
@@ -144,42 +139,16 @@ namespace CascadeEngineApi
             }
 
             _touchedEntities.Clear();
-
-            if (_globalTouched)
-            {
-                _globalFacts.Clear();
-                _globalTouched = false;
-            }
         }
 
         private EntityFactList<TFact> GetOrCreateList(EntityRef entity)
-        {
-            if (entity.IsGlobal)
-            {
-                return _globalFacts;
-            }
-
-            return _factsByEntity.GetOrCreate(entity);
-        }
+            => _factsByEntity.GetOrCreate(entity);
 
         private bool TryGetList(EntityRef entity, out EntityFactList<TFact> facts)
-        {
-            if (entity.IsGlobal)
-            {
-                facts = _globalFacts;
-                return facts.Count > 0;
-            }
-
-            return _factsByEntity.TryGet(entity, out facts) && facts.Count > 0;
-        }
+            => _factsByEntity.TryGet(entity, out facts) && facts.Count > 0;
 
         private EntityFactList<TFact> GetRequiredList(EntityRef entity)
         {
-            if (entity.IsGlobal)
-            {
-                return _globalFacts;
-            }
-
             if (_factsByEntity.TryGet(entity, out var facts))
             {
                 return facts;
@@ -189,15 +158,7 @@ namespace CascadeEngineApi
         }
 
         private void TrackTouched(EntityRef entity)
-        {
-            if (entity.IsGlobal)
-            {
-                _globalTouched = true;
-                return;
-            }
-
-            _touchedEntities.Add(entity);
-        }
+            => _touchedEntities.Add(entity);
 
         private EntityFactList<TFact> CreateFactList()
             => new EntityFactList<TFact>(_factCapacityPerEntity, _factListCapacityMode);

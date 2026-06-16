@@ -9,16 +9,9 @@ namespace CascadeEngineApi
     /// </summary>
     public readonly struct EntityRef : IEquatable<EntityRef>
     {
-        public static readonly EntityRef Global = new EntityRef(-1, true);
-
         public EntityRef(int value)
-            : this(value, false)
         {
-        }
-
-        private EntityRef(int value, bool allowGlobal)
-        {
-            if (!allowGlobal && value < 0)
+            if (value < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(value));
             }
@@ -27,7 +20,6 @@ namespace CascadeEngineApi
         }
 
         public int Value { get; }
-        public bool IsGlobal => Value < 0;
 
         public bool Equals(EntityRef other)
             => Value == other.Value;
@@ -39,7 +31,7 @@ namespace CascadeEngineApi
             => Value;
 
         public override string ToString()
-            => IsGlobal ? "Global" : Value.ToString();
+            => Value.ToString();
 
         public static bool operator ==(EntityRef left, EntityRef right)
             => left.Equals(right);

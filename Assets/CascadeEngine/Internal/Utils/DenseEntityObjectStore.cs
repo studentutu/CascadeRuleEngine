@@ -5,7 +5,7 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Dense non-global entity indexed object slots with explicit capacity ownership.
+    /// Dense entity indexed object slots with explicit capacity ownership.
     /// </summary>
     internal sealed class DenseEntityObjectStore<TValue>
         where TValue : class
@@ -33,7 +33,6 @@ namespace CascadeEngineApi
 
         internal TValue GetOrCreate(EntityRef entity)
         {
-            ThrowIfGlobal(entity);
             EnsureCapacity(entity.Value + 1);
 
             var value = _values[entity.Value];
@@ -49,7 +48,6 @@ namespace CascadeEngineApi
 
         internal bool TryGet(EntityRef entity, out TValue value)
         {
-            ThrowIfGlobal(entity);
             if ((uint)entity.Value >= _values.Length)
             {
                 value = null!;
@@ -62,13 +60,5 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => capacity > 0 ? capacity : 1;
-
-        private static void ThrowIfGlobal(EntityRef entity)
-        {
-            if (entity.IsGlobal)
-            {
-                throw new InvalidOperationException("Global entity is not valid for dense entity object storage.");
-            }
-        }
     }
 }

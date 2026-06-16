@@ -16,9 +16,6 @@ namespace CascadeEngineApi
         void Emit<TFact>(EntityRef entity, in TFact fact)
             where TFact : struct, IFact;
 
-        void EmitGlobal<TFact>(in TFact fact)
-            where TFact : struct, IFact;
-
         SimulationResult RunTick(ReduceOptions options);
 
         void ForEachMutation<TState>(

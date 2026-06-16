@@ -5,7 +5,7 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Dense non-global entity counter with explicit capacity ownership.
+    /// Dense entity counter with explicit capacity ownership.
     /// </summary>
     internal sealed class DenseEntityCounter
     {
@@ -30,7 +30,6 @@ namespace CascadeEngineApi
 
         internal int Increment(EntityRef entity)
         {
-            ThrowIfGlobal(entity);
             EnsureCapacity(entity.Value + 1);
             _counts[entity.Value]++;
             return _counts[entity.Value];
@@ -38,7 +37,6 @@ namespace CascadeEngineApi
 
         internal int Get(EntityRef entity)
         {
-            ThrowIfGlobal(entity);
             return (uint)entity.Value < _counts.Length ? _counts[entity.Value] : 0;
         }
 
@@ -56,13 +54,5 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => capacity > 0 ? capacity : 1;
-
-        private static void ThrowIfGlobal(EntityRef entity)
-        {
-            if (entity.IsGlobal)
-            {
-                throw new InvalidOperationException("Global entity is not valid for dense entity counters.");
-            }
-        }
     }
 }

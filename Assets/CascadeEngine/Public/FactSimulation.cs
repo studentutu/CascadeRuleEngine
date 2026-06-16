@@ -177,13 +177,6 @@ namespace CascadeEngineApi
             EmitCore(entity, in fact, _partial.CurrentCausalDepth);
         }
 
-        public void EmitGlobal<TFact>(in TFact fact)
-            where TFact : struct, IFact
-        {
-            ThrowIfDisposed();
-            EmitCore(EntityRef.Global, in fact, _partial.CurrentCausalDepth);
-        }
-
         public SimulationResult RunTick(ReduceOptions options)
         {
             ThrowIfDisposed();

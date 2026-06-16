@@ -29,18 +29,10 @@ namespace CascadeEngineApi
         public int MutationCount => _mutations.Count;
 
         public bool Has(EntityRef entity)
-            => !entity.IsGlobal && _values.ContainsKey(entity.Value);
+            => _values.ContainsKey(entity.Value);
 
         internal bool TryGet(EntityRef entity, out TState state)
-        {
-            if (entity.IsGlobal)
-            {
-                state = default;
-                return false;
-            }
-
-            return _values.TryGetValue(entity.Value, out state);
-        }
+            => _values.TryGetValue(entity.Value, out state);
 
         internal TState Get(EntityRef entity)
         {
@@ -54,11 +46,6 @@ namespace CascadeEngineApi
 
         internal void Set(EntityRef entity, TState next)
         {
-            if (entity.IsGlobal)
-            {
-                throw new InvalidOperationException("Global facts cannot own output state.");
-            }
-
             TrackStateCapacityUse(entity);
             if (_values.TryGetValue(entity.Value, out var previous))
             {
@@ -82,22 +69,12 @@ namespace CascadeEngineApi
 
         internal void SetSilently(EntityRef entity, TState next)
         {
-            if (entity.IsGlobal)
-            {
-                throw new InvalidOperationException("Global facts cannot own output state.");
-            }
-
             TrackStateCapacityUse(entity);
             _values[entity.Value] = next;
         }
 
         public void Delete(EntityRef entity)
         {
-            if (entity.IsGlobal)
-            {
-                return;
-            }
-
             if (!_values.TryGetValue(entity.Value, out var previous))
             {
                 return;
