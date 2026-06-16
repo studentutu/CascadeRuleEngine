@@ -425,7 +425,6 @@ namespace CascadeEngineApi
                     entity,
                     route,
                     in fact,
-                    route.ResolvePriority(in fact),
                     parentDepth,
                     _partial.CurrentGuardrails);
             }

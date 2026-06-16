@@ -17,7 +17,7 @@ namespace CascadeEngineApi.Tests
             var hints = new WarmupCapacityHints
             {
                 EntityCapacity = entityCount,
-                FactQueueCapacity = entityCount * 2,
+                FactQueueCapacity = entityCount * 5,
                 FactsPerEntityPerTypeCapacity = 2,
                 QueryEntityCapacity = entityCount,
                 TransactionEntityCapacity = entityCount,
@@ -32,7 +32,7 @@ namespace CascadeEngineApi.Tests
             var before = simulation.CaptureCapacitySnapshot(entityCount);
 
             Assert.AreEqual(6, before.FactBucketCount);
-            Assert.GreaterOrEqual(before.FactQueueCapacity, entityCount * 2);
+            Assert.GreaterOrEqual(before.FactQueueCapacity, entityCount * 5);
             Assert.GreaterOrEqual(before.FactTouchedEntityCapacity, entityCount);
             Assert.GreaterOrEqual(before.FactCounterEntityCapacity, entityCount);
             Assert.GreaterOrEqual(before.MinimumFactBucketEntityCapacity, entityCount);
@@ -148,9 +148,6 @@ namespace CascadeEngineApi.Tests
         {
             public WarmupFeature()
             {
-                Priority<WarmupStartFact>()
-                    .With<WarmupStartFactPriorityResolver>();
-
                 Reduce<WarmupStartFact>()
                     .With<WarmupStartReducer>();
 
@@ -298,31 +295,23 @@ namespace CascadeEngineApi.Tests
                 => unchecked((Value * 397) ^ SourceCount);
         }
 
-        public sealed class WarmupStartFactPriorityResolver : IFactPriorityResolver<WarmupStartFact>
-        {
-            public FactPriority Resolve(in WarmupStartFact fact)
-                => fact.Priority;
-        }
-
         public readonly struct WarmupStartFact : IFact, IEquatable<WarmupStartFact>
         {
             public WarmupStartFact(int value)
             {
                 Value = value;
-                Priority = FactPriority.Normal;
             }
 
             public int Value { get; }
-            public FactPriority Priority { get; }
 
             public bool Equals(WarmupStartFact other)
-                => Value == other.Value && Priority == other.Priority;
+                => Value == other.Value;
 
             public override bool Equals(object? obj)
                 => obj is WarmupStartFact other && Equals(other);
 
             public override int GetHashCode()
-                => unchecked((Value * 397) ^ (int)Priority);
+                => Value;
 
             public void Dispose()
             {

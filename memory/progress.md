@@ -15,7 +15,7 @@
 - `IFact` now inherits `IDisposable`; accepted stored facts are disposed when tick-local fact storage clears.
 - `EntityStore` now tracks destroyed entity ids.
 - `FactSimulation.Warmup(WarmupCapacityHints)` now pre-sizes dense fact stores, query/transaction/batch buffers, commit and mutation buffers, the fact queue, and registered fact buckets for expected gameplay load.
-- Fact emit routing now uses per-fact typed routes containing the fact id and optional explicit `IFactPriorityResolver<TFact>`, so emit avoids type-catalog fact id lookup and erased object resolver casts.
+- Fact emit routing now uses per-fact typed routes containing the fact id, so emit avoids type-catalog fact id lookup.
 - Output state routing now binds simulation-owned typed state buckets, so `GetStateBucket<TState>()` and query/state access avoid type-catalog output id lookup.
 - Commit routing now records accepted fact routes per touched entity and reads affected outputs directly from those routes, so commit reconciliation no longer scans fact buckets or looks up affected outputs by fact id.
 - Reducer routing now binds reducer invokers into per-fact typed routes, so the reduction loop no longer performs a reducer dictionary lookup by fact id for each queued fact.
@@ -41,20 +41,19 @@
 
 1. Ergonomics tightening.
   1.1 Review ReduceWhen ergonomics: we need to need to support up to 4 facts as parameters for the ReduceWhen/BatchReduceWhen. This should also be trivial to expand if needed. Make it clean and separate in code so that it is clearly visible for the external developers who needs more.
-  1.2 Review ergonomics of the Fact and his priority. Currently we need to so specify them separately, but Ideally fact would be bound to the policy. We need to be able to deduce the priority by fact in the registration once.
-  1.3 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental use with the same task.
-  1.4 improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
+  1.2 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental use with the same task.
+  1.3 improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
 
 2. Harden commit conflict behavior.
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
-3. Add BudgetMode:
-   - Reducer loop is currently broad for every fact across all entities, we need to make a budget mode so that only-relevant entities (entity marker as relevant in a entity flags) are fully reduced.
-   - Add test coverage to verify that.
-   - should work both modes of simulation for both full and partial(incremental).
+3. Add proper Reducer-Loop Priority-per-Entity-flag mode:
+   - add Entity flag such as Relevant
+   - reducer loop must only work on the Relevant marked entities when SimulationMode configured to use Priority-per-Entity-flag.
+   - extend this idea to dormant-marked entities (created but not prioritized)
 
-3. Improve package:
+4. Improve package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
    - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)

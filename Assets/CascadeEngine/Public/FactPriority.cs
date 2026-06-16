@@ -3,7 +3,7 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Coarse fact priority used by priority-first budget mode and domain conflict policies.
+    /// Coarse domain priority used by committers when resolving closed fact conflicts.
     /// </summary>
     public enum FactPriority
     {

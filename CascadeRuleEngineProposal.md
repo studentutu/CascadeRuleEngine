@@ -19,7 +19,7 @@ We are tired of this. We need a concrete solution.
 React/Virtual-DOM has hundreds or even thousands of unique objects all over the place, and it still renders lightning-fast even when actively scrolling or making change in a single object. We need the same concept applied to the Components!
 
 What if we preserve ECS approach and apply React/Virtual-Dom/Cascade concept:
-Facts as Components -> Reducers as Systems (they produce other facts but never write into the actual output components) -> single Feature.cs to hold registration of all of the Reducers (Systems), similar to the Features in Entitas -> ReduceAll (run until no more facts across entities with a build in budget, guardrails and prioritization of specific-relevant-flagged entities, just be sure the full ecs-entitas API parity exists such as query for component/fact/state/other entities inside the reducer) + Commit (this is unknowns territory for now which we need to resolve) -> dirty entity with modified output state components. COnsumers can then poll in the domain modules/ECS view systems for the specific entity's state.
+Facts as Components -> Reducers as Systems (they produce other facts but never write into the actual output components) -> single Feature.cs to hold registration of all of the Reducers (Systems), similar to the Features in Entitas -> ReduceAll (run until no more facts across entities with built-in budgets and guardrails, just be sure the full ecs-entitas API parity exists such as query for component/fact/state/other entities inside the reducer) + Commit (this is unknowns territory for now which we need to resolve) -> dirty entity with modified output state components. COnsumers can then poll in the domain modules/ECS view systems for the specific entity's state.
 
 What I need you to do is to make an example usage of the proposed API (we need to start from the actual use and go backwards from there). We need to find out what commit stage should be doing and how it will actually be used.
 
@@ -154,9 +154,7 @@ public sealed class GameSimulationLoop
         {
             MaxFacts = 50_000,
             MaxPasses = 64,
-            MaxMilliseconds = 8,
-            BudgetMode = BudgetMode.PriorityFirst,
-            IncompleteCommitMode = IncompleteCommitMode.Throw
+            MaxMilliseconds = 8
         });
 
         _simulation.ForEachMutation(_schema.Position, (entity, change) =>
@@ -1054,7 +1052,7 @@ private ReduceResult ReduceAll(TickScope tick, ReduceOptions options)
         if (tick.Budget.IsExceeded(options))
             return ReduceResult.Incomplete(tick);
 
-        QueuedFact queued = tick.WorkQueue.PopHighestPriority();
+        QueuedFact queued = tick.WorkQueue.PopNext();
 
         if (tick.Entities.IsDestroyed(queued.Entity))
             continue;
@@ -1091,9 +1089,7 @@ public void Emit<TFact>(EntityRef entity, in TFact fact)
 
     _facts.Add(entity, fact);
 
-    FactPriority priority = ResolvePriority(entity, fact);
-
-    _workQueue.Enqueue(entity, fact, priority);
+    _workQueue.Enqueue(entity, fact);
 
     _touchedEntities.Add(entity);
     _transactionalScheduler.OnFactAccepted(entity, typeof(TFact));
@@ -1381,40 +1377,7 @@ public sealed class ReduceOptions
     public required int MaxFacts { get; init; }
     public required int MaxPasses { get; init; }
     public required int MaxMilliseconds { get; init; }
-
-    public required BudgetMode BudgetMode { get; init; }
-    public required IncompleteCommitMode IncompleteCommitMode { get; init; }
-
-    public EntityPriorityProvider? PriorityProvider { get; init; }
 }
-```
-
-Modes:
-
-```csharp
-public enum BudgetMode
-{
-    Fifo,
-    PriorityFirst,
-    RelevantEntitiesFirst,
-    VisibleEntitiesFirst
-}
-```
-
-Incomplete commit modes:
-
-```csharp
-public enum IncompleteCommitMode
-{
-    Throw,
-    DoNotCommitAnything
-}
-```
-
-Recommended default:
-
-```csharp
-IncompleteCommitMode.Throw
 ```
 
 Meaning:
@@ -1425,7 +1388,7 @@ Surface the failure with reducer/fact diagnostics.
 Do not publish partial durable state in the MVP.
 ```
 
-This prevents half-resolved inventory or half-resolved movement from leaking into durable state. Partial commit modes can be added later only after we can prove closed subgraphs safely.
+This prevents half-resolved inventory or half-resolved movement from leaking into durable state. Reducer queue ordering is not a priority policy; fact priority belongs to closed-fact conflict resolution in committers.
 
 ---
 
@@ -1457,7 +1420,6 @@ public readonly record struct FactMeta
     public required FactId? ParentId { get; init; }
     public required EntityRef Entity { get; init; }
     public required SimulationTick Tick { get; init; }
-    public required FactPriority Priority { get; init; }
     public required int Depth { get; init; }
 }
 ```

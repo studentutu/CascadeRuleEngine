@@ -19,7 +19,7 @@ namespace CascadeEngineApi
         private int _factCapacityPerEntity = 4;
         private int _factRouteCapacityPerEntity = 4;
         private FactListCapacityMode _factListCapacityMode = FactListCapacityMode.GrowOnDemand;
-        private long _nextSequence;
+        private int _queueHead;
 
         internal FactStore()
         {
@@ -37,7 +37,7 @@ namespace CascadeEngineApi
         internal int FactCounterEntityCapacity => _factCountsByEntity.Capacity;
         internal int BucketCount => _buckets.Count;
 
-        internal bool HasQueuedFacts => _queue.Count > 0;
+        internal bool HasQueuedFacts => _queueHead < _queue.Count;
 
         internal void Warmup(
             int entityCapacity,
@@ -143,7 +143,6 @@ namespace CascadeEngineApi
             EntityRef entity,
             FactEmitRoute<TFact> route,
             in TFact fact,
-            FactPriority priority,
             int depth,
             FactGuardrails guardrails)
             where TFact : struct, IFact
@@ -193,24 +192,20 @@ namespace CascadeEngineApi
                 route,
                 bucket,
                 factIndex,
-                priority,
-                depth,
-                _nextSequence));
-            _nextSequence++;
+                depth));
             return true;
         }
 
-        internal bool TryPop(BudgetMode mode, out QueuedFact fact)
+        internal bool TryPop(out QueuedFact fact)
         {
-            if (_queue.Count == 0)
+            if (_queueHead >= _queue.Count)
             {
                 fact = default;
                 return false;
             }
 
-            var index = SelectIndex(mode);
-            fact = _queue[index];
-            _queue.RemoveAt(index);
+            fact = _queue[_queueHead];
+            _queueHead++;
             return true;
         }
 
@@ -274,10 +269,10 @@ namespace CascadeEngineApi
             }
 
             _queue.Clear();
+            _queueHead = 0;
             _factCountsByEntity.Clear(_touchedEntities);
             ClearTouchedFactRoutes();
             _touchedEntities.Clear();
-            _nextSequence = 0;
             AcceptedFacts = 0;
             DeduplicatedFacts = 0;
             RejectedDestroyedEntityFacts = 0;
@@ -360,36 +355,6 @@ namespace CascadeEngineApi
                     routes.Clear();
                 }
             }
-        }
-
-        private int SelectIndex(BudgetMode mode)
-        {
-            if (mode == BudgetMode.Fifo)
-            {
-                return 0;
-            }
-
-            if (mode != BudgetMode.PriorityFirst)
-            {
-                throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported budget mode.");
-            }
-
-            var bestIndex = 0;
-            var bestPriority = _queue[0].Priority;
-            var bestSequence = _queue[0].Sequence;
-            for (var i = 1; i < _queue.Count; i++)
-            {
-                var queued = _queue[i];
-                if (queued.Priority > bestPriority
-                    || queued.Priority == bestPriority && queued.Sequence < bestSequence)
-                {
-                    bestIndex = i;
-                    bestPriority = queued.Priority;
-                    bestSequence = queued.Sequence;
-                }
-            }
-
-            return bestIndex;
         }
 
         private static int NormalizeCapacity(int capacity)

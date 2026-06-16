@@ -26,13 +26,6 @@ namespace CascadeEngineApi
             return new ReducerRegistrationBuilder<TFact>(_registry);
         }
 
-        protected FactPriorityRegistrationBuilder<TFact> Priority<TFact>()
-            where TFact : struct, IFact
-        {
-            ThrowIfNotMutable();
-            return new FactPriorityRegistrationBuilder<TFact>(_registry);
-        }
-
         protected TransactionalReducerRegistrationBuilder ReduceWhen(params FactType[] requiredFacts)
         {
             ThrowIfNotMutable();

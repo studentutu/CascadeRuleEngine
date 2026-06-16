@@ -165,7 +165,7 @@ namespace CascadeEngineApi
                     return ReductionStepStatus.BudgetExceeded;
                 }
 
-                _facts.TryPop(options.BudgetMode, out var queued);
+                _facts.TryPop(out var queued);
                 _processedFacts++;
                 SetLastFactContext(in queued);
 

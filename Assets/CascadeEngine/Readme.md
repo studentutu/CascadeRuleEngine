@@ -155,12 +155,6 @@ public sealed class GameplayFeature : FactFeature
 {
     public GameplayFeature()
     {
-        Priority<MoveRequestedFact>()
-            .With<MoveRequestedFactPriorityResolver>();
-
-        Priority<MoveResolvedFact>()
-            .With<MoveResolvedFactPriorityResolver>();
-
         Reduce<MoveRequestedFact>()
             .With<MoveRequestReducer>();
 
@@ -174,14 +168,7 @@ public sealed class GameplayFeature : FactFeature
 }
 ```
 
-Fact queue priority is explicit during feature registration. Facts without a priority registration use `FactPriority.Normal`.
-
-```csharp
-Priority<MoveRequestedFact>()
-    .With<CustomPriorityResolver>();
-```
-
-`With<TResolver>()` registers a typed `IFactPriorityResolver<TFact>` and keeps the `Emit` path non-boxing. There is no built-in priority marker interface; fact priority is always explicit feature registration.
+Fact reduction order is not a public scheduling policy. Facts are reduced until closure; durable conflict priority belongs inside the facts consumed by committers, not in the reducer work queue.
 
 ## Public API contract
 
@@ -190,7 +177,6 @@ Priority<MoveRequestedFact>()
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
-| `IFactPriorityResolver<TFact>` | typed fact queue priority resolver registered explicitly through `Priority<TFact>()` |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |

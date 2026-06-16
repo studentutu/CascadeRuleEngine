@@ -13,18 +13,14 @@ namespace CascadeEngineApi
             IFactReduceRoute reduceRoute,
             IFactBucket bucket,
             int factIndex,
-            FactPriority priority,
-            int depth,
-            long sequence)
+            int depth)
         {
             Entity = entity;
             FactId = factId;
             ReduceRoute = reduceRoute;
             Bucket = bucket;
             FactIndex = factIndex;
-            Priority = priority;
             Depth = depth;
-            Sequence = sequence;
         }
 
         internal EntityRef Entity { get; }
@@ -32,8 +28,6 @@ namespace CascadeEngineApi
         internal IFactReduceRoute ReduceRoute { get; }
         internal IFactBucket Bucket { get; }
         internal int FactIndex { get; }
-        internal FactPriority Priority { get; }
         internal int Depth { get; }
-        internal long Sequence { get; }
     }
 }

@@ -12,7 +12,6 @@ namespace CascadeEngineApi
     {
         private readonly List<IOutputRegistration> _affectedOutputs = new List<IOutputRegistration>();
         private readonly List<IReducerInvoker> _reducers = new List<IReducerInvoker>();
-        private IFactPriorityResolver<TFact>? _priorityResolver;
 
         internal FactEmitRoute(CascadeTypeId factId)
         {
@@ -29,21 +28,10 @@ namespace CascadeEngineApi
         public IReducerInvoker ReducerAt(int index)
             => _reducers[index];
 
-        internal FactPriority ResolvePriority(in TFact fact)
-            => _priorityResolver != null
-                ? _priorityResolver.Resolve(in fact)
-                : FactPriority.Normal;
-
         internal void AddAffectedOutput(IOutputRegistration output)
             => _affectedOutputs.Add(output);
 
         internal void AddReducer(IReducerInvoker reducer)
             => _reducers.Add(reducer);
-
-        internal void SetPriorityResolver(IFactPriorityResolver<TFact> resolver)
-            => _priorityResolver = resolver;
-
-        internal void ClearPriorityResolver()
-            => _priorityResolver = null;
     }
 }

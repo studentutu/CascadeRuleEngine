@@ -54,7 +54,7 @@ namespace CascadeEngineApi
             }
 
             throw new InvalidOperationException(
-                $"Fact '{typeof(TFact).Name}' is not registered in this feature. Register it with Reduce<TFact>(), AffectedBy<TFact>(), ReduceWhen(...), or Priority<TFact>() before using it.");
+                $"Fact '{typeof(TFact).Name}' is not registered in this feature. Register it with Reduce<TFact>(), AffectedBy<TFact>(), or ReduceWhen(...) before using it.");
         }
     }
 }
