@@ -11,17 +11,17 @@ namespace CascadeEngineApi
     internal sealed class OutputRegistration<TState> : IOutputRegistration
         where TState : struct, IOutputState
     {
-        private readonly CascadeTypeId[] _affectedFactIds;
+        private readonly FactType[] _affectedFacts;
         private readonly IOutputCommitter<TState> _committer;
         private readonly List<CommitAction<TState>> _commitActions = new List<CommitAction<TState>>();
 
         internal OutputRegistration(
             OutputState<TState> output,
-            CascadeTypeId[] affectedFactIds,
+            FactType[] affectedFacts,
             IOutputCommitter<TState> committer)
         {
             Output = output;
-            _affectedFactIds = affectedFactIds;
+            _affectedFacts = affectedFacts;
             _committer = committer;
         }
 
@@ -30,24 +30,11 @@ namespace CascadeEngineApi
         public CascadeTypeId StateId => Output.Id;
         public int Index => Output.Index;
         public string Name => Output.Name;
-        public CascadeTypeId[] AffectedFactIds => _affectedFactIds;
+        public FactType[] AffectedFacts => _affectedFacts;
         public int CommitActionCapacity => _commitActions.Capacity;
 
         public void Reindex(int index)
             => Output.Index = index;
-
-        public bool IsAffectedBy(FactStore facts, EntityRef entity)
-        {
-            for (var i = 0; i < _affectedFactIds.Length; i++)
-            {
-                if (facts.Has(entity, _affectedFactIds[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
 
         public void QueueCommitAction(FactSimulation simulation, EntityRef entity)
         {

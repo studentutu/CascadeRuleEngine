@@ -53,6 +53,16 @@ namespace CascadeEngineApi
             _bucketFactory?.UnbindRoute(registry);
         }
 
+        internal void BindAffectedOutput(FactFeatureRegistry registry, IOutputRegistration output)
+        {
+            if (_bucketFactory == null)
+            {
+                throw new InvalidOperationException($"Fact type '{DebugName}' cannot bind affected outputs without a typed route.");
+            }
+
+            _bucketFactory.BindAffectedOutput(registry, output);
+        }
+
         internal IFactBucket CreateBucket(
             int entityCapacity,
             int factCapacityPerEntity,

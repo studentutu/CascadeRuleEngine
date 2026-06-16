@@ -26,6 +26,9 @@ namespace CascadeEngineApi
         public void UnbindRoute(FactFeatureRegistry registry)
             => FactEmitRouteCache<TFact>.Remove(registry);
 
+        public void BindAffectedOutput(FactFeatureRegistry registry, IOutputRegistration output)
+            => FactEmitRouteCache<TFact>.Require(registry).AddAffectedOutput(output);
+
         public IFactBucket Create(
             CascadeTypeId id,
             int entityCapacity,

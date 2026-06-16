@@ -1,158 +1,158 @@
 <?xml version="1.0" encoding="utf-8"?>
-<test-run id="2" testcasecount="43" result="Passed" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.3739961">
-  <test-suite type="TestSuite" id="1000" name="CascadeEngine" fullname="CascadeEngine" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.373996" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
+<test-run id="2" testcasecount="43" result="Passed" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.548997">
+  <test-suite type="TestSuite" id="1000" name="CascadeEngine" fullname="CascadeEngine" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.548997" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
     <properties>
       <property name="platform" value="EditMode" />
     </properties>
-    <test-suite type="Assembly" id="1052" name="Tests.dll" fullname="C:/Users/admin/Documents/UnityProjects/CascadeRuleEngine/Library/ScriptAssemblies/Tests.dll" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.367744" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <test-suite type="Assembly" id="1052" name="Tests.dll" fullname="C:/Users/admin/Documents/UnityProjects/CascadeRuleEngine/Library/ScriptAssemblies/Tests.dll" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.523745" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
       <properties>
-        <property name="_PID" value="31112" />
+        <property name="_PID" value="50032" />
         <property name="_APPDOMAIN" value="Unity Child Domain" />
         <property name="platform" value="EditMode" />
         <property name="EditorOnly" value="True" />
       </properties>
-      <test-suite type="TestSuite" id="1053" name="CascadeEngineApi" fullname="CascadeEngineApi" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.367453" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestSuite" id="1053" name="CascadeEngineApi" fullname="CascadeEngineApi" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.522972" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-suite type="TestSuite" id="1054" name="Tests" fullname="CascadeEngineApi.Tests" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.367292" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <test-suite type="TestSuite" id="1054" name="Tests" fullname="CascadeEngineApi.Tests" runstate="Runnable" testcasecount="43" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.522719" total="43" passed="43" failed="0" inconclusive="0" skipped="0" asserts="0">
           <properties />
-          <test-suite type="TestFixture" id="1001" name="CascadeTypeIdTests" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.059541" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1001" name="CascadeTypeIdTests" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.161052" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1003" name="DuplicateFactIdsFailDuringFeatureValidation" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.DuplicateFactIdsFailDuringFeatureValidation" methodname="DuplicateFactIdsFailDuringFeatureValidation" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="366856976" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.019468" asserts="0">
+            <test-case id="1003" name="DuplicateFactIdsFailDuringFeatureValidation" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.DuplicateFactIdsFailDuringFeatureValidation" methodname="DuplicateFactIdsFailDuringFeatureValidation" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="63160335" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.052769" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1004" name="DuplicateOutputIdsFailDuringFeatureValidation" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.DuplicateOutputIdsFailDuringFeatureValidation" methodname="DuplicateOutputIdsFailDuringFeatureValidation" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="172743996" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.004173" asserts="0">
+            <test-case id="1004" name="DuplicateOutputIdsFailDuringFeatureValidation" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.DuplicateOutputIdsFailDuringFeatureValidation" methodname="DuplicateOutputIdsFailDuringFeatureValidation" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="1801841680" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.007658" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1005" name="NameTokensCreateDeterministicNonEmptyIntIds" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.NameTokensCreateDeterministicNonEmptyIntIds" methodname="NameTokensCreateDeterministicNonEmptyIntIds" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="199752789" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.005157" asserts="0">
+            <test-case id="1005" name="NameTokensCreateDeterministicNonEmptyIntIds" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.NameTokensCreateDeterministicNonEmptyIntIds" methodname="NameTokensCreateDeterministicNonEmptyIntIds" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="56924306" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.007869" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1002" name="ValidTypeIdsRouteReducersAndCommitters" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.ValidTypeIdsRouteReducersAndCommitters" methodname="ValidTypeIdsRouteReducersAndCommitters" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="217586577" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.018157" asserts="0">
+            <test-case id="1002" name="ValidTypeIdsRouteReducersAndCommitters" fullname="CascadeEngineApi.Tests.CascadeTypeIdTests.ValidTypeIdsRouteReducersAndCommitters" methodname="ValidTypeIdsRouteReducersAndCommitters" classname="CascadeEngineApi.Tests.CascadeTypeIdTests" runstate="Runnable" seed="2100053906" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.028788" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1006" name="DenseEntityStorageTests" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" testcasecount="6" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.004597" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1006" name="DenseEntityStorageTests" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" testcasecount="6" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.006941" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1008" name="DenseEntityCounterClearsOnlyTouchedEntities" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.DenseEntityCounterClearsOnlyTouchedEntities" methodname="DenseEntityCounterClearsOnlyTouchedEntities" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="550007794" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000443" asserts="0">
+            <test-case id="1008" name="DenseEntityCounterClearsOnlyTouchedEntities" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.DenseEntityCounterClearsOnlyTouchedEntities" methodname="DenseEntityCounterClearsOnlyTouchedEntities" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="1922079604" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.000742" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1009" name="DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity" methodname="DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="2004441985" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000432" asserts="0">
+            <test-case id="1009" name="DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity" methodname="DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="544665001" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.000716" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1007" name="DenseEntitySetTracksEachEntityOnceAndClearsMembership" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.DenseEntitySetTracksEachEntityOnceAndClearsMembership" methodname="DenseEntitySetTracksEachEntityOnceAndClearsMembership" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="772087143" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.001194" asserts="0">
+            <test-case id="1007" name="DenseEntitySetTracksEachEntityOnceAndClearsMembership" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.DenseEntitySetTracksEachEntityOnceAndClearsMembership" methodname="DenseEntitySetTracksEachEntityOnceAndClearsMembership" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="1901812857" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.001461" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1011" name="EntityFactListClearsByDisposingStoredFactsAndCanBeReused" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.EntityFactListClearsByDisposingStoredFactsAndCanBeReused" methodname="EntityFactListClearsByDisposingStoredFactsAndCanBeReused" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="1139452431" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000523" asserts="0">
+            <test-case id="1011" name="EntityFactListClearsByDisposingStoredFactsAndCanBeReused" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.EntityFactListClearsByDisposingStoredFactsAndCanBeReused" methodname="EntityFactListClearsByDisposingStoredFactsAndCanBeReused" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="297056542" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.000799" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1012" name="EntityFactListFixedCapacityRejectsUnexpectedGrowth" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.EntityFactListFixedCapacityRejectsUnexpectedGrowth" methodname="EntityFactListFixedCapacityRejectsUnexpectedGrowth" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="1690842638" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000332" asserts="0">
+            <test-case id="1012" name="EntityFactListFixedCapacityRejectsUnexpectedGrowth" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.EntityFactListFixedCapacityRejectsUnexpectedGrowth" methodname="EntityFactListFixedCapacityRejectsUnexpectedGrowth" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="1876280742" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.000612" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1010" name="EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView" methodname="EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="276987950" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000510" asserts="0">
+            <test-case id="1010" name="EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView" fullname="CascadeEngineApi.Tests.DenseEntityStorageTests.EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView" methodname="EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView" classname="CascadeEngineApi.Tests.DenseEntityStorageTests" runstate="Runnable" seed="1666673390" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.000651" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1013" name="FactPriorityRegistrationTests" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.010980" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1013" name="FactPriorityRegistrationTests" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.014106" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1014" name="ExplicitPriorityResolverControlsPriorityFirstQueueOrder" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.ExplicitPriorityResolverControlsPriorityFirstQueueOrder" methodname="ExplicitPriorityResolverControlsPriorityFirstQueueOrder" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="1144963400" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.007066" asserts="0">
+            <test-case id="1014" name="ExplicitPriorityResolverControlsPriorityFirstQueueOrder" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.ExplicitPriorityResolverControlsPriorityFirstQueueOrder" methodname="ExplicitPriorityResolverControlsPriorityFirstQueueOrder" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="1949662208" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.008177" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1017" name="PriorityResolverIsDisposedWithFeatureRegistry" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.PriorityResolverIsDisposedWithFeatureRegistry" methodname="PriorityResolverIsDisposedWithFeatureRegistry" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="473857075" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000406" asserts="0">
+            <test-case id="1017" name="PriorityResolverIsDisposedWithFeatureRegistry" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.PriorityResolverIsDisposedWithFeatureRegistry" methodname="PriorityResolverIsDisposedWithFeatureRegistry" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="923714124" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.000620" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1015" name="SameFactTypeCanUseDifferentPriorityResolversPerFeatureRegistry" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.SameFactTypeCanUseDifferentPriorityResolversPerFeatureRegistry" methodname="SameFactTypeCanUseDifferentPriorityResolversPerFeatureRegistry" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="1003990369" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000871" asserts="0">
+            <test-case id="1015" name="SameFactTypeCanUseDifferentPriorityResolversPerFeatureRegistry" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.SameFactTypeCanUseDifferentPriorityResolversPerFeatureRegistry" methodname="SameFactTypeCanUseDifferentPriorityResolversPerFeatureRegistry" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="292493801" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.001353" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1016" name="SubFeaturePriorityResolverTransfersToParentRegistry" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.SubFeaturePriorityResolverTransfersToParentRegistry" methodname="SubFeaturePriorityResolverTransfersToParentRegistry" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="1215912603" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.001998" asserts="0">
+            <test-case id="1016" name="SubFeaturePriorityResolverTransfersToParentRegistry" fullname="CascadeEngineApi.Tests.FactPriorityRegistrationTests.SubFeaturePriorityResolverTransfersToParentRegistry" methodname="SubFeaturePriorityResolverTransfersToParentRegistry" classname="CascadeEngineApi.Tests.FactPriorityRegistrationTests" runstate="Runnable" seed="1384703777" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.002884" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1018" name="FactSimulationIncrementalTests" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.014671" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1018" name="FactSimulationIncrementalTests" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.020944" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1021" name="CausalDepthFailureIncludesEmittedFactAndReducerContext" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests.CausalDepthFailureIncludesEmittedFactAndReducerContext" methodname="CausalDepthFailureIncludesEmittedFactAndReducerContext" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" seed="906172376" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.008067" asserts="0">
+            <test-case id="1021" name="CausalDepthFailureIncludesEmittedFactAndReducerContext" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests.CausalDepthFailureIncludesEmittedFactAndReducerContext" methodname="CausalDepthFailureIncludesEmittedFactAndReducerContext" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" seed="244639701" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.011435" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1020" name="FullTickBudgetFailureIncludesActionableContext" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests.FullTickBudgetFailureIncludesActionableContext" methodname="FullTickBudgetFailureIncludesActionableContext" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" seed="378321955" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.001551" asserts="0">
+            <test-case id="1020" name="FullTickBudgetFailureIncludesActionableContext" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests.FullTickBudgetFailureIncludesActionableContext" methodname="FullTickBudgetFailureIncludesActionableContext" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" seed="747426700" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.002213" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1019" name="IncrementalTickDoesNotCommitUntilReductionCloses" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests.IncrementalTickDoesNotCommitUntilReductionCloses" methodname="IncrementalTickDoesNotCommitUntilReductionCloses" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" seed="1255352383" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.004480" asserts="0">
+            <test-case id="1019" name="IncrementalTickDoesNotCommitUntilReductionCloses" fullname="CascadeEngineApi.Tests.FactSimulationIncrementalTests.IncrementalTickDoesNotCommitUntilReductionCloses" methodname="IncrementalTickDoesNotCommitUntilReductionCloses" classname="CascadeEngineApi.Tests.FactSimulationIncrementalTests" runstate="Runnable" seed="1920068294" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.006253" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1022" name="FactSimulationTransactionalReducerTests" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.048057" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1022" name="FactSimulationTransactionalReducerTests" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.068161" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1025" name="BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests.BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses" methodname="BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" seed="1097820611" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.021266" asserts="0">
+            <test-case id="1025" name="BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests.BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses" methodname="BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" seed="1715657026" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.033778" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1024" name="BatchTransactionalReducerReceivesOnlyEligibleEntities" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests.BatchTransactionalReducerReceivesOnlyEligibleEntities" methodname="BatchTransactionalReducerReceivesOnlyEligibleEntities" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" seed="442584140" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.014344" asserts="0">
+            <test-case id="1024" name="BatchTransactionalReducerReceivesOnlyEligibleEntities" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests.BatchTransactionalReducerReceivesOnlyEligibleEntities" methodname="BatchTransactionalReducerReceivesOnlyEligibleEntities" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" seed="1095038925" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.015772" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1023" name="EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests.EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist" methodname="EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" seed="644622233" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.011620" asserts="0">
+            <test-case id="1023" name="EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist" fullname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests.EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist" methodname="EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist" classname="CascadeEngineApi.Tests.FactSimulationTransactionalReducerTests" runstate="Runnable" seed="704779017" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:53Z" duration="0.017429" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1026" name="FactSimulationWarmupTests" fullname="CascadeEngineApi.Tests.FactSimulationWarmupTests" classname="CascadeEngineApi.Tests.FactSimulationWarmupTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.175803" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1026" name="FactSimulationWarmupTests" fullname="CascadeEngineApi.Tests.FactSimulationWarmupTests" classname="CascadeEngineApi.Tests.FactSimulationWarmupTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.189309" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1028" name="WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount" fullname="CascadeEngineApi.Tests.FactSimulationWarmupTests.WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount" methodname="WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount" classname="CascadeEngineApi.Tests.FactSimulationWarmupTests" runstate="Runnable" seed="631921976" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.121246" asserts="0">
+            <test-case id="1028" name="WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount" fullname="CascadeEngineApi.Tests.FactSimulationWarmupTests.WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount" methodname="WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount" classname="CascadeEngineApi.Tests.FactSimulationWarmupTests" runstate="Runnable" seed="1610091624" result="Passed" start-time="2026-06-16 18:10:53Z" end-time="2026-06-16 18:10:54Z" duration="0.136314" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
@@ -160,139 +160,139 @@
               <output><![CDATA[Cascade allocation measurement for 512 entities: first-use=0 bytes, steady-state=0 bytes.
 ]]></output>
             </test-case>
-            <test-case id="1027" name="WarmupPreventsCapacityGrowthDuringRepresentativeTick" fullname="CascadeEngineApi.Tests.FactSimulationWarmupTests.WarmupPreventsCapacityGrowthDuringRepresentativeTick" methodname="WarmupPreventsCapacityGrowthDuringRepresentativeTick" classname="CascadeEngineApi.Tests.FactSimulationWarmupTests" runstate="Runnable" seed="1378169792" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.053739" asserts="0">
+            <test-case id="1027" name="WarmupPreventsCapacityGrowthDuringRepresentativeTick" fullname="CascadeEngineApi.Tests.FactSimulationWarmupTests.WarmupPreventsCapacityGrowthDuringRepresentativeTick" methodname="WarmupPreventsCapacityGrowthDuringRepresentativeTick" classname="CascadeEngineApi.Tests.FactSimulationWarmupTests" runstate="Runnable" seed="488680058" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.051735" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1029" name="HestiaGameContextTests" fullname="CascadeEngineApi.Tests.HestiaGameContextTests" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.047596" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1029" name="HestiaGameContextTests" fullname="CascadeEngineApi.Tests.HestiaGameContextTests" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.052496" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1043" name="AcceptedFactsAreDisposedWhenTickFactStoreClears" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.AcceptedFactsAreDisposedWhenTickFactStoreClears" methodname="AcceptedFactsAreDisposedWhenTickFactStoreClears" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="210809034" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.003354" asserts="0">
+            <test-case id="1043" name="AcceptedFactsAreDisposedWhenTickFactStoreClears" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.AcceptedFactsAreDisposedWhenTickFactStoreClears" methodname="AcceptedFactsAreDisposedWhenTickFactStoreClears" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="65963043" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.003771" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1031" name="AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations" methodname="AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="68338446" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.020537" asserts="0">
+            <test-case id="1031" name="AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations" methodname="AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="754240656" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.022380" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1040" name="DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts" methodname="DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1374923662" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.002042" asserts="0">
+            <test-case id="1040" name="DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts" methodname="DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="2123706810" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.002311" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1045" name="DisposeAfterTickDoesNotDisposeFactsAgain" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeAfterTickDoesNotDisposeFactsAgain" methodname="DisposeAfterTickDoesNotDisposeFactsAgain" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1534232032" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000324" asserts="0">
+            <test-case id="1045" name="DisposeAfterTickDoesNotDisposeFactsAgain" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeAfterTickDoesNotDisposeFactsAgain" methodname="DisposeAfterTickDoesNotDisposeFactsAgain" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="332687492" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000396" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1049" name="DisposeClearsFeatureRegistryAndDisposesRegistrations" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeClearsFeatureRegistryAndDisposesRegistrations" methodname="DisposeClearsFeatureRegistryAndDisposesRegistrations" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1038347399" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.003251" asserts="0">
+            <test-case id="1049" name="DisposeClearsFeatureRegistryAndDisposesRegistrations" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeClearsFeatureRegistryAndDisposesRegistrations" methodname="DisposeClearsFeatureRegistryAndDisposesRegistrations" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="511057876" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.003339" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1046" name="DisposeDisposesCurrentOutputStateExactlyOnce" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeDisposesCurrentOutputStateExactlyOnce" methodname="DisposeDisposesCurrentOutputStateExactlyOnce" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1158120797" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.001046" asserts="0">
+            <test-case id="1046" name="DisposeDisposesCurrentOutputStateExactlyOnce" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeDisposesCurrentOutputStateExactlyOnce" methodname="DisposeDisposesCurrentOutputStateExactlyOnce" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1859813497" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.001179" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1044" name="DisposeDisposesQueuedFactsExactlyOnce" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeDisposesQueuedFactsExactlyOnce" methodname="DisposeDisposesQueuedFactsExactlyOnce" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1714107636" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000161" asserts="0">
+            <test-case id="1044" name="DisposeDisposesQueuedFactsExactlyOnce" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeDisposesQueuedFactsExactlyOnce" methodname="DisposeDisposesQueuedFactsExactlyOnce" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="225247842" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000186" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1047" name="DisposeIsTerminalAndRejectsPublicSimulationUse" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeIsTerminalAndRejectsPublicSimulationUse" methodname="DisposeIsTerminalAndRejectsPublicSimulationUse" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="437098136" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000271" asserts="0">
+            <test-case id="1047" name="DisposeIsTerminalAndRejectsPublicSimulationUse" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposeIsTerminalAndRejectsPublicSimulationUse" methodname="DisposeIsTerminalAndRejectsPublicSimulationUse" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="546241459" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000283" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1048" name="DisposingFeatureExternallyRejectsSimulationUse" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposingFeatureExternallyRejectsSimulationUse" methodname="DisposingFeatureExternallyRejectsSimulationUse" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="882888334" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000177" asserts="0">
+            <test-case id="1048" name="DisposingFeatureExternallyRejectsSimulationUse" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DisposingFeatureExternallyRejectsSimulationUse" methodname="DisposingFeatureExternallyRejectsSimulationUse" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="106837326" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000189" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1033" name="DistinctAmmoFactsFoldIntoOneOutputMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DistinctAmmoFactsFoldIntoOneOutputMutation" methodname="DistinctAmmoFactsFoldIntoOneOutputMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1043301189" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.001064" asserts="0">
+            <test-case id="1033" name="DistinctAmmoFactsFoldIntoOneOutputMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DistinctAmmoFactsFoldIntoOneOutputMutation" methodname="DistinctAmmoFactsFoldIntoOneOutputMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="692895886" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.001168" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1032" name="DuplicateFactsAreDeduplicatedWithinOneTick" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DuplicateFactsAreDeduplicatedWithinOneTick" methodname="DuplicateFactsAreDeduplicatedWithinOneTick" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1189437894" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000318" asserts="0">
+            <test-case id="1032" name="DuplicateFactsAreDeduplicatedWithinOneTick" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.DuplicateFactsAreDeduplicatedWithinOneTick" methodname="DuplicateFactsAreDeduplicatedWithinOneTick" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="791276986" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000344" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1036" name="EqualPriorityMoveConflictThrowsAndDoesNotCommit" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.EqualPriorityMoveConflictThrowsAndDoesNotCommit" methodname="EqualPriorityMoveConflictThrowsAndDoesNotCommit" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1679334322" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.006855" asserts="0">
+            <test-case id="1036" name="EqualPriorityMoveConflictThrowsAndDoesNotCommit" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.EqualPriorityMoveConflictThrowsAndDoesNotCommit" methodname="EqualPriorityMoveConflictThrowsAndDoesNotCommit" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1031395630" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.007769" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1030" name="FireWeaponReducesRequestAndCommitsAmmoOnce" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.FireWeaponReducesRequestAndCommitsAmmoOnce" methodname="FireWeaponReducesRequestAndCommitsAmmoOnce" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="2012530316" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000349" asserts="0">
+            <test-case id="1030" name="FireWeaponReducesRequestAndCommitsAmmoOnce" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.FireWeaponReducesRequestAndCommitsAmmoOnce" methodname="FireWeaponReducesRequestAndCommitsAmmoOnce" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="320423048" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000511" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1041" name="ForeignOutputDescriptorIsRejected" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.ForeignOutputDescriptorIsRejected" methodname="ForeignOutputDescriptorIsRejected" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1201548068" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000369" asserts="0">
+            <test-case id="1041" name="ForeignOutputDescriptorIsRejected" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.ForeignOutputDescriptorIsRejected" methodname="ForeignOutputDescriptorIsRejected" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1445620758" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000530" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1035" name="HighestPriorityMoveWinsAndPublishesTypedMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.HighestPriorityMoveWinsAndPublishesTypedMutation" methodname="HighestPriorityMoveWinsAndPublishesTypedMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1443335366" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.001783" asserts="0">
+            <test-case id="1035" name="HighestPriorityMoveWinsAndPublishesTypedMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.HighestPriorityMoveWinsAndPublishesTypedMutation" methodname="HighestPriorityMoveWinsAndPublishesTypedMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="864491802" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.002022" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1034" name="MissingAmmoStateSkipsSpendAndCreatesNoDefaultState" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.MissingAmmoStateSkipsSpendAndCreatesNoDefaultState" methodname="MissingAmmoStateSkipsSpendAndCreatesNoDefaultState" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="2146664649" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000279" asserts="0">
+            <test-case id="1034" name="MissingAmmoStateSkipsSpendAndCreatesNoDefaultState" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.MissingAmmoStateSkipsSpendAndCreatesNoDefaultState" methodname="MissingAmmoStateSkipsSpendAndCreatesNoDefaultState" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1402727910" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000359" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1039" name="NonRelevantFootstepDoesNotEmitFactOrMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.NonRelevantFootstepDoesNotEmitFactOrMutation" methodname="NonRelevantFootstepDoesNotEmitFactOrMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1396623269" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000447" asserts="0">
+            <test-case id="1039" name="NonRelevantFootstepDoesNotEmitFactOrMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.NonRelevantFootstepDoesNotEmitFactOrMutation" methodname="NonRelevantFootstepDoesNotEmitFactOrMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1704724798" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000311" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1037" name="PositionWithinEpsilonDoesNotPublishMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.PositionWithinEpsilonDoesNotPublishMutation" methodname="PositionWithinEpsilonDoesNotPublishMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1294541891" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000312" asserts="0">
+            <test-case id="1037" name="PositionWithinEpsilonDoesNotPublishMutation" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.PositionWithinEpsilonDoesNotPublishMutation" methodname="PositionWithinEpsilonDoesNotPublishMutation" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="711645767" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000239" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1038" name="RelevantFootstepPublishesMarkerEachTick" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.RelevantFootstepPublishesMarkerEachTick" methodname="RelevantFootstepPublishesMarkerEachTick" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1816130202" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.002272" asserts="0">
+            <test-case id="1038" name="RelevantFootstepPublishesMarkerEachTick" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.RelevantFootstepPublishesMarkerEachTick" methodname="RelevantFootstepPublishesMarkerEachTick" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1975577991" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.002579" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1042" name="UnknownEntityFactsAreRejectedBeforeEnteringTheQueue" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.UnknownEntityFactsAreRejectedBeforeEnteringTheQueue" methodname="UnknownEntityFactsAreRejectedBeforeEnteringTheQueue" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="759082187" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.000275" asserts="0">
+            <test-case id="1042" name="UnknownEntityFactsAreRejectedBeforeEnteringTheQueue" fullname="CascadeEngineApi.Tests.HestiaGameContextTests.UnknownEntityFactsAreRejectedBeforeEnteringTheQueue" methodname="UnknownEntityFactsAreRejectedBeforeEnteringTheQueue" classname="CascadeEngineApi.Tests.HestiaGameContextTests" runstate="Runnable" seed="1130200101" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.000315" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1050" name="OutputStateRouteTests" fullname="CascadeEngineApi.Tests.OutputStateRouteTests" classname="CascadeEngineApi.Tests.OutputStateRouteTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.004545" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1050" name="OutputStateRouteTests" fullname="CascadeEngineApi.Tests.OutputStateRouteTests" classname="CascadeEngineApi.Tests.OutputStateRouteTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.005903" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1051" name="SameOutputStateTypeUsesSeparateBucketsPerSimulation" fullname="CascadeEngineApi.Tests.OutputStateRouteTests.SameOutputStateTypeUsesSeparateBucketsPerSimulation" methodname="SameOutputStateTypeUsesSeparateBucketsPerSimulation" classname="CascadeEngineApi.Tests.OutputStateRouteTests" runstate="Runnable" seed="1851738121" result="Passed" start-time="2026-06-16 18:00:30Z" end-time="2026-06-16 18:00:30Z" duration="0.004100" asserts="0">
+            <test-case id="1051" name="SameOutputStateTypeUsesSeparateBucketsPerSimulation" fullname="CascadeEngineApi.Tests.OutputStateRouteTests.SameOutputStateTypeUsesSeparateBucketsPerSimulation" methodname="SameOutputStateTypeUsesSeparateBucketsPerSimulation" classname="CascadeEngineApi.Tests.OutputStateRouteTests" runstate="Runnable" seed="1081080226" result="Passed" start-time="2026-06-16 18:10:54Z" end-time="2026-06-16 18:10:54Z" duration="0.004722" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />

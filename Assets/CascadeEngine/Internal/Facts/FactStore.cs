@@ -14,17 +14,17 @@ namespace CascadeEngineApi
         private readonly List<QueuedFact> _queue = new List<QueuedFact>();
         private readonly DenseEntitySet _touchedEntities = new DenseEntitySet(64);
         private readonly DenseEntityCounter _factCountsByEntity = new DenseEntityCounter(64);
-        private readonly DenseEntityObjectStore<EntityFactIdList> _factIdsByEntity;
+        private readonly DenseEntityObjectStore<EntityFactRouteList> _factRoutesByEntity;
         private int _entityCapacity = 64;
         private int _factCapacityPerEntity = 4;
-        private int _factIdCapacityPerEntity = 4;
+        private int _factRouteCapacityPerEntity = 4;
         private FactListCapacityMode _factListCapacityMode = FactListCapacityMode.GrowOnDemand;
         private long _nextSequence;
 
         internal FactStore()
         {
-            _factIdsByEntity = new DenseEntityObjectStore<EntityFactIdList>(
-                CreateFactIdList,
+            _factRoutesByEntity = new DenseEntityObjectStore<EntityFactRouteList>(
+                CreateFactRouteList,
                 _entityCapacity);
         }
 
@@ -50,7 +50,7 @@ namespace CascadeEngineApi
             var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
 
             EnsureEntityCapacity(normalizedEntityCapacity);
-            WarmupFactIdLists(normalizedEntityCapacity, NormalizeCapacity(knownFactTypes.Length));
+            WarmupFactRouteLists(normalizedEntityCapacity, NormalizeCapacity(knownFactTypes.Length));
             if (_queue.Capacity < factQueueCapacity)
             {
                 _queue.Capacity = factQueueCapacity;
@@ -87,7 +87,7 @@ namespace CascadeEngineApi
             _entityCapacity = entityCapacity;
             _touchedEntities.EnsureCapacity(entityCapacity);
             _factCountsByEntity.EnsureCapacity(entityCapacity);
-            _factIdsByEntity.EnsureCapacity(entityCapacity);
+            _factRoutesByEntity.EnsureCapacity(entityCapacity);
 
             foreach (var bucket in _buckets.Values)
             {
@@ -141,13 +141,14 @@ namespace CascadeEngineApi
         internal bool Emit<TFact>(
             EntityStore entities,
             EntityRef entity,
-            CascadeTypeId factId,
+            FactEmitRoute<TFact> route,
             in TFact fact,
             FactPriority priority,
             int depth,
             FactGuardrails guardrails)
             where TFact : struct, IFact
         {
+            var factId = route.FactId;
             if (!entity.IsGlobal && entities.IsDestroyed(entity))
             {
                 RejectedDestroyedEntityFacts++;
@@ -180,7 +181,7 @@ namespace CascadeEngineApi
                 TrackTouchedEntity(entity);
                 if (factCountForType == 0)
                 {
-                    TrackTouchedFactId(entity, factId);
+                    TrackTouchedFactRoute(entity, route);
                 }
 
                 if (IncrementFactCount(entity) > guardrails.MaxFactsPerEntity)
@@ -257,14 +258,14 @@ namespace CascadeEngineApi
         internal void CopyTouchedEntities(EntityRefBuffer destination, out int count)
             => _touchedEntities.CopyTo(destination, out count);
 
-        internal ReadOnlySpan<CascadeTypeId> FactIds(EntityRef entity)
+        internal ReadOnlySpan<IFactCommitRoute> FactRoutes(EntityRef entity)
         {
-            if (_factIdsByEntity.TryGet(entity, out var ids))
+            if (_factRoutesByEntity.TryGet(entity, out var routes))
             {
-                return ids.AsSpan();
+                return routes.AsSpan();
             }
 
-            return ReadOnlySpan<CascadeTypeId>.Empty;
+            return ReadOnlySpan<IFactCommitRoute>.Empty;
         }
 
         internal void Clear()
@@ -276,7 +277,7 @@ namespace CascadeEngineApi
 
             _queue.Clear();
             _factCountsByEntity.Clear(_touchedEntities);
-            ClearTouchedFactIds();
+            ClearTouchedFactRoutes();
             _touchedEntities.Clear();
             _nextSequence = 0;
             AcceptedFacts = 0;
@@ -329,9 +330,9 @@ namespace CascadeEngineApi
             _touchedEntities.Add(entity);
         }
 
-        private void TrackTouchedFactId(EntityRef entity, CascadeTypeId factId)
+        private void TrackTouchedFactRoute(EntityRef entity, IFactCommitRoute route)
         {
-            _factIdsByEntity.GetOrCreate(entity).Add(factId);
+            _factRoutesByEntity.GetOrCreate(entity).Add(route);
         }
 
         private int IncrementFactCount(EntityRef entity)
@@ -339,26 +340,26 @@ namespace CascadeEngineApi
             return _factCountsByEntity.Increment(entity);
         }
 
-        private void WarmupFactIdLists(int entityCapacity, int factTypeCapacity)
+        private void WarmupFactRouteLists(int entityCapacity, int factTypeCapacity)
         {
-            if (factTypeCapacity > _factIdCapacityPerEntity)
+            if (factTypeCapacity > _factRouteCapacityPerEntity)
             {
-                _factIdCapacityPerEntity = factTypeCapacity;
+                _factRouteCapacityPerEntity = factTypeCapacity;
             }
 
             for (var i = 0; i < entityCapacity; i++)
             {
-                _factIdsByEntity.GetOrCreate(new EntityRef(i)).EnsureCapacity(_factIdCapacityPerEntity);
+                _factRoutesByEntity.GetOrCreate(new EntityRef(i)).EnsureCapacity(_factRouteCapacityPerEntity);
             }
         }
 
-        private void ClearTouchedFactIds()
+        private void ClearTouchedFactRoutes()
         {
             for (var i = 0; i < _touchedEntities.Count; i++)
             {
-                if (_factIdsByEntity.TryGet(_touchedEntities[i], out var ids))
+                if (_factRoutesByEntity.TryGet(_touchedEntities[i], out var routes))
                 {
-                    ids.Clear();
+                    routes.Clear();
                 }
             }
         }
@@ -396,7 +397,7 @@ namespace CascadeEngineApi
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);
 
-        private EntityFactIdList CreateFactIdList()
-            => new EntityFactIdList(_factIdCapacityPerEntity);
+        private EntityFactRouteList CreateFactRouteList()
+            => new EntityFactRouteList(_factRouteCapacityPerEntity);
     }
 }

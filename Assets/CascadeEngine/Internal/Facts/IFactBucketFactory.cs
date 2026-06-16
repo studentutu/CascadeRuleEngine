@@ -16,6 +16,8 @@ namespace CascadeEngineApi
 
         void UnbindRoute(FactFeatureRegistry registry);
 
+        void BindAffectedOutput(FactFeatureRegistry registry, IOutputRegistration output);
+
         IFactBucket Create(
             CascadeTypeId id,
             int entityCapacity,

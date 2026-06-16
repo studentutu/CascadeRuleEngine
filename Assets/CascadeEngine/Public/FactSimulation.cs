@@ -430,7 +430,7 @@ namespace CascadeEngineApi
                 _facts.Emit(
                     _entities,
                     entity,
-                    factId,
+                    route,
                     in fact,
                     route.ResolvePriority(in fact),
                     parentDepth,
@@ -591,19 +591,16 @@ namespace CascadeEngineApi
 
         private void QueueAffectedOutputCommits(EntityRef entity)
         {
-            var factIds = _facts.FactIds(entity);
+            var factRoutes = _facts.FactRoutes(entity);
             var mark = NextCommitOutputMark();
 
-            for (var factIndex = 0; factIndex < factIds.Length; factIndex++)
+            for (var factIndex = 0; factIndex < factRoutes.Length; factIndex++)
             {
-                if (!_registry.TryGetAffectedOutputs(factIds[factIndex], out var outputs))
-                {
-                    continue;
-                }
+                var route = factRoutes[factIndex];
 
-                for (var outputIndex = 0; outputIndex < outputs.Count; outputIndex++)
+                for (var outputIndex = 0; outputIndex < route.AffectedOutputCount; outputIndex++)
                 {
-                    var output = outputs[outputIndex];
+                    var output = route.AffectedOutputAt(outputIndex);
                     if (_commitOutputMarks[output.Index] == mark)
                     {
                         continue;

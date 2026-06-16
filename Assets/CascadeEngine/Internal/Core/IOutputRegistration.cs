@@ -10,11 +10,9 @@ namespace CascadeEngineApi
         CascadeTypeId StateId { get; }
         int Index { get; }
         string Name { get; }
-        CascadeTypeId[] AffectedFactIds { get; }
+        FactType[] AffectedFacts { get; }
 
         void Reindex(int index);
-
-        bool IsAffectedBy(FactStore facts, EntityRef entity);
 
         void QueueCommitAction(FactSimulation simulation, EntityRef entity);
 
