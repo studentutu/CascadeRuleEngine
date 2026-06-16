@@ -17,6 +17,7 @@
 - `FactSimulation.Warmup(WarmupCapacityHints)` now pre-sizes dense fact stores, query/transaction/batch buffers, commit and mutation buffers, the fact queue, and registered fact buckets for expected gameplay load.
 - Fact emit routing now uses per-fact typed routes containing the fact id, so emit avoids type-catalog fact id lookup.
 - Output state routing now binds simulation-owned typed state buckets, so `GetStateBucket<TState>()` and query/state access avoid type-catalog output id lookup.
+- Output registrations now keep their simulation-owned typed state bucket after binding, so commit queuing does not re-fetch the bucket through `OutputStateRouteCache<TState>`.
 - Commit routing now records accepted fact routes per touched entity and reads affected outputs directly from those routes, so commit reconciliation no longer scans fact buckets or looks up affected outputs by fact id.
 - Reducer routing now binds reducer invokers into per-fact typed routes, so the reduction loop no longer performs a reducer dictionary lookup by fact id for each queued fact.
 - No Global facts should exists in package API and storage model. All emitted facts must belong to concrete entities.

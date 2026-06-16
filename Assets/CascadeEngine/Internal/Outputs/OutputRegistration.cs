@@ -14,6 +14,7 @@ namespace CascadeEngineApi
         private readonly FactType[] _affectedFacts;
         private readonly IOutputCommitter<TState> _committer;
         private readonly List<CommitAction<TState>> _commitActions = new List<CommitAction<TState>>();
+        private StateBucket<TState>? _bucket;
 
         internal OutputRegistration(
             OutputState<TState> output,
@@ -38,7 +39,7 @@ namespace CascadeEngineApi
 
         public void QueueCommitAction(FactSimulation simulation, EntityRef entity)
         {
-            var bucket = simulation.GetStateBucket<TState>();
+            var bucket = RequireBucket();
             var previous = bucket.TryGet(entity, out var value)
                 ? new Optional<TState>(value)
                 : default;
@@ -69,13 +70,20 @@ namespace CascadeEngineApi
             => new StateBucket<TState>(Output.Id, Output.Name);
 
         public void BindStateBucket(FactSimulation simulation, IStateBucket bucket)
-            => OutputStateRouteCache<TState>.Add(simulation, Output, (StateBucket<TState>)bucket);
+        {
+            var typedBucket = (StateBucket<TState>)bucket;
+            _bucket = typedBucket;
+            OutputStateRouteCache<TState>.Add(simulation, Output, typedBucket);
+        }
 
         public void UnbindStateBucket(FactSimulation simulation)
-            => OutputStateRouteCache<TState>.Remove(simulation);
+        {
+            OutputStateRouteCache<TState>.Remove(simulation);
+            _bucket = null;
+        }
 
         public void DeleteState(FactSimulation simulation, EntityRef entity)
-            => simulation.GetStateBucket<TState>().Delete(entity);
+            => RequireBucket().Delete(entity);
 
         public void Warmup(
             FactSimulation simulation,
@@ -83,7 +91,7 @@ namespace CascadeEngineApi
             int mutationCapacity,
             int commitActionCapacity)
         {
-            simulation.GetStateBucket<TState>().EnsureCapacity(stateCapacity, mutationCapacity);
+            RequireBucket().EnsureCapacity(stateCapacity, mutationCapacity);
             if (_commitActions.Capacity < commitActionCapacity)
             {
                 _commitActions.Capacity = commitActionCapacity;
@@ -91,10 +99,10 @@ namespace CascadeEngineApi
         }
 
         public void ClearMutations(FactSimulation simulation)
-            => simulation.GetStateBucket<TState>().ClearMutations();
+            => RequireBucket().ClearMutations();
 
         public int MutationCount(FactSimulation simulation)
-            => simulation.GetStateBucket<TState>().MutationCount;
+            => RequireBucket().MutationCount;
 
         public void DisposeRegistration()
         {
@@ -105,6 +113,16 @@ namespace CascadeEngineApi
             {
                 disposable.Dispose();
             }
+        }
+
+        private StateBucket<TState> RequireBucket()
+        {
+            if (_bucket == null)
+            {
+                throw new InvalidOperationException($"Output state '{Output.Name}' is not bound to a simulation state bucket.");
+            }
+
+            return _bucket;
         }
     }
 }
