@@ -3,13 +3,12 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Registered documentation for how one output expects its committer to reconcile competing facts.
+    /// Strategy on how output is resolved if committers have competing facts.
     /// </summary>
     public enum CommitConflictPolicy
     {
         None,
         PriorityWinnerOrThrowOnTie,
-        FoldAllInStableFactOrder,
-        CollapseToSingleMarker
+        CollapseToLatestMarker
     }
 }

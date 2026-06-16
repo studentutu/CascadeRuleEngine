@@ -40,21 +40,21 @@
 
 ## Next Work
 
-1. Ergonomics tightening.
-  1.1 Review ReduceWhen ergonomics: we need to need to support up to 4 facts as parameters for the ReduceWhen/BatchReduceWhen. This should also be trivial to expand if needed. Make it clean and separate in code so that it is clearly visible for the external developers who needs more.
-  1.2 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental use with the same task.
-  1.3 improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
-
-2. Harden commit conflict behavior.
+1. Harden commit conflict behavior.
    - Add tests for equal-priority conflicts across multiple facts.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
-3. Add proper Reducer-Loop Priority-per-Entity-flag mode:
+2. Ergonomics tightening.
+  1.1 Review ReduceWhen ergonomics: we need to need to support up to 4 facts as parameters for the ReduceWhen/BatchReduceWhen. This should also be trivial to expand if needed. Make it clean and separate in code so that it is clearly visible for the external developers who needs more.
+  1.2 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental path.
+  1.3 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
+
+3. Budgeting. Add proper Reducer-Loop Priority-per-Entity-flag mode:
    - add Entity flag such as Relevant
    - reducer loop must only work on the Relevant marked entities when SimulationMode configured to use Priority-per-Entity-flag.
    - extend this idea to dormant-marked entities (created but not prioritized)
 
-4. Improve package:
+4. Prepare production package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
    - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)

@@ -19,7 +19,7 @@ namespace Hestia
 
             Ammo = Output<HestiaAmmoState>("Ammo")
                 .AffectedBy<AmmoSpendAcceptedFact>()
-                .ConflictPolicy(CommitConflictPolicy.FoldAllInStableFactOrder)
+                .ConflictPolicy(CommitConflictPolicy.CollapseToLatestMarker)
                 .CommitWith<HestiaAmmoCommitter>();
 
             Position = Output<HestiaPositionState>("Position")
@@ -30,7 +30,7 @@ namespace Hestia
             AudioCue = Output<HestiaAudioCueState>("AudioCue")
                 .AffectedBy<FootstepCueFact>()
                 .AffectedBy<AmmoSpendAcceptedFact>()
-                .ConflictPolicy(CommitConflictPolicy.CollapseToSingleMarker)
+                .ConflictPolicy(CommitConflictPolicy.CollapseToLatestMarker)
                 .CommitWith<HestiaAudioCueCommitter>();
         }
 
