@@ -10,14 +10,14 @@ namespace Hestia
     /// </summary>
     public readonly struct MoveRequestedFact : IFact, IEquatable<MoveRequestedFact>
     {
-        public MoveRequestedFact(float position, FactPriority priority)
+        public MoveRequestedFact(float position, int priority)
         {
             Position = position;
             Priority = priority;
         }
 
         public float Position { get; }
-        public FactPriority Priority { get; }
+        public int Priority { get; }
 
         public bool Equals(MoveRequestedFact other)
             => Position.Equals(other.Position) && Priority == other.Priority;
@@ -26,7 +26,7 @@ namespace Hestia
             => obj is MoveRequestedFact other && Equals(other);
 
         public override int GetHashCode()
-            => Position.GetHashCode().CombineHestiaHash((int)Priority);
+            => Position.GetHashCode().CombineHestiaHash(Priority);
 
         public void Dispose()
         {

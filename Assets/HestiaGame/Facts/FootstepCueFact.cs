@@ -10,12 +10,12 @@ namespace Hestia
     /// </summary>
     public readonly struct FootstepCueFact : IFact, IEquatable<FootstepCueFact>
     {
-        public FootstepCueFact(FactPriority priority)
+        public FootstepCueFact(int priority)
         {
             Priority = priority;
         }
 
-        public FactPriority Priority { get; }
+        public int Priority { get; }
 
         public bool Equals(FootstepCueFact other)
             => Priority == other.Priority;
@@ -24,7 +24,7 @@ namespace Hestia
             => obj is FootstepCueFact other && Equals(other);
 
         public override int GetHashCode()
-            => (int)Priority;
+            => Priority;
 
         public void Dispose()
         {

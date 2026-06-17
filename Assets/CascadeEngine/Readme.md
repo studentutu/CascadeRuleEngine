@@ -57,7 +57,7 @@ var feature = new GameplayFeature();
 var simulation = new FactSimulation(feature);
 var entity = simulation.CreateEntity();
 
-simulation.Emit(entity, new MoveRequestedFact(12f, FactPriority.PlayerVisible));
+simulation.Emit(entity, new MoveRequestedFact(12f, priority: 1000));
 
 SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 
@@ -170,6 +170,20 @@ public sealed class GameplayFeature : FactFeature
 
 Fact reduction order is not a public scheduling policy. Facts are reduced until closure; durable conflict priority belongs inside the facts consumed by committers, not in the reducer work queue.
 
+## Fact Multiplicity And Commit Conflict
+
+The package supports multiple distinct facts of the same type on the same entity in one reduction loop. Identical payloads are deduplicated; distinct payloads are retained and exposed through `IEntityFactView.All<TFact>()`.
+
+Do not overwrite same-type facts during emit. Overwrite semantics make fact arrival order durable again, which recreates the ECS hidden-order problem. If the output needs one winner, the committer must select it after reduction closure. If the output needs all changes, the committer folds the full span.
+
+`CommitConflictPolicy` is a registration-level declaration of the expected merge behavior:
+
+- `PriorityWinnerOrThrowOnTie`: facts that participate in winner selection implement `IPrioritizedFact` with an integer priority; committers can use `FactConflictResolution.TrySelectHighestPriority(...)` with an output-specific `IFactConflictComparer<TFact>`.
+- `FoldAll`: the committer folds every relevant fact into one durable state write.
+- `CollapseToSingleMarker`: the committer collapses one or more facts into one marker-style output.
+
+The engine cannot automatically merge arbitrary output state. Committers remain the final integrity boundary, but the package now provides the common priority-winner primitive so each committer does not hand-roll the same loop.
+
 ## Public API contract
 
 | Type | Role |
@@ -177,9 +191,13 @@ Fact reduction order is not a public scheduling policy. Facts are reduced until 
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
+| `IPrioritizedFact` | fact contract exposing integer priority for commit-stage winner selection |
+| `IFactConflictComparer<TFact>` | output-specific same-priority conflict predicate for prioritized fact selection |
+| `FactConflictResolution` | allocation-free helper for selecting a priority winner from closed facts |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
+| `CommitConflictPolicy` | declared output merge policy used by feature registration and committer examples |
 | `FactFeature` | registration hub for reducers and outputs |
 | `FactSimulation` | entity lifecycle, fact queue, reduction, commit, mutation routing, terminal disposal |
 | `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
@@ -215,7 +233,7 @@ Movement demonstrates priority conflict handling:
 ```text
 MoveRequestedFact
 -> MoveResolvedFact
--> HestiaPositionCommitter picks highest priority or throws on equal-priority conflict
+-> HestiaPositionCommitter uses FactConflictResolution to pick highest priority or throw on equal-priority conflict
 ```
 
 The tests under `Assets/Tests` are the executable API examples.

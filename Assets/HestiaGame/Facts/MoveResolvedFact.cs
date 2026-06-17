@@ -8,16 +8,16 @@ namespace Hestia
     /// <summary>
     /// Derived fact: movement request resolved to a candidate durable position.
     /// </summary>
-    public readonly struct MoveResolvedFact : IFact, IEquatable<MoveResolvedFact>
+    public readonly struct MoveResolvedFact : IFact, IPrioritizedFact, IEquatable<MoveResolvedFact>
     {
-        public MoveResolvedFact(float position, FactPriority priority)
+        public MoveResolvedFact(float position, int priority)
         {
             Position = position;
             Priority = priority;
         }
 
         public float Position { get; }
-        public FactPriority Priority { get; }
+        public int Priority { get; }
 
         public bool Equals(MoveResolvedFact other)
             => Position.Equals(other.Position) && Priority == other.Priority;
@@ -26,7 +26,7 @@ namespace Hestia
             => obj is MoveResolvedFact other && Equals(other);
 
         public override int GetHashCode()
-            => Position.GetHashCode().CombineHestiaHash((int)Priority);
+            => Position.GetHashCode().CombineHestiaHash(Priority);
 
         public void Dispose()
         {

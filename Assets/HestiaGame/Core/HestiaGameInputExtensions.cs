@@ -9,11 +9,15 @@ namespace Hestia
     /// </summary>
     public static class HestiaGameInputExtensions
     {
+        private const int NormalPriority = 100;
+        private const int RelevantPriority = 500;
+        private const int PlayerVisiblePriority = 1000;
+
         public static void InputFireWeapon(
             this HestiaGameContext context,
             EntityRef entity,
             int amount = 1,
-            FactPriority priority = FactPriority.PlayerVisible)
+            int priority = PlayerVisiblePriority)
         {
             context.Simulation.Emit(entity, new AmmoSpendRequestedFact(amount, priority));
         }
@@ -22,7 +26,7 @@ namespace Hestia
             this HestiaGameContext context,
             EntityRef entity,
             float desiredPosition,
-            FactPriority priority = FactPriority.Normal)
+            int priority = NormalPriority)
         {
             context.Simulation.Emit(entity, new MoveRequestedFact(desiredPosition, priority));
         }
@@ -37,7 +41,7 @@ namespace Hestia
                 return false;
             }
 
-            context.Simulation.Emit(entity, new FootstepCueFact(FactPriority.Relevant));
+            context.Simulation.Emit(entity, new FootstepCueFact(RelevantPriority));
             return true;
         }
     }

@@ -17,30 +17,14 @@ namespace Hestia
             EntityRef entity,
             in Optional<HestiaPositionState> previous)
         {
-            var moves = ctx.Facts(entity).All<MoveResolvedFact>();
-            if (moves.Length == 0)
+            if (!FactConflictResolution
+                    .TrySelectHighestPriority<MoveResolvedFact, HestiaPositionState, MoveResolvedConflictComparer>(
+                    ctx,
+                    entity,
+                    default,
+                    out var winner))
             {
                 return CommitDecision<HestiaPositionState>.Unchanged();
-            }
-
-            var winner = moves[0];
-            for (var i = 1; i < moves.Length; i++)
-            {
-                var candidate = moves[i];
-                if (candidate.Priority > winner.Priority)
-                {
-                    winner = candidate;
-                    continue;
-                }
-
-                if (candidate.Priority == winner.Priority
-                    && Mathf.Abs(candidate.Position - winner.Position) >= Epsilon)
-                {
-                    throw new CommitConflictException(
-                        entity,
-                        typeof(HestiaPositionState),
-                        "MoveResolvedFact has equal priority with conflicting positions.");
-                }
             }
 
             var old = previous.HasValue ? previous.Value : new HestiaPositionState(0f);
@@ -48,6 +32,12 @@ namespace Hestia
             return Mathf.Abs(old.Position - next.Position) < Epsilon
                 ? CommitDecision<HestiaPositionState>.Unchanged()
                 : CommitDecision<HestiaPositionState>.Set(next);
+        }
+
+        private readonly struct MoveResolvedConflictComparer : IFactConflictComparer<MoveResolvedFact>
+        {
+            public bool Conflicts(in MoveResolvedFact currentWinner, in MoveResolvedFact candidate)
+                => Mathf.Abs(candidate.Position - currentWinner.Position) >= Epsilon;
         }
     }
 }

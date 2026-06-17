@@ -30,6 +30,11 @@
   - two-fact entity-scoped reducer fires once when both required facts exist.
   - batch transactional reducer receives only eligible entities.
   - batch transactional reducer fires exactly once per entity when entities become eligible across different passes, while incomplete entities stay excluded.
+- Same entity/fact-type multiplicity is intentional: identical fact payloads dedupe, distinct payloads are preserved and exposed through `IEntityFactView.All<TFact>()`.
+- Commit priority conflict handling now has an explicit public slice:
+  - `IPrioritizedFact` marks facts with integer priority that can participate in commit-stage winner selection.
+  - `IFactConflictComparer<TFact>` keeps equal-priority conflict semantics output-specific.
+  - `FactConflictResolution.TrySelectHighestPriority(...)` provides the reusable no-allocation priority selector for committers.
 
 ## Known Gaps
 
@@ -41,16 +46,14 @@
 ## Next Work
 
 1. Harden core policy:
-   - fix todo in IEnityFactView
-   - do we support multiple FactType on the same Entity per Reduction-loop? (e.g. example multiple input fact/multiple sound cure facts). Should we do the same as ECS feature parity and always have 1 fact of the same type per entity? But then how would we decide if we need to overwrite or leave existing fact while preserving package concept of the fact-reduction order independence?
-   - commit conflict behavior: CommitConflictPolicy enum exists but can't do anything as Reducers/Fact/something must set the order/priority. This is orthogonal to the package concept: Fact-> Reducer-Loop must be order-independent and idempotent even when we have un-ordered facts and reducer will produce more un-ordered facts.
-   - Add tests for equal-priority conflicts across multiple facts.
+   - Add more package-level tests for equal-priority conflicts across multiple facts outside Hestia sample coverage.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
 2. Ergonomics tightening.
   1.1 Review ReduceWhen ergonomics: we need to need to support up to 4 facts as parameters for the ReduceWhen/BatchReduceWhen. This should also be trivial to expand if needed. Make it clean and separate in code so that it is clearly visible for the external developers who needs more.
   1.2 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental path.
   1.3 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
+  1.4 Improve `IFactConflictComparer<TFact>` with either better defaults (already pre-defined units) or re-design such that declaration of effected facts has priority assigned in the registration (e.g. declarative way with `x.Effected<T>(priority)`)
 
 3. Budgeting. Add proper Reducer-Loop Priority-per-Entity-flag mode:
    - add Entity flag such as Relevant

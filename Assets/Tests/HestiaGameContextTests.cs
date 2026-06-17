@@ -9,6 +9,10 @@ namespace CascadeEngineApi.Tests
 {
     public sealed class HestiaGameContextTests
     {
+        private const int LowPriority = 0;
+        private const int NormalPriority = 100;
+        private const int PlayerVisiblePriority = 1000;
+
         [Test]
         public void FireWeaponReducesRequestAndCommitsAmmoOnce()
         {
@@ -130,8 +134,8 @@ namespace CascadeEngineApi.Tests
             var entity = cascade.CreateEntity();
             cascade.SetInitialPosition(entity, 0f);
 
-            cascade.InputMove(entity, desiredPosition: 10f, priority: FactPriority.Low);
-            cascade.InputMove(entity, desiredPosition: 99f, priority: FactPriority.PlayerVisible);
+            cascade.InputMove(entity, desiredPosition: 10f, priority: LowPriority);
+            cascade.InputMove(entity, desiredPosition: 99f, priority: PlayerVisiblePriority);
             var result = cascade.RunTick();
 
             Assert.AreEqual(99f, cascade.GetPosition(entity).Position, 0.0001f);
@@ -161,8 +165,8 @@ namespace CascadeEngineApi.Tests
             var entity = cascade.CreateEntity();
             cascade.SetInitialPosition(entity, 0f);
 
-            cascade.InputMove(entity, desiredPosition: 5f, priority: FactPriority.Normal);
-            cascade.InputMove(entity, desiredPosition: 7f, priority: FactPriority.Normal);
+            cascade.InputMove(entity, desiredPosition: 5f, priority: NormalPriority);
+            cascade.InputMove(entity, desiredPosition: 7f, priority: NormalPriority);
 
             Assert.Throws<CommitConflictException>(() => cascade.RunTick());
             Assert.AreEqual(0f, cascade.GetPosition(entity).Position, 0.0001f);

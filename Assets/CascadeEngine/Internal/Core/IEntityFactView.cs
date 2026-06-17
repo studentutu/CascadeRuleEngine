@@ -15,7 +15,9 @@ namespace CascadeEngineApi
         bool TryGetLatest<TFact>(out TFact fact)
             where TFact : struct, IFact;
 
-        // TODO: if this is only for a single entity for a single fact then remove and just use Has<TFact> instead
+        /// <summary>
+        /// Returns all distinct accepted facts of one type for the bound entity in deterministic acceptance order.
+        /// </summary>
         ReadOnlySpan<TFact> All<TFact>()
             where TFact : struct, IFact;
     }

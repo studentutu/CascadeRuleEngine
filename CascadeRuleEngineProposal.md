@@ -111,7 +111,7 @@ public sealed class PlayerInputDomain
         {
             Direction = direction,
             Source = InputSource.Player,
-            Priority = FactPriority.PlayerVisible
+            Priority = 1000
         });
     }
 
@@ -124,7 +124,7 @@ public sealed class PlayerInputDomain
         {
             From = from,
             To = to,
-            Priority = FactPriority.PlayerVisible
+            Priority = 1000
         });
     }
 }
@@ -341,7 +341,7 @@ public readonly record struct MoveRequestedFact : IFact
 {
     public required GridDirection Direction { get; init; }
     public required InputSource Source { get; init; }
-    public required FactPriority Priority { get; init; }
+    public required int Priority { get; init; }
 }
 
 public readonly record struct MoveCandidateFact : IFact
@@ -349,7 +349,7 @@ public readonly record struct MoveCandidateFact : IFact
     public required GridPosition From { get; init; }
     public required GridPosition To { get; init; }
     public required GridDirection Direction { get; init; }
-    public required FactPriority Priority { get; init; }
+    public required int Priority { get; init; }
 }
 
 public readonly record struct MoveBlockedFact : IFact
@@ -374,7 +374,7 @@ public readonly record struct InventoryDragRequestedFact : IFact
 {
     public required InventorySlotRef From { get; init; }
     public required InventorySlotRef To { get; init; }
-    public required FactPriority Priority { get; init; }
+    public required int Priority { get; init; }
 }
 
 public readonly record struct InventoryMoveCandidateFact : IFact
@@ -1307,7 +1307,7 @@ simulation.Emit(player, new MoveRequestedFact
 {
     Direction = GridDirection.Right,
     Source = InputSource.Player,
-    Priority = FactPriority.PlayerVisible
+    Priority = 1000
 });
 ```
 

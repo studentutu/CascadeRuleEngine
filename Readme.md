@@ -60,7 +60,7 @@ var feature = new GameplayFeature();
 var simulation = new FactSimulation(feature);
 var entity = simulation.CreateEntity();
 
-simulation.Emit(entity, new MoveRequestedFact(12f, FactPriority.PlayerVisible));
+simulation.Emit(entity, new MoveRequestedFact(12f, priority: 1000));
 
 SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 
@@ -165,6 +165,9 @@ public sealed class GameplayFeature : FactFeature
 | --- | --- |
 | `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
+| `IPrioritizedFact` | fact contract exposing integer priority for commit-stage winner selection |
+| `IFactConflictComparer<TFact>` | output-specific same-priority conflict predicate for prioritized fact selection |
+| `FactConflictResolution` | allocation-free helper for selecting a priority winner from closed facts |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
