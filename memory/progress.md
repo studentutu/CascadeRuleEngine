@@ -46,14 +46,14 @@
 ## Next Work
 
 1. Harden core policy:
+   - Improve `IFactConflictComparer<TFact>` with either better defaults (already pre-defined units) or re-design such that declaration of effected facts has priority assigned in the registration (e.g. declarative way with `x.Effected<T>(priority)`)
    - Add more package-level tests for equal-priority conflicts across multiple facts outside Hestia sample coverage.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
 2. Ergonomics tightening.
   1.1 Review ReduceWhen ergonomics: we need to need to support up to 4 facts as parameters for the ReduceWhen/BatchReduceWhen. This should also be trivial to expand if needed. Make it clean and separate in code so that it is clearly visible for the external developers who needs more.
   1.2 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental path.
-  1.3 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code
-  1.4 Improve `IFactConflictComparer<TFact>` with either better defaults (already pre-defined units) or re-design such that declaration of effected facts has priority assigned in the registration (e.g. declarative way with `x.Effected<T>(priority)`)
+  1.3 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code.
 
 3. Budgeting. Add proper Reducer-Loop Priority-per-Entity-flag mode:
    - add Entity flag such as Relevant
