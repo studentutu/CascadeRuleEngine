@@ -229,7 +229,8 @@ public sealed class MovementFeature : FactFeature
         ReduceWhen<MoveCandidateFact, MovementBlockCheckFact>()
             .With<MovementResolutionReducer>();
 
-        ReduceBatchWhen<SpeedByInputFact, SpeedByEffectsFact, RotationFact, GravityFact, InertiaFact>()
+        ReduceBatchWhen<SpeedByInputFact, SpeedByEffectsFact, RotationFact, GravityFact>()
+            .And<InertiaFact>()
             .With<PhysicsResolutionReducer>();
 
         Output<PositionState>()
@@ -299,8 +300,9 @@ Reducer registration has three forms:
 
 ```text
 Reduce<TFact>()                  runs once per newly accepted fact
-ReduceWhen<TA, TB, ...>()        runs once per entity when the required fact set exists
-ReduceBatchWhen<TA, TB, ...>()   runs once per tick over the eligible entity set when required facts exist
+ReduceWhen<TA, TB>() through <TA, TB, TC, TD>()       runs once per entity when the required fact set exists
+ReduceBatchWhen<TA, TB>() through <TA, TB, TC, TD>()  runs once per tick over the eligible entity set when required facts exist
+And<TFact>()                                           appends further requirements declaratively without inheritance
 ```
 
 Transactional reducers solve the "missing or misordered fact" problem. They do not run because one fact arrived; they run because all required facts for the entity or batch are present in the tick fact store. After a transactional reducer fires for a given entity/fact-set, it is marked fired so it cannot loop without producing a new distinct fact key.
@@ -1481,14 +1483,46 @@ public abstract class FactFeature
     protected ReducerRegistrationBuilder<TFact> Reduce<TFact>()
         where TFact : struct, IFact;
 
-    protected TransactionalReducerRegistrationBuilder ReduceWhen(params FactType[] requiredFacts);
+    protected TransactionalReducerRegistrationBuilder ReduceWhen<TA, TB>();
 
-    protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen(params FactType[] requiredFacts);
+    protected TransactionalReducerRegistrationBuilder ReduceWhen<TA, TB, TC>();
+
+    protected TransactionalReducerRegistrationBuilder ReduceWhen<TA, TB, TC, TD>();
+
+    protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen<TA, TB>();
+
+    protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen<TA, TB, TC>();
+
+    protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen<TA, TB, TC, TD>();
 
     protected OutputRegistrationBuilder<TState> Output<TState>()
         where TState : struct, IOutputState;
 
     protected void SubFeature(FactFeature feature);
+}
+```
+
+The generic package surface stops at four required facts. Larger transactions continue declaratively through builder extensions:
+
+```csharp
+ReduceWhen<FactA, FactB, FactC, FactD>()
+    .And<FactE>()
+    .And<FactF>()
+    .With<DomainReducer>();
+```
+
+The same extension applies to `ReduceBatchWhen`. Each append creates its array during feature registration, not during reduction.
+
+```csharp
+public static class TransactionalReducerRegistrationExtensions
+{
+    public static TransactionalReducerRegistrationBuilder And<TFact>(
+        this TransactionalReducerRegistrationBuilder registration)
+        where TFact : struct, IFact;
+
+    public static BatchTransactionalReducerRegistrationBuilder And<TFact>(
+        this BatchTransactionalReducerRegistrationBuilder registration)
+        where TFact : struct, IFact;
 }
 ```
 

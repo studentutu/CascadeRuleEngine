@@ -189,6 +189,25 @@ The builder defaults to `FoldAll` for backward-compatible pass-through behavior.
 
 The engine cannot automatically merge arbitrary output state. Committers remain the final projection boundary, while the commit phase owns deterministic winner selection and tie rejection.
 
+## Transactional Registration Arity
+
+`ReduceWhen<TA, TB>()` and `ReduceBatchWhen<TA, TB>()` have generic overloads for two, three, and four required facts. All overloads are grouped in `FactFeature.TransactionalRegistration.cs`; adding another package-supported arity is a mechanical overload there.
+
+For more than four facts, continue the declaration with the package-provided `And<TFact>()` builder extension. No feature inheritance or package overload is required:
+
+```csharp
+ReduceWhen<FactA, FactB, FactC, FactD>()
+    .And<FactE>()
+    .And<FactF>()
+    .With<DomainReducer>();
+
+ReduceBatchWhen<FactA, FactB, FactC, FactD>()
+    .And<FactE>()
+    .With<DomainBatchReducer>();
+```
+
+Each extension returns a new builder with one appended required fact. Its `FactType[]` allocation happens during feature registration and never enters the reduction hot path.
+
 ## Public API contract
 
 | Type | Role |
@@ -197,6 +216,7 @@ The engine cannot automatically merge arbitrary output state. Committers remain 
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
+| `TransactionalReducerRegistrationExtensions` | appends required fact types with `.And<TFact>()` for entity or batch transactional registration |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
 | `CommitConflictPolicy` | declared output merge policy used by feature registration and committer examples |

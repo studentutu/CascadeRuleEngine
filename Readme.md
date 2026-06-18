@@ -160,6 +160,8 @@ public sealed class GameplayFeature : FactFeature
 }
 ```
 
+Transactional registration provides generic `ReduceWhen` and `ReduceBatchWhen` overloads for two through four facts. Higher arities chain the package-provided `.And<TFact>()` builder extension without additional inheritance.
+
 ## Public API contract
 
 | Type | Role |

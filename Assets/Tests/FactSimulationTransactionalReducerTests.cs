@@ -8,6 +8,28 @@ namespace CascadeEngineApi.Tests
     public sealed class FactSimulationTransactionalReducerTests
     {
         [Test]
+        public void GenericAndExtendedTransactionalRegistrationStoresRequiredFacts()
+        {
+            var feature = new ArityFeature();
+            try
+            {
+                Assert.AreEqual(3, feature.Registry.TransactionalReducers.Count);
+                Assert.AreEqual(3, feature.Registry.TransactionalReducers[0].RequiredFactIds.Length);
+                Assert.AreEqual(4, feature.Registry.TransactionalReducers[1].RequiredFactIds.Length);
+                Assert.AreEqual(5, feature.Registry.TransactionalReducers[2].RequiredFactIds.Length);
+
+                Assert.AreEqual(3, feature.Registry.BatchTransactionalReducers.Count);
+                Assert.AreEqual(3, feature.Registry.BatchTransactionalReducers[0].RequiredFactIds.Length);
+                Assert.AreEqual(4, feature.Registry.BatchTransactionalReducers[1].RequiredFactIds.Length);
+                Assert.AreEqual(5, feature.Registry.BatchTransactionalReducers[2].RequiredFactIds.Length);
+            }
+            finally
+            {
+                feature.Dispose();
+            }
+        }
+
+        [Test]
         public void EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist()
         {
             EntityPairReducer.Reset();
@@ -124,6 +146,46 @@ namespace CascadeEngineApi.Tests
 
             Assert.IsFalse(simulation.TryGet<ClosureResultState>(incomplete, out var incompleteState));
             Assert.AreEqual(default(ClosureResultState), incompleteState);
+        }
+
+        private sealed class ArityFeature : FactFeature
+        {
+            public ArityFeature()
+            {
+                ReduceWhen<EntityPairLeftFact, EntityPairRightFact, OnePassInputFact>()
+                    .With<ArityReducer>();
+
+                ReduceWhen<EntityPairLeftFact, EntityPairRightFact, OnePassInputFact, TwoPassInputFact>()
+                    .With<ArityReducer>();
+
+                ReduceWhen<EntityPairLeftFact, EntityPairRightFact, OnePassInputFact, TwoPassInputFact>()
+                    .And<DelayedRightMarkerFact>()
+                    .With<ArityReducer>();
+
+                ReduceBatchWhen<EntityPairLeftFact, EntityPairRightFact, OnePassInputFact>()
+                    .With<ArityBatchReducer>();
+
+                ReduceBatchWhen<EntityPairLeftFact, EntityPairRightFact, OnePassInputFact, TwoPassInputFact>()
+                    .With<ArityBatchReducer>();
+
+                ReduceBatchWhen<EntityPairLeftFact, EntityPairRightFact, OnePassInputFact, TwoPassInputFact>()
+                    .And<DelayedRightMarkerFact>()
+                    .With<ArityBatchReducer>();
+            }
+        }
+
+        private sealed class ArityReducer : ITransactionalReducer
+        {
+            public void Reduce(IReduceContext ctx, EntityRef entity)
+            {
+            }
+        }
+
+        private sealed class ArityBatchReducer : IBatchTransactionalReducer
+        {
+            public void ReduceBatch(IReduceContext ctx, ReadOnlySpan<EntityRef> entities)
+            {
+            }
         }
 
         private sealed class EntityPairFeature : FactFeature

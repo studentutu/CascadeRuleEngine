@@ -8,7 +8,7 @@ namespace CascadeEngineApi
     /// <summary>
     /// Single registration point for reducers and output committers, similar to an Entitas Feature without global system scans.
     /// </summary>
-    public abstract class FactFeature : IDisposable
+    public abstract partial class FactFeature : IDisposable
     {
         private readonly FactFeatureRegistry _registry = new FactFeatureRegistry();
         private readonly List<FactFeature> _subFeatures = new List<FactFeature>();
@@ -25,28 +25,6 @@ namespace CascadeEngineApi
             ThrowIfNotMutable();
             return new ReducerRegistrationBuilder<TFact>(_registry);
         }
-
-        protected TransactionalReducerRegistrationBuilder ReduceWhen(params FactType[] requiredFacts)
-        {
-            ThrowIfNotMutable();
-            return new TransactionalReducerRegistrationBuilder(_registry, requiredFacts);
-        }
-
-        protected TransactionalReducerRegistrationBuilder ReduceWhen<TA, TB>()
-            where TA : struct, IFact
-            where TB : struct, IFact
-            => ReduceWhen(FactType.Of<TA>(), FactType.Of<TB>());
-
-        protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen(params FactType[] requiredFacts)
-        {
-            ThrowIfNotMutable();
-            return new BatchTransactionalReducerRegistrationBuilder(_registry, requiredFacts);
-        }
-
-        protected BatchTransactionalReducerRegistrationBuilder ReduceBatchWhen<TA, TB>()
-            where TA : struct, IFact
-            where TB : struct, IFact
-            => ReduceBatchWhen(FactType.Of<TA>(), FactType.Of<TB>());
 
         protected OutputRegistrationBuilder<TState> Output<TState>()
             where TState : struct, IOutputState

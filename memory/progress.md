@@ -30,6 +30,8 @@
   - two-fact entity-scoped reducer fires once when both required facts exist.
   - batch transactional reducer receives only eligible entities.
   - batch transactional reducer fires exactly once per entity when entities become eligible across different passes, while incomplete entities stay excluded.
+  - generic `ReduceWhen` and `ReduceBatchWhen` registrations support two through four facts from one dedicated `FactFeature.TransactionalRegistration.cs` surface.
+  - arities above four chain package-provided `.And<TFact>()` builder extensions without feature inheritance or package changes.
 - Same entity/fact-type multiplicity is intentional: identical fact payloads dedupe, distinct payloads are preserved and exposed through `IEntityFactView.All<TFact>()`.
 - Commit priority conflict handling is declarative and commit-only:
   - `AffectedBy<TFact>(int priority)` assigns output-scoped priority without changing reducer scheduling.
@@ -49,9 +51,8 @@
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
 2. Ergonomics tightening.
-  1.1 Review ReduceWhen ergonomics: we need to need to support up to 4 facts as parameters for the ReduceWhen/BatchReduceWhen. This should also be trivial to expand if needed. Make it clean and separate in code so that it is clearly visible for the external developers who needs more.
-  1.2 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental path.
-  1.3 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code.
+  1.1 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental path.
+  1.2 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code.
 
 3. Budgeting. Add proper Reducer-Loop Priority-per-Entity-flag mode:
    - add Entity flag such as Relevant
