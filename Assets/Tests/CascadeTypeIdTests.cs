@@ -76,7 +76,7 @@ namespace CascadeEngineApi.Tests
                     .With<TypeIdStartReducer>();
 
                 Result = Output<TypeIdResultState>("TypeIdResult")
-                    .AffectedBy<TypeIdDerivedFact>()
+                    .AffectedBy<TypeIdDerivedFact>(0)
                     .CommitWith<TypeIdResultCommitter>();
             }
 
@@ -121,11 +121,11 @@ namespace CascadeEngineApi.Tests
             public DuplicateOutputIdFeature()
             {
                 Output<DuplicateOutputStateSourceA.SameNameState>("DuplicateA")
-                    .AffectedBy<DuplicateOutputTriggerFact>()
+                    .AffectedBy<DuplicateOutputTriggerFact>(0)
                     .CommitWith<DuplicateOutputCommitterA>();
 
                 Output<DuplicateOutputStateSourceB.SameNameState>("DuplicateB")
-                    .AffectedBy<DuplicateOutputTriggerFact>()
+                    .AffectedBy<DuplicateOutputTriggerFact>(0)
                     .CommitWith<DuplicateOutputCommitterB>();
             }
         }

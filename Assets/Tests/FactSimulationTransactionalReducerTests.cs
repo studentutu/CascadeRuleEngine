@@ -134,7 +134,7 @@ namespace CascadeEngineApi.Tests
                     .With<EntityPairReducer>();
 
                 Result = Output<EntityPairResultState>("EntityPairResult")
-                    .AffectedBy<EntityPairResolvedFact>()
+                    .AffectedBy<EntityPairResolvedFact>(0)
                     .CommitWith<EntityPairCommitter>();
             }
 
@@ -185,7 +185,7 @@ namespace CascadeEngineApi.Tests
                     .With<BatchOnlyEligibleReducer>();
 
                 Result = Output<BatchOnlyResultState>("BatchOnlyResult")
-                    .AffectedBy<BatchOnlyResultFact>()
+                    .AffectedBy<BatchOnlyResultFact>(0)
                     .CommitWith<BatchOnlyCommitter>();
             }
 
@@ -253,7 +253,7 @@ namespace CascadeEngineApi.Tests
                     .With<DelayedRightBatchReducer>();
 
                 Result = Output<ClosureResultState>("ClosureResult")
-                    .AffectedBy<ClosureObservedFact>()
+                    .AffectedBy<ClosureObservedFact>(0)
                     .CommitWith<ClosureCommitter>();
             }
 

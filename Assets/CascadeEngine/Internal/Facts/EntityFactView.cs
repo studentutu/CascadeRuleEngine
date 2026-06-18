@@ -12,6 +12,8 @@ namespace CascadeEngineApi
         private readonly FactStore _facts;
         private readonly FactFeatureRegistry _registry;
         private EntityRef _entity;
+        private CascadeTypeId _selectedFact;
+        private bool _filterToSelectedFact;
 
         internal EntityFactView(FactStore facts, FactFeatureRegistry registry)
         {
@@ -22,19 +24,49 @@ namespace CascadeEngineApi
         internal IEntityFactView Bind(EntityRef entity)
         {
             _entity = entity;
+            _selectedFact = default;
+            _filterToSelectedFact = false;
+            return this;
+        }
+
+        internal IEntityFactView Bind(EntityRef entity, CascadeTypeId selectedFact)
+        {
+            _entity = entity;
+            _selectedFact = selectedFact;
+            _filterToSelectedFact = true;
             return this;
         }
 
         public bool Has<TFact>()
             where TFact : struct, IFact
-            => _facts.Has(_entity, _registry.RequireFact<TFact>());
+        {
+            var factId = _registry.RequireFact<TFact>();
+            return IsVisible(factId) && _facts.Has(_entity, factId);
+        }
 
         public bool TryGetLatest<TFact>(out TFact fact)
             where TFact : struct, IFact
-            => _facts.TryGetLatest(_entity, _registry.RequireFact<TFact>(), out fact);
+        {
+            var factId = _registry.RequireFact<TFact>();
+            if (IsVisible(factId))
+            {
+                return _facts.TryGetLatest(_entity, factId, out fact);
+            }
+
+            fact = default;
+            return false;
+        }
 
         public ReadOnlySpan<TFact> All<TFact>()
             where TFact : struct, IFact
-            => _facts.All<TFact>(_entity, _registry.RequireFact<TFact>());
+        {
+            var factId = _registry.RequireFact<TFact>();
+            return IsVisible(factId)
+                ? _facts.All<TFact>(_entity, factId)
+                : ReadOnlySpan<TFact>.Empty;
+        }
+
+        private bool IsVisible(CascadeTypeId factId)
+            => !_filterToSelectedFact || factId == _selectedFact;
     }
 }

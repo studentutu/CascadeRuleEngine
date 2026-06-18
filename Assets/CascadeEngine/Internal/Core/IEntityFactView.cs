@@ -16,7 +16,7 @@ namespace CascadeEngineApi
             where TFact : struct, IFact;
 
         /// <summary>
-        /// Returns all distinct accepted facts of one type for the bound entity in deterministic acceptance order.
+        /// Returns all distinct accepted facts of one type visible to the current reducer or committer context.
         /// </summary>
         ReadOnlySpan<TFact> All<TFact>()
             where TFact : struct, IFact;

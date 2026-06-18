@@ -158,13 +158,13 @@ namespace CascadeEngineApi.Tests
                     .With<WarmupBatchReducer>();
 
                 Result = Output<WarmupResultState>("WarmupResult")
-                    .AffectedBy<WarmupDerivedFact>()
-                    .AffectedBy<WarmupTransactionalFact>()
-                    .AffectedBy<WarmupBatchFact>()
+                    .AffectedBy<WarmupDerivedFact>(0)
+                    .AffectedBy<WarmupTransactionalFact>(0)
+                    .AffectedBy<WarmupBatchFact>(0)
                     .CommitWith<WarmupResultCommitter>();
 
                 Bootstrap = Output<WarmupBootstrapState>("WarmupBootstrap")
-                    .AffectedBy<WarmupUnusedFact>()
+                    .AffectedBy<WarmupUnusedFact>(0)
                     .CommitWith<WarmupBootstrapCommitter>();
             }
 

@@ -1,5 +1,8 @@
 #nullable enable
 
+using System;
+using System.Collections.Generic;
+
 namespace CascadeEngineApi
 {
     /// <summary>
@@ -11,7 +14,8 @@ namespace CascadeEngineApi
         private readonly FactFeatureRegistry _registry;
         private readonly string _name;
         private readonly FactTypeList _affectedFacts = new FactTypeList();
-        private CommitConflictPolicy _conflictPolicy;
+        private readonly List<int> _affectedFactPriorities = new List<int>();
+        private CommitConflictPolicy _conflictPolicy = CommitConflictPolicy.FoldAll;
 
         internal OutputRegistrationBuilder(FactFeatureRegistry registry, string name)
         {
@@ -19,10 +23,19 @@ namespace CascadeEngineApi
             _name = name;
         }
 
-        public OutputRegistrationBuilder<TState> AffectedBy<TFact>()
+        /// <summary>
+        /// [INTEGRATION] Range: one fact type affecting this output. Condition: priority conflict policy. Output: registration-time commit priority; reducer scheduling is unchanged.
+        /// </summary>
+        public OutputRegistrationBuilder<TState> AffectedBy<TFact>(int priority)
             where TFact : struct, IFact
         {
-            _affectedFacts.Add(FactType.Of<TFact>());
+            if (!_affectedFacts.Add(FactType.Of<TFact>()))
+            {
+                throw new InvalidOperationException(
+                    $"Fact '{typeof(TFact).Name}' is already registered for output '{_name}'.");
+            }
+
+            _affectedFactPriorities.Add(priority);
             return this;
         }
 
@@ -34,6 +47,10 @@ namespace CascadeEngineApi
 
         public OutputState<TState> CommitWith<TCommitter>()
             where TCommitter : IOutputCommitter<TState>, new()
-            => _registry.AddOutput<TState, TCommitter>(_name, _affectedFacts.ToArray(), _conflictPolicy);
+            => _registry.AddOutput<TState, TCommitter>(
+                _name,
+                _affectedFacts.ToArray(),
+                _affectedFactPriorities.ToArray(),
+                _conflictPolicy);
     }
 }

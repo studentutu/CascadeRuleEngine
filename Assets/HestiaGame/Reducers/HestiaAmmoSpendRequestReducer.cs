@@ -21,7 +21,7 @@ namespace Hestia
                 return;
             }
 
-            ctx.Emit(entity, new AmmoSpendAcceptedFact(fact.Amount, fact.Priority));
+            ctx.Emit(entity, new AmmoSpendAcceptedFact(fact.Amount));
         }
     }
 }

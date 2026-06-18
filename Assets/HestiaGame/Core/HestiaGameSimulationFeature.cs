@@ -18,18 +18,18 @@ namespace Hestia
                 .With<HestiaMoveRequestReducer>();
 
             Ammo = Output<HestiaAmmoState>("Ammo")
-                .AffectedBy<AmmoSpendAcceptedFact>()
+                .AffectedBy<AmmoSpendAcceptedFact>(0)
                 .ConflictPolicy(CommitConflictPolicy.FoldAll)
                 .CommitWith<HestiaAmmoCommitter>();
 
             Position = Output<HestiaPositionState>("Position")
-                .AffectedBy<MoveResolvedFact>()
+                .AffectedBy<MoveResolvedFact>(priority: 100)
                 .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
                 .CommitWith<HestiaPositionCommitter>();
 
             AudioCue = Output<HestiaAudioCueState>("AudioCue")
-                .AffectedBy<FootstepCueFact>()
-                .AffectedBy<AmmoSpendAcceptedFact>()
+                .AffectedBy<FootstepCueFact>(0)
+                .AffectedBy<AmmoSpendAcceptedFact>(0)
                 .ConflictPolicy(CommitConflictPolicy.CollapseToSingleMarker)
                 .CommitWith<HestiaAudioCueCommitter>();
         }

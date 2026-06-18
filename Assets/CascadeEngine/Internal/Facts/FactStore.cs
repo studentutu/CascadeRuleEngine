@@ -212,6 +212,9 @@ namespace CascadeEngineApi
         internal bool Has(EntityRef entity, CascadeTypeId factId)
             => _buckets.TryGetValue(factId, out var bucket) && bucket.Has(entity);
 
+        internal int Count(EntityRef entity, CascadeTypeId factId)
+            => _buckets.TryGetValue(factId, out var bucket) ? bucket.CountFor(entity) : 0;
+
         internal bool TryGetLatest<TFact>(EntityRef entity, CascadeTypeId factId, out TFact fact)
             where TFact : struct, IFact
         {

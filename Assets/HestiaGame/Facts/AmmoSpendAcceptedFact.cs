@@ -10,23 +10,21 @@ namespace Hestia
     /// </summary>
     public readonly struct AmmoSpendAcceptedFact : IFact, IEquatable<AmmoSpendAcceptedFact>
     {
-        public AmmoSpendAcceptedFact(int amount, int priority)
+        public AmmoSpendAcceptedFact(int amount)
         {
             Amount = amount;
-            Priority = priority;
         }
 
         public int Amount { get; }
-        public int Priority { get; }
 
         public bool Equals(AmmoSpendAcceptedFact other)
-            => Amount == other.Amount && Priority == other.Priority;
+            => Amount == other.Amount;
 
         public override bool Equals(object? obj)
             => obj is AmmoSpendAcceptedFact other && Equals(other);
 
         public override int GetHashCode()
-            => Amount.CombineHestiaHash(Priority);
+            => Amount;
 
         public void Dispose()
         {

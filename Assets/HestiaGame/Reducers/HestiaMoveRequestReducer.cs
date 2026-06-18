@@ -11,7 +11,7 @@ namespace Hestia
     {
         public void Reduce(IReduceContext ctx, EntityRef entity, in MoveRequestedFact fact)
         {
-            ctx.Emit(entity, new MoveResolvedFact(fact.Position, fact.Priority));
+            ctx.Emit(entity, new MoveResolvedFact(fact.Position));
         }
     }
 }

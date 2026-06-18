@@ -60,7 +60,7 @@ var feature = new GameplayFeature();
 var simulation = new FactSimulation(feature);
 var entity = simulation.CreateEntity();
 
-simulation.Emit(entity, new MoveRequestedFact(12f, priority: 1000));
+simulation.Emit(entity, new MoveRequestedFact(12f));
 
 SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 
@@ -150,7 +150,8 @@ public sealed class GameplayFeature : FactFeature
             .With<MoveRequestReducer>();
 
         Position = Output<PositionState>("Position")
-            .AffectedBy<MoveResolvedFact>()
+            .AffectedBy<MoveResolvedFact>(priority: 100)
+            .AffectedBy<TeleportResolvedFact>(priority: 1000)
             .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
             .CommitWith<PositionCommitter>();
     }
@@ -165,9 +166,6 @@ public sealed class GameplayFeature : FactFeature
 | --- | --- |
 | `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
-| `IPrioritizedFact` | fact contract exposing integer priority for commit-stage winner selection |
-| `IFactConflictComparer<TFact>` | output-specific same-priority conflict predicate for prioritized fact selection |
-| `FactConflictResolution` | allocation-free helper for selecting a priority winner from closed facts |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
@@ -198,12 +196,12 @@ AmmoSpendRequestedFact
 -> HestiaAudioCueCommitter may publish a marker-style DryFire cue
 ```
 
-Movement demonstrates priority conflict handling:
+Movement demonstrates commit conflict handling:
 
 ```text
 MoveRequestedFact
 -> MoveResolvedFact
--> HestiaPositionCommitter picks highest priority or throws on equal-priority conflict
+-> commit phase rejects multiple distinct resolutions before HestiaPositionCommitter writes state
 ```
 
 The tests under `Assets/Tests` are the executable API examples.

@@ -71,6 +71,7 @@ namespace CascadeEngineApi
         internal OutputState<TState> AddOutput<TState, TCommitter>(
             string name,
             FactType[] affectedFacts,
+            int[] affectedFactPriorities,
             CommitConflictPolicy conflictPolicy)
             where TState : struct, IOutputState
             where TCommitter : IOutputCommitter<TState>, new()
@@ -87,10 +88,20 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException($"Output state '{stateName}' must declare at least one affected fact.");
             }
 
+            if (affectedFactPriorities == null || affectedFactPriorities.Length != affectedFacts.Length)
+            {
+                throw new InvalidOperationException(
+                    $"Output state '{stateName}' must declare one commit priority per affected fact.");
+            }
+
             AddKnownFacts(affectedFacts);
             var output = new OutputState<TState>(_outputs.Count, stateId, name, conflictPolicy);
             var committer = Create<TCommitter>();
-            var registration = new OutputRegistration<TState>(output, affectedFacts, committer);
+            var registration = new OutputRegistration<TState>(
+                output,
+                affectedFacts,
+                affectedFactPriorities,
+                committer);
             _outputs.Add(registration);
             _outputsByState.Add(stateId, registration);
             BindAffectedOutputRoutes(affectedFacts, registration);

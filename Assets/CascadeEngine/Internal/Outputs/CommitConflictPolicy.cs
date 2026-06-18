@@ -8,7 +8,7 @@ namespace CascadeEngineApi
     public enum CommitConflictPolicy : byte
     {
         /// <summary>
-        /// The committer must select an integer-priority IPrioritizedFact winner and throw if same-priority facts conflict.
+        /// The commit phase exposes only the highest registration-priority fact type and throws when distinct facts tie for the winning priority.
         /// </summary>
         PriorityWinnerOrThrowOnTie = 0,
 

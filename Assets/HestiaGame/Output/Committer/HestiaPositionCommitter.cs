@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Hestia
 {
     /// <summary>
-    /// Selects the highest-priority resolved movement and writes durable position once.
+    /// Projects the commit-selected resolved movement into durable position once.
     /// </summary>
     public sealed class HestiaPositionCommitter : IOutputCommitter<HestiaPositionState>
     {
@@ -17,12 +17,7 @@ namespace Hestia
             EntityRef entity,
             in Optional<HestiaPositionState> previous)
         {
-            if (!FactConflictResolution
-                    .TrySelectHighestPriority<MoveResolvedFact, HestiaPositionState, MoveResolvedConflictComparer>(
-                    ctx,
-                    entity,
-                    default,
-                    out var winner))
+            if (!ctx.Facts(entity).TryGetLatest<MoveResolvedFact>(out var winner))
             {
                 return CommitDecision<HestiaPositionState>.Unchanged();
             }
@@ -34,10 +29,5 @@ namespace Hestia
                 : CommitDecision<HestiaPositionState>.Set(next);
         }
 
-        private readonly struct MoveResolvedConflictComparer : IFactConflictComparer<MoveResolvedFact>
-        {
-            public bool Conflicts(in MoveResolvedFact currentWinner, in MoveResolvedFact candidate)
-                => Mathf.Abs(candidate.Position - currentWinner.Position) >= Epsilon;
-        }
     }
 }

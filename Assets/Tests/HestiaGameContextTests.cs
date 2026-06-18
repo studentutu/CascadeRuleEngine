@@ -9,10 +9,6 @@ namespace CascadeEngineApi.Tests
 {
     public sealed class HestiaGameContextTests
     {
-        private const int LowPriority = 0;
-        private const int NormalPriority = 100;
-        private const int PlayerVisiblePriority = 1000;
-
         [Test]
         public void FireWeaponReducesRequestAndCommitsAmmoOnce()
         {
@@ -128,19 +124,18 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void HighestPriorityMoveWinsAndPublishesTypedMutation()
+        public void SingleMovePublishesTypedMutation()
         {
             var cascade = new HestiaGameContext();
             var entity = cascade.CreateEntity();
             cascade.SetInitialPosition(entity, 0f);
 
-            cascade.InputMove(entity, desiredPosition: 10f, priority: LowPriority);
-            cascade.InputMove(entity, desiredPosition: 99f, priority: PlayerVisiblePriority);
+            cascade.InputMove(entity, desiredPosition: 99f);
             var result = cascade.RunTick();
 
             Assert.AreEqual(99f, cascade.GetPosition(entity).Position, 0.0001f);
-            Assert.AreEqual(4, result.AcceptedFacts);
-            Assert.AreEqual(2, result.ReducerInvocations);
+            Assert.AreEqual(2, result.AcceptedFacts);
+            Assert.AreEqual(1, result.ReducerInvocations);
             Assert.AreEqual(1, result.MutationCount);
 
             var positionMutations = 0;
@@ -159,14 +154,14 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void EqualPriorityMoveConflictThrowsAndDoesNotCommit()
+        public void DistinctMoveFactsConflictAndDoNotCommit()
         {
             var cascade = new HestiaGameContext();
             var entity = cascade.CreateEntity();
             cascade.SetInitialPosition(entity, 0f);
 
-            cascade.InputMove(entity, desiredPosition: 5f, priority: NormalPriority);
-            cascade.InputMove(entity, desiredPosition: 7f, priority: NormalPriority);
+            cascade.InputMove(entity, desiredPosition: 5f);
+            cascade.InputMove(entity, desiredPosition: 7f);
 
             Assert.Throws<CommitConflictException>(() => cascade.RunTick());
             Assert.AreEqual(0f, cascade.GetPosition(entity).Position, 0.0001f);
@@ -431,7 +426,7 @@ namespace CascadeEngineApi.Tests
                     .With<DisposableReducer>();
 
                 Output<DisposableState>("Disposable")
-                    .AffectedBy<DisposableFact>()
+                    .AffectedBy<DisposableFact>(0)
                     .CommitWith<DisposableStateCommitter>();
             }
         }

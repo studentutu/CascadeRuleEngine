@@ -103,7 +103,7 @@ namespace CascadeEngineApi.Tests
                     .With<IncrementalMiddleReducer>();
 
                 Result = Output<IncrementalResultState>("IncrementalResult")
-                    .AffectedBy<IncrementalDoneFact>()
+                    .AffectedBy<IncrementalDoneFact>(0)
                     .CommitWith<IncrementalCommitter>();
             }
 

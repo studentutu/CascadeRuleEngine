@@ -31,10 +31,10 @@
   - batch transactional reducer receives only eligible entities.
   - batch transactional reducer fires exactly once per entity when entities become eligible across different passes, while incomplete entities stay excluded.
 - Same entity/fact-type multiplicity is intentional: identical fact payloads dedupe, distinct payloads are preserved and exposed through `IEntityFactView.All<TFact>()`.
-- Commit priority conflict handling now has an explicit public slice:
-  - `IPrioritizedFact` marks facts with integer priority that can participate in commit-stage winner selection.
-  - `IFactConflictComparer<TFact>` keeps equal-priority conflict semantics output-specific.
-  - `FactConflictResolution.TrySelectHighestPriority(...)` provides the reusable no-allocation priority selector for committers.
+- Commit priority conflict handling is declarative and commit-only:
+  - `AffectedBy<TFact>(int priority)` assigns output-scoped priority without changing reducer scheduling.
+  - `PriorityWinnerOrThrowOnTie` exposes only the winning fact type to the committer and rejects multiple distinct winning facts before durable writes.
+  - `IPrioritizedFact`, `IFactConflictComparer<TFact>`, and `FactConflictResolution` were removed from the public API.
 
 ## Known Gaps
 
@@ -46,8 +46,6 @@
 ## Next Work
 
 1. Harden core policy:
-   - Improve `IFactConflictComparer<TFact>` with either better defaults (already pre-defined units) or re-design such that declaration of effected facts has priority assigned in the registration (e.g. declarative way with `x.Effected<T>(priority)`)
-   - Add more package-level tests for equal-priority conflicts across multiple facts outside Hestia sample coverage.
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
 2. Ergonomics tightening.

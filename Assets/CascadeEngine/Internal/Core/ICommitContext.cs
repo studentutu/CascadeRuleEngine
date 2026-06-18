@@ -3,7 +3,7 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Committer-facing API: fold closed facts against previous durable state without emitting same-tick work.
+    /// Committer-facing API: fold closed facts against previous durable state without emitting same-tick work. Priority policies expose only the selected winning fact type through Facts.
     /// </summary>
     public interface ICommitContext
     {

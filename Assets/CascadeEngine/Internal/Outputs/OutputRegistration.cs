@@ -12,6 +12,7 @@ namespace CascadeEngineApi
         where TState : struct, IOutputState
     {
         private readonly FactType[] _affectedFacts;
+        private readonly int[] _affectedFactPriorities;
         private readonly IOutputCommitter<TState> _committer;
         private readonly List<CommitAction<TState>> _commitActions = new List<CommitAction<TState>>();
         private StateBucket<TState>? _bucket;
@@ -19,10 +20,12 @@ namespace CascadeEngineApi
         internal OutputRegistration(
             OutputState<TState> output,
             FactType[] affectedFacts,
+            int[] affectedFactPriorities,
             IOutputCommitter<TState> committer)
         {
             Output = output;
             _affectedFacts = affectedFacts;
+            _affectedFactPriorities = affectedFactPriorities;
             _committer = committer;
         }
 
@@ -32,6 +35,8 @@ namespace CascadeEngineApi
         public int Index => Output.Index;
         public string Name => Output.Name;
         public FactType[] AffectedFacts => _affectedFacts;
+        public bool UsesPrioritySelection =>
+            Output.ConflictPolicy == CommitConflictPolicy.PriorityWinnerOrThrowOnTie;
         public int CommitActionCapacity => _commitActions.Capacity;
 
         public void Reindex(int index)
@@ -44,13 +49,67 @@ namespace CascadeEngineApi
                 ? new Optional<TState>(value)
                 : default;
 
-            var decision = _committer.Commit(simulation, entity, in previous);
+            var selectedFact = UsesPrioritySelection
+                ? SelectPriorityWinner(simulation, entity)
+                : default;
+
+            simulation.BeginOutputCommit(this, entity, selectedFact);
+            CommitDecision<TState> decision;
+            try
+            {
+                decision = _committer.Commit(simulation, entity, in previous);
+            }
+            finally
+            {
+                simulation.EndOutputCommit();
+            }
+
             if (decision.Kind == CommitDecisionKind.Unchanged)
             {
                 return;
             }
 
             _commitActions.Add(new CommitAction<TState>(bucket, entity, decision));
+        }
+
+        public CascadeTypeId SelectPriorityWinner(FactSimulation simulation, EntityRef entity)
+        {
+            var winner = default(CascadeTypeId);
+            var winnerPriority = 0;
+            var winnerCount = 0;
+
+            for (var i = 0; i < _affectedFacts.Length; i++)
+            {
+                var count = simulation.FactCount(entity, _affectedFacts[i].Id);
+                if (count == 0)
+                {
+                    continue;
+                }
+
+                var priority = _affectedFactPriorities[i];
+                if (winner.IsEmpty || priority > winnerPriority)
+                {
+                    winner = _affectedFacts[i].Id;
+                    winnerPriority = priority;
+                    winnerCount = count;
+                    continue;
+                }
+
+                if (priority == winnerPriority)
+                {
+                    winnerCount += count;
+                }
+            }
+
+            if (winnerCount > 1)
+            {
+                throw new CommitConflictException(
+                    entity,
+                    typeof(TState),
+                    $"{winnerCount} distinct facts share winning priority '{winnerPriority}'.");
+            }
+
+            return winner;
         }
 
         public void ApplyQueuedCommitActions()

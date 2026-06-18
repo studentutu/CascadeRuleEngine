@@ -22,6 +22,7 @@ namespace CascadeEngineApi
         private readonly FactStore _facts = new FactStore();
         private readonly Dictionary<CascadeTypeId, IStateBucket> _stateBuckets = new Dictionary<CascadeTypeId, IStateBucket>();
         private readonly EntityFactView _factView;
+        private readonly EntityFactView _commitFactView;
         private readonly EntityRefBuffer _queryBuffer = new EntityRefBuffer(64);
         private readonly EntityRefBuffer _transactionBuffer = new EntityRefBuffer(64);
         private readonly EntityRefBuffer _batchBuffer = new EntityRefBuffer(64);
@@ -31,6 +32,9 @@ namespace CascadeEngineApi
         private int[] _commitOutputMarks = new int[0];
         private int _commitOutputMark;
         private int _mutationCount;
+        private IOutputRegistration? _activeCommitOutput;
+        private EntityRef _activeCommitEntity;
+        private CascadeTypeId _activeCommitFact;
         private bool _disposed;
 
         /// <summary>
@@ -56,6 +60,7 @@ namespace CascadeEngineApi
             _feature = feature;
             _registry = feature.Registry;
             _factView = new EntityFactView(_facts, _registry);
+            _commitFactView = new EntityFactView(_facts, _registry);
             _firedTransactional = new FiredReducerTracker(_registry.TransactionalReducers.Count, 64);
             _firedBatchEntities = new FiredReducerTracker(_registry.BatchTransactionalReducers.Count, 64);
             _partial = new PartialSimulation(
@@ -294,6 +299,25 @@ namespace CascadeEngineApi
             return _factView.Bind(entity);
         }
 
+        IEntityFactView ICommitContext.Facts(EntityRef entity)
+        {
+            ThrowIfDisposed();
+            if (_activeCommitOutput == null)
+            {
+                throw new InvalidOperationException("Commit facts are available only while an output committer is running.");
+            }
+
+            if (!_activeCommitOutput.UsesPrioritySelection)
+            {
+                return _commitFactView.Bind(entity);
+            }
+
+            var selectedFact = entity.Equals(_activeCommitEntity)
+                ? _activeCommitFact
+                : _activeCommitOutput.SelectPriorityWinner(this, entity);
+            return _commitFactView.Bind(entity, selectedFact);
+        }
+
         public bool HasState<TState>(EntityRef entity)
             where TState : struct, IOutputState
             => Has<TState>(entity);
@@ -376,6 +400,31 @@ namespace CascadeEngineApi
         internal StateBucket<TState> GetStateBucket<TState>()
             where TState : struct, IOutputState
             => OutputStateRouteCache<TState>.Require(this).Bucket;
+
+        internal int FactCount(EntityRef entity, CascadeTypeId factId)
+            => _facts.Count(entity, factId);
+
+        internal void BeginOutputCommit(
+            IOutputRegistration output,
+            EntityRef entity,
+            CascadeTypeId selectedFact)
+        {
+            if (_activeCommitOutput != null)
+            {
+                throw new InvalidOperationException("Output committers cannot be invoked recursively.");
+            }
+
+            _activeCommitOutput = output;
+            _activeCommitEntity = entity;
+            _activeCommitFact = selectedFact;
+        }
+
+        internal void EndOutputCommit()
+        {
+            _activeCommitOutput = null;
+            _activeCommitEntity = default;
+            _activeCommitFact = default;
+        }
 
         internal CascadeCapacitySnapshot CaptureCapacitySnapshot(int warmedEntityCapacity)
         {

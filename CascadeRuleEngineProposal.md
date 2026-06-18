@@ -80,7 +80,7 @@ Reducers read committed output state and accumulated tick facts only.
 Reducers never read staged output state because staged output does not exist.
 Intermediate reducer results must be facts.
 Same tick closure is mandatory when the graph can close within the configured budget.
-Equal priority conflicts are logic errors and throw with both conflicting facts attached.
+Multiple distinct facts at the winning output-registration priority are logic errors and throw before durable writes.
 Missing output state is real: consumers must use HasState/TryGetState or mutation create/delete flags.
 Destroyed entities are permanent. New facts for destroyed entities are rejected before reduction.
 Entity creation/destruction is part of the core lifecycle API, not a host-side convention.
@@ -110,8 +110,7 @@ public sealed class PlayerInputDomain
         _simulation.Emit(player, new MoveRequestedFact
         {
             Direction = direction,
-            Source = InputSource.Player,
-            Priority = 1000
+            Source = InputSource.Player
         });
     }
 
@@ -123,8 +122,7 @@ public sealed class PlayerInputDomain
         _simulation.Emit(player, new InventoryDragRequestedFact
         {
             From = from,
-            To = to,
-            Priority = 1000
+            To = to
         });
     }
 }
@@ -235,14 +233,16 @@ public sealed class MovementFeature : FactFeature
             .With<PhysicsResolutionReducer>();
 
         Output<PositionState>()
-            .AffectedBy<PositionResolvedFact>()
-            .AffectedBy<TeleportResolvedFact>()
+            .AffectedBy<PositionResolvedFact>(priority: 100)
+            .AffectedBy<TeleportResolvedFact>(priority: 1000)
+            .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
             .CommitWith<PositionCommitter>();
 
         Output<MovementState>()
-            .AffectedBy<MoveRequestedFact>()
-            .AffectedBy<MoveResolvedFact>()
-            .AffectedBy<MoveBlockedFact>()
+            .AffectedBy<MoveRequestedFact>(0)
+            .AffectedBy<MoveResolvedFact>(0)
+            .AffectedBy<MoveBlockedFact>(0)
+            .ConflictPolicy(CommitConflictPolicy.FoldAll)
             .CommitWith<MovementStateCommitter>();
     }
 }
@@ -268,15 +268,17 @@ public sealed class InventoryFeature : FactFeature
             .With<InventoryAnimationReducer>();
 
         Output<InventoryState>()
-            .AffectedBy<InventoryMoveResolvedFact>()
-            .AffectedBy<InventoryItemAddedFact>()
-            .AffectedBy<InventoryItemRemovedFact>()
+            .AffectedBy<InventoryMoveResolvedFact>(0)
+            .AffectedBy<InventoryItemAddedFact>(0)
+            .AffectedBy<InventoryItemRemovedFact>(0)
+            .ConflictPolicy(CommitConflictPolicy.FoldAll)
             .CommitWith<InventoryCommitter>();
 
         Output<InventoryUiState>()
-            .AffectedBy<InventoryDragRequestedFact>()
-            .AffectedBy<InventoryMoveResolvedFact>()
-            .AffectedBy<InventoryMoveRejectedFact>()
+            .AffectedBy<InventoryDragRequestedFact>(0)
+            .AffectedBy<InventoryMoveResolvedFact>(0)
+            .AffectedBy<InventoryMoveRejectedFact>(0)
+            .ConflictPolicy(CommitConflictPolicy.FoldAll)
             .CommitWith<InventoryUiCommitter>();
     }
 }
@@ -341,7 +343,6 @@ public readonly record struct MoveRequestedFact : IFact
 {
     public required GridDirection Direction { get; init; }
     public required InputSource Source { get; init; }
-    public required int Priority { get; init; }
 }
 
 public readonly record struct MoveCandidateFact : IFact
@@ -349,7 +350,6 @@ public readonly record struct MoveCandidateFact : IFact
     public required GridPosition From { get; init; }
     public required GridPosition To { get; init; }
     public required GridDirection Direction { get; init; }
-    public required int Priority { get; init; }
 }
 
 public readonly record struct MoveBlockedFact : IFact
@@ -374,7 +374,6 @@ public readonly record struct InventoryDragRequestedFact : IFact
 {
     public required InventorySlotRef From { get; init; }
     public required InventorySlotRef To { get; init; }
-    public required int Priority { get; init; }
 }
 
 public readonly record struct InventoryMoveCandidateFact : IFact
@@ -576,8 +575,7 @@ public sealed class MoveRequestReducer : IFactReducer<MoveRequestedFact>
         {
             From = position.Cell,
             To = target,
-            Direction = fact.Direction,
-            Priority = fact.Priority
+            Direction = fact.Direction
         });
     }
 }
@@ -1134,7 +1132,7 @@ Fact emission is deduplicated.
 Reducers read committed state plus accumulated facts.
 Reducers do not delete facts.
 Reducers do not write output state.
-Conflicts are resolved only in committers.
+Conflicts are resolved only after reduction closure, in the commit phase.
 ```
 
 That means this is valid:
@@ -1153,7 +1151,7 @@ MoveRequested
   -> MoveBlocked
 ```
 
-But if both happen, the `PositionCommitter` or `MovementStateCommitter` owns the merge policy. Priority may select a winner; equal priority is a logic error.
+But if both happen, the output registration owns winner priority and the committer owns projection into durable state. Equal winning priority is a logic error.
 
 Example:
 
@@ -1177,20 +1175,14 @@ public sealed class MovementStateCommitter : IOutputCommitter<MovementState>
     {
         IEntityFactView facts = ctx.Facts(entity);
 
-        bool hasResolved = facts.Has<MoveResolvedFact>();
-        bool hasBlocked = facts.Has<MoveBlockedFact>();
-
-        if (hasResolved && hasBlocked)
+        if (facts.TryGetLatest<MoveResolvedFact>(out MoveResolvedFact resolved))
         {
-            if (!TrySelectHighestPriority(facts, out MovementResolution winner))
-            {
-                throw new CommitConflictException(
-                    entity,
-                    typeof(MovementState),
-                    "MoveResolvedFact and MoveBlockedFact have equal priority.");
-            }
+            return CommitResolved(previous, resolved);
+        }
 
-            return CommitWinner(previous, winner);
+        if (facts.TryGetLatest<MoveBlockedFact>(out MoveBlockedFact blocked))
+        {
+            return CommitBlocked(previous, blocked);
         }
 
         // Normal commit logic...
@@ -1199,7 +1191,7 @@ public sealed class MovementStateCommitter : IOutputCommitter<MovementState>
 }
 ```
 
-Do not silently keep previous state for contradictory facts. That recreates the hidden-order ECS failure mode.
+Under `PriorityWinnerOrThrowOnTie`, `ICommitContext.Facts(entity)` exposes only the selected winning fact type. The commit phase throws before invoking the committer when multiple distinct facts share the winning priority. Do not silently keep previous state for contradictory facts; that recreates the hidden-order ECS failure mode.
 
 ---
 
@@ -1207,8 +1199,8 @@ Do not silently keep previous state for contradictory facts. That recreates the 
 
 ```csharp
 Output<PositionState>()
-    .AffectedBy<MoveResolvedFact>()
-    .AffectedBy<TeleportResolvedFact>()
+    .AffectedBy<MoveResolvedFact>(priority: 100)
+    .AffectedBy<TeleportResolvedFact>(priority: 1000)
     .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
     .CommitWith<PositionCommitter>();
 ```
@@ -1217,10 +1209,10 @@ For inventory:
 
 ```csharp
 Output<InventoryState>()
-    .AffectedBy<InventoryMoveResolvedFact>()
-    .AffectedBy<InventoryItemAddedFact>()
-    .AffectedBy<InventoryItemRemovedFact>()
-    .ConflictPolicy(CommitConflictPolicy.FoldAllInStableFactOrder)
+    .AffectedBy<InventoryMoveResolvedFact>(0)
+    .AffectedBy<InventoryItemAddedFact>(0)
+    .AffectedBy<InventoryItemRemovedFact>(0)
+    .ConflictPolicy(CommitConflictPolicy.FoldAll)
     .CommitWith<InventoryCommitter>();
 ```
 
@@ -1228,13 +1220,13 @@ For marker/event-like dirty state:
 
 ```csharp
 Output<AudioCueState>()
-    .AffectedBy<FootstepCueFact>()
-    .AffectedBy<DryFireCueFact>()
+    .AffectedBy<FootstepCueFact>(0)
+    .AffectedBy<DryFireCueFact>(1)
     .ConflictPolicy(CommitConflictPolicy.CollapseToSingleMarker)
     .CommitWith<AudioCueCommitter>();
 ```
 
-Different output components need different commit semantics.
+`AffectedBy<TFact>()` defaults can be priority `0`. Registration priority is scoped to one output and is never consulted by the reducer queue. Different output components need different commit semantics.
 
 ---
 
@@ -1306,8 +1298,7 @@ Input:
 simulation.Emit(player, new MoveRequestedFact
 {
     Direction = GridDirection.Right,
-    Source = InputSource.Player,
-    Priority = 1000
+    Source = InputSource.Player
 });
 ```
 
@@ -1388,7 +1379,7 @@ Surface the failure with reducer/fact diagnostics.
 Do not publish partial durable state in the MVP.
 ```
 
-This prevents half-resolved inventory or half-resolved movement from leaking into durable state. Reducer queue ordering is not a priority policy; fact priority belongs to closed-fact conflict resolution in committers.
+This prevents half-resolved inventory or half-resolved movement from leaking into durable state. Reducer queue ordering is not a priority policy; affected-fact priority belongs to output registration and is applied only by the commit phase after closure.
 
 ---
 
@@ -1405,7 +1396,6 @@ public sealed class FactGuardrails
     public int MaxTransactionalReducerInvocationsPerTick { get; init; } = 50_000;
     public int MaxCausalDepth { get; init; } = 32;
     public bool DetectCycles { get; init; } = true;
-    public bool FailOnEqualPriorityConflict { get; init; } = true;
     public bool CountDeduplicatedFacts { get; init; } = true;
     public bool CountRejectedDestroyedEntityFacts { get; init; } = true;
 }
@@ -1529,7 +1519,7 @@ public sealed class BatchTransactionalReducerRegistrationBuilder
 public sealed class OutputRegistrationBuilder<TState>
     where TState : struct, IOutputState
 {
-    public OutputRegistrationBuilder<TState> AffectedBy<TFact>()
+    public OutputRegistrationBuilder<TState> AffectedBy<TFact>(int priority)
         where TFact : struct, IFact;
 
     public OutputRegistrationBuilder<TState> ConflictPolicy(
@@ -1546,11 +1536,11 @@ public sealed class OutputRegistrationBuilder<TState>
 
 | Current issue                                 | New model                                                                             |
 | --------------------------------------------- | ------------------------------------------------------------------------------------- |
-| System execution order matters                | Reducers are fact-triggered and idempotent; final conflicts handled by committers     |
+| System execution order matters                | Reducers are fact-triggered and idempotent; final conflicts handled by the commit phase |
 | Request created late resolves next simulation | Reduction runs to closure in the same tick                                            |
 | One core component change causes mass edits   | Output state is projected in one committer; reducers depend on stable read/query APIs |
 | All systems run constantly                    | Only reducers mapped to existing facts execute                                        |
-| Budgeting is hard and messy                   | Budget the fact queue by priority/entity relevance                                    |
+| Budgeting is hard and messy                   | Explicit count/time guardrails and incremental passes bound closure work              |
 | Adding request components causes spikes       | Facts are stored in transient append-only stores, not Entitas structural components   |
 | Multi-step sub-tick resolution                | The reducer loop is the sub-tick resolution engine                                    |
 | Direct non-ECS changes are awkward            | Domain modules emit facts and read committed state, works more like database          |

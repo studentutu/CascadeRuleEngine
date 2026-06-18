@@ -57,7 +57,7 @@ var feature = new GameplayFeature();
 var simulation = new FactSimulation(feature);
 var entity = simulation.CreateEntity();
 
-simulation.Emit(entity, new MoveRequestedFact(12f, priority: 1000));
+simulation.Emit(entity, new MoveRequestedFact(12f));
 
 SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 
@@ -159,7 +159,8 @@ public sealed class GameplayFeature : FactFeature
             .With<MoveRequestReducer>();
 
         Position = Output<PositionState>("Position")
-            .AffectedBy<MoveResolvedFact>()
+            .AffectedBy<MoveResolvedFact>(priority: 100)
+            .AffectedBy<TeleportResolvedFact>(priority: 1000)
             .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
             .CommitWith<PositionCommitter>();
     }
@@ -168,21 +169,25 @@ public sealed class GameplayFeature : FactFeature
 }
 ```
 
-Fact reduction order is not a public scheduling policy. Facts are reduced until closure; durable conflict priority belongs inside the facts consumed by committers, not in the reducer work queue.
+Fact reduction order is not a public scheduling policy. Facts are reduced until closure; durable conflict priority belongs to the output-to-fact registration and is consulted only after closure.
 
 ## Fact Multiplicity And Commit Conflict
 
 The package supports multiple distinct facts of the same type on the same entity in one reduction loop. Identical payloads are deduplicated; distinct payloads are retained and exposed through `IEntityFactView.All<TFact>()`.
 
-Do not overwrite same-type facts during emit. Overwrite semantics make fact arrival order durable again, which recreates the ECS hidden-order problem. If the output needs one winner, the committer must select it after reduction closure. If the output needs all changes, the committer folds the full span.
+Do not overwrite same-type facts during emit. Overwrite semantics make fact arrival order durable again, which recreates the ECS hidden-order problem. If the output needs one winner, declare priorities on its affected facts. If the output needs all changes, use `FoldAll` and make the fold commutative.
 
 `CommitConflictPolicy` is a registration-level declaration of the expected merge behavior:
 
-- `PriorityWinnerOrThrowOnTie`: facts that participate in winner selection implement `IPrioritizedFact` with an integer priority; committers can use `FactConflictResolution.TrySelectHighestPriority(...)` with an output-specific `IFactConflictComparer<TFact>`.
+- `PriorityWinnerOrThrowOnTie`: the commit phase selects the affected fact type with the highest registration priority. The committer sees only that type through `ICommitContext.Facts(entity)`. Multiple distinct facts at the winning priority throw before durable writes.
 - `FoldAll`: the committer folds every relevant fact into one durable state write.
 - `CollapseToSingleMarker`: the committer collapses one or more facts into one marker-style output.
 
-The engine cannot automatically merge arbitrary output state. Committers remain the final integrity boundary, but the package now provides the common priority-winner primitive so each committer does not hand-roll the same loop.
+`AffectedBy<TFact>()` is shorthand for priority `0`. Priority is scoped to one output registration: the same fact type may have different commit priority for different outputs. Priority never changes reducer scheduling or fact acceptance.
+
+The builder defaults to `FoldAll` for backward-compatible pass-through behavior. Use `ConflictPolicy(...)` explicitly in production registrations so the merge contract is visible during review.
+
+The engine cannot automatically merge arbitrary output state. Committers remain the final projection boundary, while the commit phase owns deterministic winner selection and tie rejection.
 
 ## Public API contract
 
@@ -191,9 +196,6 @@ The engine cannot automatically merge arbitrary output state. Committers remain 
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
-| `IPrioritizedFact` | fact contract exposing integer priority for commit-stage winner selection |
-| `IFactConflictComparer<TFact>` | output-specific same-priority conflict predicate for prioritized fact selection |
-| `FactConflictResolution` | allocation-free helper for selecting a priority winner from closed facts |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
@@ -228,12 +230,12 @@ AmmoSpendRequestedFact
 -> HestiaAudioCueCommitter may publish a marker-style DryFire cue
 ```
 
-Movement demonstrates priority conflict handling:
+Movement demonstrates same-type conflict handling:
 
 ```text
 MoveRequestedFact
 -> MoveResolvedFact
--> HestiaPositionCommitter uses FactConflictResolution to pick highest priority or throw on equal-priority conflict
+-> commit phase rejects multiple distinct resolutions before HestiaPositionCommitter writes state
 ```
 
-The tests under `Assets/Tests` are the executable API examples.
+`OutputStateRouteTests` demonstrates cross-type registration priority and order-independent winner selection. The tests under `Assets/Tests` are the executable API examples.
