@@ -34,6 +34,31 @@ Committers decide durable truth.
 OutputState is the only thing consumers trust.
 ```
 
+## Fact Lifetime Rule
+
+Facts exist for one reduction loop. Anything expected to remain observable after closure must be committed state.
+
+A continuous condition owned by an external domain is still a tick input, not a persistent fact. Emit it again at the start of each reduction loop while that external condition is true:
+
+```csharp
+if (weatherDomain.IsWet(entity))
+{
+    simulation.Emit(entity, new WetEnvironmentObservedFact());
+}
+
+simulation.RunTick(ReduceOptions.Default());
+```
+
+`WetEnvironmentObservedFact` participates in that loop's closure only. If later reducers, committers, UI, or old ECS consumers must observe wetness after closure, commit a durable output:
+
+```text
+WetEnvironmentObservedFact
+-> reducers derive wet consequences
+-> WetStatusCommitter writes WetStatusState
+```
+
+Do not keep facts alive with cleanup markers or reducer-owned lifetime conventions. That creates a second durable state source and makes unordered reduction semantics harder to reason about.
+
 That is the closest ECS equivalent to React-style reconciliation:
 
 ```text
