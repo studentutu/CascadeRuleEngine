@@ -502,10 +502,11 @@ Lifecycle rules:
 CreateEntity allocates a live entity id immediately and returns it to the reducer.
 New entities have no output state until committers set output state.
 Facts may be emitted to newly created entities in the same tick.
-DestroyEntity is permanent and tombstones the entity immediately.
+DestroyEntity tombstones the entity immediately for dispatch and becomes permanent only after the tick closes.
 Facts emitted to destroyed entities are rejected before the reduction loop.
 Already queued facts for entities destroyed earlier in the same tick are skipped before reducer dispatch.
 Committers do not run for destroyed entities unless explicitly registered for lifecycle cleanup output.
+Reducer-side destruction is transactional: committed output state remains readable until closure, then lifecycle reconciliation publishes typed delete mutations. A failed tick rolls the destruction back.
 ```
 
 Host and consumer lifecycle parity:
@@ -555,6 +556,33 @@ public interface IEntityQuery
 ```
 
 `EntityQueryResult` must be allocation-free in the hot path. Do not ship `IEnumerable<EntityRef>` as the core query primitive; it is too easy to allocate and hide work.
+
+Persistent committed state can also seed per-tick reduction without adding another reducer interface or fluent builder:
+
+```csharp
+public sealed class NavigationFeature : FactFeature
+{
+    public NavigationFeature()
+    {
+        ReduceState<ActiveState, NavigationReducer>();
+    }
+}
+
+public sealed class NavigationReducer : ITransactionalReducer
+{
+    public void Reduce(IReduceContext ctx, EntityRef entity)
+    {
+        ActiveState active = ctx.GetState<ActiveState>(entity);
+
+        if (!ctx.TryGetState<BotState>(entity, out BotState bot))
+            return;
+
+        ctx.Emit(entity, new NavigationStepRequestedFact(bot.Target));
+    }
+}
+```
+
+`ReduceState<TState, TReducer>()` runs once per tick for each live entity containing committed `TState`. State membership is stable for the open tick; state created during tick N becomes eligible in tick N+1. Trigger on one narrow state and query other requirements inside the reducer. Do not add multi-state trigger overloads or a state-specific reducer interface without a measured use case.
 
 ---
 
@@ -1368,6 +1396,7 @@ Budgeting should happen at the fact queue level, not the system level.
 public sealed class ReduceOptions
 {
     public required int MaxFacts { get; init; }
+    public required int MaxWorkItems { get; init; }
     public required int MaxPasses { get; init; }
     public required int MaxMilliseconds { get; init; }
 }
@@ -1482,6 +1511,10 @@ public abstract class FactFeature
 {
     protected ReducerRegistrationBuilder<TFact> Reduce<TFact>()
         where TFact : struct, IFact;
+
+    protected void ReduceState<TState, TReducer>()
+        where TState : struct, IOutputState
+        where TReducer : ITransactionalReducer, new();
 
     protected TransactionalReducerRegistrationBuilder ReduceWhen<TA, TB>();
 

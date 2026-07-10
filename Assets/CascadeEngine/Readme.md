@@ -59,6 +59,44 @@ WetEnvironmentObservedFact
 
 Do not keep facts alive with cleanup markers or reducer-owned lifetime conventions. That creates a second durable state source and makes unordered reduction semantics harder to reason about.
 
+Committed Cascade output state is different from an external condition. A persistent output such as `ActiveState` can be registered as a per-tick reducer trigger without creating a synthetic public fact:
+
+```csharp
+public sealed class NavigationFeature : FactFeature
+{
+    public NavigationFeature()
+    {
+        ReduceState<ActiveState, NavigationReducer>();
+
+        Reduce<MoveCandidateFact>()
+            .With<CollisionReducer>();
+    }
+}
+
+public sealed class NavigationReducer : ITransactionalReducer
+{
+    public void Reduce(IReduceContext context, EntityRef entity)
+    {
+        ActiveState active = context.GetState<ActiveState>(entity);
+
+        if (!context.TryGetState<BotState>(entity, out BotState bot))
+            return;
+
+        context.Emit(entity, new MoveCandidateFact(bot.Position, bot.Target));
+    }
+}
+```
+
+State-trigger rules:
+
+- `ReduceState<TState, TReducer>()` runs the reducer once per tick for each live entity containing committed `TState`.
+- State membership is the committed snapshot for the entire open tick. A state created during tick N becomes eligible in tick N+1.
+- Same-tick activation consequences must still be emitted as facts by the activation reducer.
+- Trigger on the narrowest state, such as `ActiveState`, and query additional states inside the reducer. Do not create combinatorial state-registration overloads.
+- State reducers reuse `ITransactionalReducer`; registration eligibility differs, but the entity-scoped reducer contract is identical.
+- State reducers emit facts only. Committers remain the only durable-state writers.
+- The trigger state must be registered as an output in the full feature tree. Missing output registration is a setup error.
+
 That is the closest ECS equivalent to React-style reconciliation:
 
 ```text
@@ -104,6 +142,31 @@ simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
 Incomplete incremental results are diagnostic only. Consumers must keep trusting committed `IOutputState`; commit still happens only after reduction closure.
+
+`ReduceOptions.MaxFacts` bounds dequeued facts per incremental call. `ReduceOptions.MaxWorkItems` separately bounds reducer invocations per call: immediate reducer invocation, entity transactional/state invocation, or one atomic batch reducer invocation. `MaxMilliseconds` remains the hard elapsed-time slice. Budget suspensions do not consume `MaxPasses`; only completed logical closure passes do.
+
+If a time or work budget stops dispatch between two reducers registered for the same fact, the simulation preserves the popped fact and next reducer index. Continuation never drops or repeats the remaining reducer invocations.
+
+## Transactional Entity Lifecycle
+
+Entity creation and destruction requested while a tick is open are part of that tick:
+
+- A newly created entity is immediately usable by reducers and can receive facts in the same tick.
+- Reducer-side destruction tombstones the entity immediately for further dispatch, but its committed output state remains unchanged until closure.
+- Closing the tick commits created entities and deletes all output states for destroyed entities, publishing typed delete mutations once.
+- A failed full tick rolls back destruction. Entities created by the failed tick become permanently destroyed; ids are never reused.
+- `SetStateSilently` is bootstrap/load authority only and throws while a tick is open because it would invalidate committed snapshot membership.
+
+At host or persistence boundaries, validate stored integer ids without manufacturing unchecked handles:
+
+```csharp
+if (simulation.TryGetEntity(savedEntityId, out EntityRef entity))
+{
+    simulation.Emit(entity, new RestoreRequestedFact());
+}
+```
+
+`TryGetEntity` is intentionally on concrete `FactSimulation`; adding it to `IFactSimulation` would break existing adapter implementations.
 
 ## Stable Type Ids
 
@@ -157,6 +220,8 @@ for (var i = 0; i < expectedEntities; i++)
 Keep the hints honest. If one gameplay tick can enqueue two input facts and two derived facts per entity, size `FactQueueCapacity` for that shape instead of assuming entity count is enough.
 
 Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code still need a declaration in the feature, usually as an affected fact for the output that consumes them.
+
+Output state uses sparse-set storage: entity membership and values are compact and directly iterable. Single-state queries iterate only entities containing that state; two-state queries iterate the smaller state bucket and test membership in the other. Warm `OutputStateCapacityPerOutput` for both expected entity ids and state membership so state-trigger and query hot paths do not resize.
 
 Use `FactListCapacityMode.Fixed` for gameplay hot paths that must not allocate. In fixed mode, an underestimated `FactsPerEntityPerTypeCapacity` throws instead of silently resizing an `EntityFactList<TFact>`. Use the default `GrowOnDemand` only while prototyping or when the host explicitly accepts capacity growth.
 
@@ -237,21 +302,24 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 
 | Type | Role |
 | --- | --- |
+| `EntityRef` | stable non-reused entity handle; validate external integer ids with `FactSimulation.TryGetEntity` |
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
+| `ITransactionalReducer` | entity-scoped reducer used by required-fact and committed-state eligibility registrations |
 | `TransactionalReducerRegistrationExtensions` | appends required fact types with `.And<TFact>()` for entity or batch transactional registration |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
 | `CommitConflictPolicy` | declared output merge policy used by feature registration and committer examples |
-| `FactFeature` | registration hub for reducers and outputs |
-| `FactSimulation` | entity lifecycle, fact queue, reduction, commit, mutation routing, terminal disposal |
+| `FactFeature` | registration hub for fact reducers, transactional reducers, state reducers, and outputs |
+| `FactSimulation` | transactional entity lifecycle, validated id lookup, fact queue, reduction, commit, mutation routing, terminal disposal |
+| `ReduceOptions` | per-call fact, work-item, pass, and elapsed-time budgets |
 | `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
 | `FactListCapacityMode` | grow or fixed capacity policy for per-entity fact lists |
 | `OutputState<TState>` | typed mutation stream descriptor |
 | `StateMutation<TState>` | create/update/delete diff for one output state |
-| `SimulationResultCounters` | numeric tick counters grouped away from result construction |
+| `SimulationResultCounters` | numeric tick counters, including processed reducer work items, grouped away from result construction |
 | `SimulationResultDiagnostics` | incomplete-tick and guardrail context grouped away from result construction |
 
 ## Package Boundary

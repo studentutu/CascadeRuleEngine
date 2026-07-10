@@ -26,6 +26,17 @@ namespace CascadeEngineApi
             return new ReducerRegistrationBuilder<TFact>(_registry);
         }
 
+        /// <summary>
+        /// [INTEGRATION] Registers one entity-scoped reducer to run once per tick for each entity containing the committed trigger state.
+        /// </summary>
+        protected void ReduceState<TState, TReducer>()
+            where TState : struct, IOutputState
+            where TReducer : ITransactionalReducer, new()
+        {
+            ThrowIfNotMutable();
+            _registry.AddStateReducer<TState, TReducer>();
+        }
+
         protected OutputRegistrationBuilder<TState> Output<TState>()
             where TState : struct, IOutputState
             => Output<TState>(_registry.TypeName<TState>());

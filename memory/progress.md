@@ -37,13 +37,26 @@
   - `AffectedBy<TFact>(int priority)` assigns output-scoped priority without changing reducer scheduling.
   - `PriorityWinnerOrThrowOnTie` exposes only the winning fact type to the committer and rejects multiple distinct winning facts before durable writes.
   - `IPrioritizedFact`, `IFactConflictComparer<TFact>`, and `FactConflictResolution` were removed from the public API.
+- Committed output state can now drive per-tick work through the minimal `ReduceState<TState, TReducer>()` registration. It reuses `ITransactionalReducer`; no state-specific reducer interface or builder was added.
+- State-trigger membership is a committed tick snapshot. Newly committed state becomes eligible next tick, state reducers run once per eligible live entity, and incremental continuation preserves the registration/entity cursor.
+- `ReduceOptions.MaxWorkItems` is a per-call reducer-invocation budget independent of `MaxFacts`; `SimulationResult.ProcessedWorkItems` reports cumulative tick work.
+- Incremental dispatch now preserves a popped fact and its next reducer index when a budget stops between multiple reducers for the same fact.
+- Reducer-side entity creation/destruction is transactional:
+  - new entities can receive facts in the same open tick.
+  - destroyed entities are tombstoned for dispatch immediately but durable output deletion waits for closure.
+  - failed ticks roll back destruction and permanently tombstone ids created by the failed tick.
+- `FactSimulation.TryGetEntity(int, out EntityRef)` validates host/persistence ids without expanding `IFactSimulation`.
+- Output state storage now uses compact sparse membership/value arrays instead of per-output dictionaries. One-state queries iterate that state only; two-state queries iterate the smaller state set.
+- Entity lifecycle storage is warmed array state instead of an allocating destroyed-id `HashSet`.
+- The state-trigger vertical slice covers activation/deactivation, dormant filtering, cross-entity state query, incremental work suspension, reducer-side create/destroy, failure rollback, and same-fact multi-reducer continuation.
+- The 512-entity state-trigger allocation test reports 0 bytes for first-use and steady-state measured ticks after warmup.
 
 ## Known Gaps
 
 - Warmup is only as accurate as the host-provided hints.
   - Underestimated entity count, queue size, output state capacity, or mutation capacity can still grow during gameplay.
   - In fixed fact-list mode, underestimated per-entity fact count now throws instead of allocating.
-- review the concept behind many individual arrays that warm-up, come up with a better solution (switch to sparse-set or alternative methods, review the actual concept of usage behind it maybe a partial redesign will fix it).
+- Fact warmup still pre-creates per-entity fact-list objects for every known fact bucket. Replace that Cartesian entity/fact-type shape with sparse typed slabs without weakening `ReadOnlySpan<TFact>` access or fixed-capacity failure behavior.
 
 ## Next Work
 
@@ -51,13 +64,12 @@
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
 2. Ergonomics tightening.
-  1.1 Review if we handle removal/additional of entities while fact-reduction is not yet complete. Double check incremental path.
-  1.2 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code.
+  1.1 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code.
 
-3. Budgeting. Add proper Reducer-Loop Priority-per-Entity-flag mode:
-   - add Entity flag such as Relevant
-   - reducer loop must only work on the Relevant marked entities when SimulationMode configured to use Priority-per-Entity-flag.
-   - extend this idea to dormant-marked entities (created but not prioritized)
+3. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
+   - use presence of domain-owned `ActiveState`/equivalent as the first relevance filter.
+   - measure starvation and frame-slice latency before designing scheduling metadata.
+   - do not add `SimulationMode`, priority flags, or dormant scheduler state speculatively.
 
 4. Prepare production package:
    - minimal examples

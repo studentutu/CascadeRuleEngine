@@ -95,6 +95,7 @@ namespace CascadeEngineApi
         public int RejectedDestroyedEntityFacts => Counters.RejectedDestroyedEntityFacts;
         public int ReducerInvocations => Counters.ReducerInvocations;
         public int TransactionalReducerInvocations => Counters.TransactionalReducerInvocations;
+        public int ProcessedWorkItems => Counters.ProcessedWorkItems;
         public int TouchedEntities => Counters.TouchedEntities;
         public int MutationCount => Counters.MutationCount;
         public string BudgetReason => Diagnostics.BudgetReason;

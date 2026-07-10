@@ -13,9 +13,11 @@ namespace CascadeEngineApi
     {
         private readonly CascadeTypeId _stateId;
         private readonly string _debugName;
-        private Dictionary<int, TState> _values = new Dictionary<int, TState>();
         private readonly List<StateMutationRecord<TState>> _mutations = new List<StateMutationRecord<TState>>();
-        private int _stateCapacityHint;
+        private int[] _sparse = Array.Empty<int>();
+        private EntityRef[] _entities = Array.Empty<EntityRef>();
+        private TState[] _values = Array.Empty<TState>();
+        private int _count;
 
         internal StateBucket(CascadeTypeId stateId, string debugName)
         {
@@ -24,15 +26,25 @@ namespace CascadeEngineApi
         }
 
         public CascadeTypeId StateId => _stateId;
-        public int StateCapacityHint => _stateCapacityHint;
+        public int StateCapacityHint => Math.Min(_sparse.Length, _values.Length);
         public int MutationCapacity => _mutations.Capacity;
         public int MutationCount => _mutations.Count;
+        internal int EntityCount => _count;
 
         public bool Has(EntityRef entity)
-            => _values.ContainsKey(entity.Value);
+            => TryGetDenseIndex(entity, out _);
 
         internal bool TryGet(EntityRef entity, out TState state)
-            => _values.TryGetValue(entity.Value, out state);
+        {
+            if (TryGetDenseIndex(entity, out var index))
+            {
+                state = _values[index];
+                return true;
+            }
+
+            state = default;
+            return false;
+        }
 
         internal TState Get(EntityRef entity)
         {
@@ -46,22 +58,23 @@ namespace CascadeEngineApi
 
         internal void Set(EntityRef entity, TState next)
         {
-            TrackStateCapacityUse(entity);
-            if (_values.TryGetValue(entity.Value, out var previous))
+            EnsureStorageCapacity(entity.Value + 1, _count + 1);
+            if (TryGetDenseIndex(entity, out var index))
             {
+                var previous = _values[index];
                 if (EqualityComparer<TState>.Default.Equals(previous, next))
                 {
                     return;
                 }
 
-                _values[entity.Value] = next;
+                _values[index] = next;
                 _mutations.Add(new StateMutationRecord<TState>(
                     entity,
                     new StateMutation<TState>(true, previous, true, next)));
                 return;
             }
 
-            _values.Add(entity.Value, next);
+            AddNew(entity, next);
             _mutations.Add(new StateMutationRecord<TState>(
                 entity,
                 new StateMutation<TState>(false, default, true, next)));
@@ -69,18 +82,39 @@ namespace CascadeEngineApi
 
         internal void SetSilently(EntityRef entity, TState next)
         {
-            TrackStateCapacityUse(entity);
-            _values[entity.Value] = next;
+            EnsureStorageCapacity(entity.Value + 1, _count + 1);
+            if (TryGetDenseIndex(entity, out var index))
+            {
+                _values[index] = next;
+                return;
+            }
+
+            AddNew(entity, next);
         }
 
         public void Delete(EntityRef entity)
         {
-            if (!_values.TryGetValue(entity.Value, out var previous))
+            if (!TryGetDenseIndex(entity, out var index))
             {
                 return;
             }
 
-            _values.Remove(entity.Value);
+            var previous = _values[index];
+            var lastIndex = _count - 1;
+            var lastEntity = _entities[lastIndex];
+
+            if (index != lastIndex)
+            {
+                _entities[index] = lastEntity;
+                _values[index] = _values[lastIndex];
+                _sparse[lastEntity.Value] = index + 1;
+            }
+
+            _sparse[entity.Value] = 0;
+            _entities[lastIndex] = default;
+            _values[lastIndex] = default;
+            _count--;
+
             _mutations.Add(new StateMutationRecord<TState>(
                 entity,
                 new StateMutation<TState>(true, previous, false, default)));
@@ -88,17 +122,7 @@ namespace CascadeEngineApi
 
         public void EnsureCapacity(int stateCapacity, int mutationCapacity)
         {
-            if (stateCapacity > _stateCapacityHint)
-            {
-                var nextValues = new Dictionary<int, TState>(stateCapacity);
-                foreach (var pair in _values)
-                {
-                    nextValues.Add(pair.Key, pair.Value);
-                }
-
-                _values = nextValues;
-                _stateCapacityHint = stateCapacity;
-            }
+            EnsureStorageCapacity(stateCapacity, stateCapacity);
 
             if (_mutations.Capacity < mutationCapacity)
             {
@@ -111,15 +135,27 @@ namespace CascadeEngineApi
 
         public void DisposeBucket()
         {
-            foreach (var pair in _values)
+            for (var i = 0; i < _count; i++)
             {
-                DisposeIfNeeded(pair.Value);
+                DisposeIfNeeded(_values[i]);
             }
 
-            _values = new Dictionary<int, TState>();
+            _sparse = Array.Empty<int>();
+            _entities = Array.Empty<EntityRef>();
+            _values = Array.Empty<TState>();
+            _count = 0;
             _mutations.Clear();
             _mutations.Capacity = 0;
-            _stateCapacityHint = 0;
+        }
+
+        internal EntityRef EntityAt(int index)
+        {
+            if ((uint)index >= _count)
+            {
+                throw new IndexOutOfRangeException();
+            }
+
+            return _entities[index];
         }
 
         internal void ForEachMutation(StateMutationHandler<TState> handler)
@@ -131,13 +167,46 @@ namespace CascadeEngineApi
             }
         }
 
-        private void TrackStateCapacityUse(EntityRef entity)
+        private void AddNew(EntityRef entity, TState state)
         {
-            var required = entity.Value + 1;
-            if (required > _stateCapacityHint)
+            var index = _count;
+            _entities[index] = entity;
+            _values[index] = state;
+            _sparse[entity.Value] = index + 1;
+            _count++;
+        }
+
+        private bool TryGetDenseIndex(EntityRef entity, out int index)
+        {
+            if ((uint)entity.Value < _sparse.Length)
             {
-                _stateCapacityHint = required;
+                var stored = _sparse[entity.Value];
+                if (stored != 0)
+                {
+                    index = stored - 1;
+                    return index < _count && _entities[index].Equals(entity);
+                }
             }
+
+            index = -1;
+            return false;
+        }
+
+        private void EnsureStorageCapacity(int entityCapacity, int stateCapacity)
+        {
+            if (entityCapacity > _sparse.Length)
+            {
+                Array.Resize(ref _sparse, GrowCapacity(_sparse.Length, entityCapacity));
+            }
+
+            if (stateCapacity <= _values.Length)
+            {
+                return;
+            }
+
+            var capacity = GrowCapacity(_values.Length, stateCapacity);
+            Array.Resize(ref _entities, capacity);
+            Array.Resize(ref _values, capacity);
         }
 
         private static void DisposeIfNeeded(TState state)
@@ -146,6 +215,12 @@ namespace CascadeEngineApi
             {
                 disposable.Dispose();
             }
+        }
+
+        private static int GrowCapacity(int current, int required)
+        {
+            var doubled = current == 0 ? 1 : current * 2;
+            return Math.Max(required, doubled);
         }
     }
 }

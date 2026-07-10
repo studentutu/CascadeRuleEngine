@@ -23,11 +23,15 @@ namespace CascadeEngineApi
         private readonly List<IBatchTransactionalRegistration> _batchTransactionalReducers =
             new List<IBatchTransactionalRegistration>();
 
+        private readonly List<IStateReducerRegistration> _stateReducers =
+            new List<IStateReducerRegistration>();
+
         private readonly FactTypeList _knownFactTypes = new FactTypeList();
 
         internal IReadOnlyList<IOutputRegistration> Outputs => _outputs;
         internal IReadOnlyList<ITransactionalRegistration> TransactionalReducers => _transactionalReducers;
         internal IReadOnlyList<IBatchTransactionalRegistration> BatchTransactionalReducers => _batchTransactionalReducers;
+        internal IReadOnlyList<IStateReducerRegistration> StateReducers => _stateReducers;
         internal FactType[] KnownFactTypes => _knownFactTypes.ToArray();
 
         internal void AddReducer<TFact, TReducer>()
@@ -64,6 +68,18 @@ namespace CascadeEngineApi
             _batchTransactionalReducers.Add(new BatchTransactionalRegistration(
                 _batchTransactionalReducers.Count,
                 ToIds(requiredFacts),
+                reducer,
+                typeof(TReducer).Name));
+        }
+
+        internal void AddStateReducer<TState, TReducer>()
+            where TState : struct, IOutputState
+            where TReducer : ITransactionalReducer, new()
+        {
+            var stateId = _typeCatalog.Register<TState>();
+            var reducer = Create<TReducer>();
+            _stateReducers.Add(new StateReducerRegistration<TState>(
+                stateId,
                 reducer,
                 typeof(TReducer).Name));
         }
@@ -122,6 +138,19 @@ namespace CascadeEngineApi
         internal string Describe(CascadeTypeId id)
             => _typeCatalog.Describe(id);
 
+        internal void ValidateStateReducerOutputs()
+        {
+            for (var i = 0; i < _stateReducers.Count; i++)
+            {
+                var registration = _stateReducers[i];
+                if (!_outputsByState.ContainsKey(registration.StateId))
+                {
+                    throw new InvalidOperationException(
+                        $"State reducer '{registration.DebugName}' requires registered output state '{Describe(registration.StateId)}'.");
+                }
+            }
+        }
+
         public void Dispose()
         {
             for (var i = 0; i < _reducers.Count; i++)
@@ -144,12 +173,18 @@ namespace CascadeEngineApi
                 _batchTransactionalReducers[i].DisposeRegistration();
             }
 
+            for (var i = 0; i < _stateReducers.Count; i++)
+            {
+                _stateReducers[i].DisposeRegistration();
+            }
+
             UnbindKnownFactRoutes();
             _reducers.Clear();
             _outputs.Clear();
             _outputsByState.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
+            _stateReducers.Clear();
             _knownFactTypes.Clear();
             _typeCatalog.Clear();
         }
@@ -191,6 +226,11 @@ namespace CascadeEngineApi
                 AddKnownFacts(other._batchTransactionalReducers[i].RequiredFactIds);
                 other._batchTransactionalReducers[i].Reindex(_batchTransactionalReducers.Count);
                 _batchTransactionalReducers.Add(other._batchTransactionalReducers[i]);
+            }
+
+            for (var i = 0; i < other._stateReducers.Count; i++)
+            {
+                _stateReducers.Add(other._stateReducers[i]);
             }
 
             other.ClearWithoutDisposing();
@@ -262,6 +302,7 @@ namespace CascadeEngineApi
             _outputsByState.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
+            _stateReducers.Clear();
             _knownFactTypes.Clear();
             _typeCatalog.Clear();
         }

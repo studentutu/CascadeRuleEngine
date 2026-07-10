@@ -8,6 +8,7 @@ namespace CascadeEngineApi
     public sealed class ReduceOptions
     {
         public int MaxFacts { get; set; } = 50000;
+        public int MaxWorkItems { get; set; } = 50000;
         public int MaxPasses { get; set; } = 64;
         public int MaxMilliseconds { get; set; } = 8;
         public FactGuardrails Guardrails { get; set; } = new FactGuardrails();

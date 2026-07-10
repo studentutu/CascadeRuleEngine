@@ -3,7 +3,7 @@
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Entity-scoped reducer that fires after its required fact set exists for the entity.
+    /// Entity-scoped reducer invoked once per tick when its registered fact or committed-state eligibility is satisfied.
     /// </summary>
     public interface ITransactionalReducer
     {

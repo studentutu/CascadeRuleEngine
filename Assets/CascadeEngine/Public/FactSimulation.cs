@@ -72,7 +72,9 @@ namespace CascadeEngineApi
                 _batchBuffer,
                 _firedTransactional,
                 _firedBatchEntities);
+            _registry.ValidateStateReducerOutputs();
             CreateRegisteredStateBuckets();
+            BindStateReducerBuckets();
         }
 
         public ICommittedStateStore State
@@ -118,6 +120,7 @@ namespace CascadeEngineApi
             }
 
             var entityCapacity = NormalizeCapacity(hints.EntityCapacity);
+            _entities.Warmup(entityCapacity);
             _facts.Warmup(
                 entityCapacity,
                 NormalizeCapacity(hints.FactQueueCapacity),
@@ -145,7 +148,7 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
 
-            var entity = _entities.Create();
+            var entity = _entities.Create(_partial.IsActive);
             _facts.EnsureEntityCapacity(_entities.Count);
             _firedTransactional.Warmup(_registry.TransactionalReducers.Count, _entities.Count);
             _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, _entities.Count);
@@ -156,7 +159,13 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
 
-            if (!_entities.Destroy(entity))
+            var stageForActiveTick = _partial.IsActive;
+            if (!_entities.Destroy(entity, stageForActiveTick))
+            {
+                return;
+            }
+
+            if (stageForActiveTick)
             {
                 return;
             }
@@ -173,6 +182,15 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
             return _entities.IsDestroyed(entity);
+        }
+
+        /// <summary>
+        /// [INTEGRATION] Range: host-owned integer id. Condition: known live entity. Output: validated Cascade entity handle.
+        /// </summary>
+        public bool TryGetEntity(int id, out EntityRef entity)
+        {
+            ThrowIfDisposed();
+            return _entities.TryGetLive(id, out entity);
         }
 
         public void Emit<TFact>(EntityRef entity, in TFact fact)
@@ -268,6 +286,11 @@ namespace CascadeEngineApi
             where TState : struct, IOutputState
         {
             ThrowIfDisposed();
+            if (_partial.IsActive)
+            {
+                throw new InvalidOperationException("Committed state cannot be initialized while a simulation tick is open.");
+            }
+
             ThrowIfNotLive(entity);
             GetStateBucket<TState>().SetSilently(entity, state);
         }
@@ -337,11 +360,11 @@ namespace CascadeEngineApi
 
             var bucket = GetStateBucket<TState>();
             var count = 0;
-            EnsureQueryCapacity(_entities.Count);
-            for (var i = 0; i < _entities.Count; i++)
+            EnsureQueryCapacity(bucket.EntityCount);
+            for (var i = 0; i < bucket.EntityCount; i++)
             {
-                var entity = new EntityRef(i);
-                if (_entities.IsLive(entity) && bucket.Has(entity))
+                var entity = bucket.EntityAt(i);
+                if (_entities.IsLive(entity))
                 {
                     _queryBuffer[count] = entity;
                     count++;
@@ -359,12 +382,15 @@ namespace CascadeEngineApi
 
             var bucketA = GetStateBucket<TStateA>();
             var bucketB = GetStateBucket<TStateB>();
+            var primaryIsA = bucketA.EntityCount <= bucketB.EntityCount;
             var count = 0;
-            EnsureQueryCapacity(_entities.Count);
-            for (var i = 0; i < _entities.Count; i++)
+            EnsureQueryCapacity(primaryIsA ? bucketA.EntityCount : bucketB.EntityCount);
+            var primaryCount = primaryIsA ? bucketA.EntityCount : bucketB.EntityCount;
+            for (var i = 0; i < primaryCount; i++)
             {
-                var entity = new EntityRef(i);
-                if (_entities.IsLive(entity) && bucketA.Has(entity) && bucketB.Has(entity))
+                var entity = primaryIsA ? bucketA.EntityAt(i) : bucketB.EntityAt(i);
+                var secondaryHasEntity = primaryIsA ? bucketB.Has(entity) : bucketA.Has(entity);
+                if (_entities.IsLive(entity) && secondaryHasEntity)
                 {
                     _queryBuffer[count] = entity;
                     count++;
@@ -516,6 +542,23 @@ namespace CascadeEngineApi
             ClearQueuedCommitActions();
         }
 
+        internal void CommitEntityLifecycle()
+        {
+            for (var entityIndex = 0; entityIndex < _entities.PendingDestroyCount; entityIndex++)
+            {
+                var entity = _entities.PendingDestroyAt(entityIndex);
+                for (var outputIndex = 0; outputIndex < _registry.Outputs.Count; outputIndex++)
+                {
+                    _registry.Outputs[outputIndex].DeleteState(this, entity);
+                }
+            }
+
+            _entities.CommitTick();
+        }
+
+        internal void RollbackEntityLifecycle()
+            => _entities.RollbackTick();
+
         private void CreateRegisteredStateBuckets()
         {
             for (var i = 0; i < _registry.Outputs.Count; i++)
@@ -529,6 +572,14 @@ namespace CascadeEngineApi
                 var bucket = output.CreateStateBucket();
                 _stateBuckets.Add(output.StateId, bucket);
                 output.BindStateBucket(this, bucket);
+            }
+        }
+
+        private void BindStateReducerBuckets()
+        {
+            for (var i = 0; i < _registry.StateReducers.Count; i++)
+            {
+                _registry.StateReducers[i].BindStateBucket(this);
             }
         }
 

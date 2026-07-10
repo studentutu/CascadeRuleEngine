@@ -16,6 +16,29 @@ namespace CascadeEngineApi
             int transactionalReducerInvocations,
             int touchedEntities,
             int mutationCount)
+            : this(
+                acceptedFacts,
+                processedFacts,
+                deduplicatedFacts,
+                rejectedDestroyedEntityFacts,
+                reducerInvocations,
+                transactionalReducerInvocations,
+                reducerInvocations + transactionalReducerInvocations,
+                touchedEntities,
+                mutationCount)
+        {
+        }
+
+        public SimulationResultCounters(
+            int acceptedFacts,
+            int processedFacts,
+            int deduplicatedFacts,
+            int rejectedDestroyedEntityFacts,
+            int reducerInvocations,
+            int transactionalReducerInvocations,
+            int processedWorkItems,
+            int touchedEntities,
+            int mutationCount)
         {
             AcceptedFacts = acceptedFacts;
             ProcessedFacts = processedFacts;
@@ -23,6 +46,7 @@ namespace CascadeEngineApi
             RejectedDestroyedEntityFacts = rejectedDestroyedEntityFacts;
             ReducerInvocations = reducerInvocations;
             TransactionalReducerInvocations = transactionalReducerInvocations;
+            ProcessedWorkItems = processedWorkItems;
             TouchedEntities = touchedEntities;
             MutationCount = mutationCount;
         }
@@ -33,6 +57,7 @@ namespace CascadeEngineApi
         public int RejectedDestroyedEntityFacts { get; }
         public int ReducerInvocations { get; }
         public int TransactionalReducerInvocations { get; }
+        public int ProcessedWorkItems { get; }
         public int TouchedEntities { get; }
         public int MutationCount { get; }
     }
