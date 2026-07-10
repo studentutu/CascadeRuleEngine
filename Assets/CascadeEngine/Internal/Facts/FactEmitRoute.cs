@@ -16,9 +16,11 @@ namespace CascadeEngineApi
         internal FactEmitRoute(CascadeTypeId factId)
         {
             FactId = factId;
+            StagesEntityDeath = typeof(TFact) == typeof(DeadFact);
         }
 
         internal CascadeTypeId FactId { get; }
+        internal bool StagesEntityDeath { get; }
         public int AffectedOutputCount => _affectedOutputs.Count;
         public int ReducerCount => _reducers.Count;
 

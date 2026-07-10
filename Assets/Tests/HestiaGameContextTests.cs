@@ -212,13 +212,20 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void DestroyEntityPublishesDeleteMutationAndRejectsLaterFacts()
+        public void DestroyEntityPublishesDeleteMutationAtClosureAndRejectsLaterFacts()
         {
             var cascade = new HestiaGameContext();
             var entity = cascade.CreateEntity();
             cascade.SetInitialAmmo(entity, ammo: 3);
 
             cascade.DestroyEntity(entity);
+
+            Assert.AreEqual(0, cascade.Simulation.MutationCount);
+
+            var destroyResult = cascade.RunTick();
+            Assert.AreEqual(1, destroyResult.AcceptedFacts);
+            Assert.AreEqual(1, destroyResult.ProcessedFacts);
+            Assert.AreEqual(1, destroyResult.MutationCount);
 
             var deleteMutations = 0;
             cascade.Simulation.ForEachMutation(

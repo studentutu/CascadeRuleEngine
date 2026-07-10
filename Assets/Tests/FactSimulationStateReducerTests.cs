@@ -15,6 +15,11 @@ namespace CascadeEngineApi.Tests
             SpawnReducer.CreatedEntity = default;
             FirstResumeReducer.InvocationCount = 0;
             SecondResumeReducer.InvocationCount = 0;
+            DestroyFollowupReducer.InvocationCount = 0;
+            DestroyFollowupReducer.SawDeadFact = false;
+            DeadReducer.InvocationCount = 0;
+            LifecycleStateReducer.InvocationCount = 0;
+            LifecycleStateReducer.SawDeadFact = false;
         }
 
         [Test]
@@ -230,10 +235,21 @@ namespace CascadeEngineApi.Tests
             Assert.Throws<InvalidOperationException>(
                 () => simulation.SetStateSilently(entity, new LifecycleState(9)));
 
-            Assert.IsTrue(simulation.RunTickIncremental(options, out var complete));
+            SimulationResult complete;
+            while (!simulation.RunTickIncremental(options, out complete))
+            {
+                Assert.AreEqual(7, simulation.Get<LifecycleState>(entity).Value);
+                Assert.AreEqual(0, simulation.MutationCount);
+            }
+
             Assert.IsTrue(complete.Complete);
             Assert.IsFalse(simulation.TryGet<LifecycleState>(entity, out _));
             Assert.AreEqual(1, complete.MutationCount);
+            Assert.AreEqual(1, DestroyFollowupReducer.InvocationCount);
+            Assert.AreEqual(1, DeadReducer.InvocationCount);
+            Assert.AreEqual(1, LifecycleStateReducer.InvocationCount);
+            Assert.IsTrue(DestroyFollowupReducer.SawDeadFact);
+            Assert.IsTrue(LifecycleStateReducer.SawDeadFact);
 
             var deletes = 0;
             simulation.ForEachMutation(
@@ -243,9 +259,34 @@ namespace CascadeEngineApi.Tests
                     deletes++;
                     Assert.AreEqual(entity, changedEntity);
                     Assert.IsTrue(mutation.HadPrevious);
+                    Assert.AreEqual(7, mutation.Previous.Value);
                     Assert.IsFalse(mutation.HasNext);
                 });
             Assert.AreEqual(1, deletes);
+        }
+
+        [Test]
+        public void EmittingDeadFactRunsLifecycleReducersBeforeDeletingDurableState()
+        {
+            var feature = new LifecycleFeature();
+            var simulation = new FactSimulation(feature);
+            var entity = simulation.CreateEntity();
+            simulation.SetStateSilently(entity, new LifecycleState(7));
+
+            simulation.Emit(entity, new DeadFact());
+
+            Assert.IsTrue(simulation.IsDestroyed(entity));
+            Assert.IsFalse(simulation.TryGetEntity(entity.Value, out _));
+            Assert.AreEqual(7, simulation.Get<LifecycleState>(entity).Value);
+
+            var result = simulation.RunTick(NoTimeLimit());
+
+            Assert.IsTrue(result.Complete);
+            Assert.AreEqual(1, DeadReducer.InvocationCount);
+            Assert.AreEqual(1, LifecycleStateReducer.InvocationCount);
+            Assert.IsTrue(LifecycleStateReducer.SawDeadFact);
+            Assert.IsFalse(simulation.TryGet<LifecycleState>(entity, out _));
+            Assert.AreEqual(1, result.MutationCount);
         }
 
         [Test]
@@ -512,11 +553,17 @@ namespace CascadeEngineApi.Tests
                 Reduce<DestroyFollowupFact>()
                     .With<DestroyFollowupReducer>();
 
+                Reduce<DeadFact>()
+                    .With<DeadReducer>();
+
+                ReduceState<LifecycleState, LifecycleStateReducer>();
+
                 Reduce<SpawnRequestedFact>()
                     .With<SpawnReducer>();
 
                 Lifecycle = Output<LifecycleState>("Lifecycle")
                     .AffectedBy<BootstrapFact>(0)
+                    .AffectedBy<DestroyFollowupFact>(0)
                     .CommitWith<LifecycleCommitter>();
 
                 Child = Output<ChildState>("Child")
@@ -549,15 +596,44 @@ namespace CascadeEngineApi.Tests
         {
             public void Reduce(IReduceContext ctx, EntityRef entity, in DestroyRequestedFact fact)
             {
-                ctx.Emit(entity, new DestroyFollowupFact());
                 ctx.DestroyEntity(entity);
+                ctx.Emit(entity, new DestroyFollowupFact());
             }
         }
 
         private sealed class DestroyFollowupReducer : IFactReducer<DestroyFollowupFact>
         {
+            internal static int InvocationCount;
+            internal static bool SawDeadFact;
+
             public void Reduce(IReduceContext ctx, EntityRef entity, in DestroyFollowupFact fact)
             {
+                InvocationCount++;
+                SawDeadFact = ctx.Facts(entity).Has<DeadFact>();
+            }
+        }
+
+        private sealed class DeadReducer : IFactReducer<DeadFact>
+        {
+            internal static int InvocationCount;
+
+            public void Reduce(IReduceContext ctx, EntityRef entity, in DeadFact fact)
+            {
+                InvocationCount++;
+                ctx.GetState<LifecycleState>(entity);
+            }
+        }
+
+        private sealed class LifecycleStateReducer : ITransactionalReducer
+        {
+            internal static int InvocationCount;
+            internal static bool SawDeadFact;
+
+            public void Reduce(IReduceContext ctx, EntityRef entity)
+            {
+                InvocationCount++;
+                SawDeadFact = ctx.Facts(entity).Has<DeadFact>();
+                ctx.GetState<LifecycleState>(entity);
             }
         }
 
@@ -578,7 +654,11 @@ namespace CascadeEngineApi.Tests
                 ICommitContext ctx,
                 EntityRef entity,
                 in Optional<LifecycleState> previous)
-                => CommitDecision<LifecycleState>.Unchanged();
+            {
+                return ctx.Facts(entity).Has<DestroyFollowupFact>()
+                    ? CommitDecision<LifecycleState>.Set(new LifecycleState(99))
+                    : CommitDecision<LifecycleState>.Unchanged();
+            }
         }
 
         private sealed class ChildCommitter : IOutputCommitter<ChildState>

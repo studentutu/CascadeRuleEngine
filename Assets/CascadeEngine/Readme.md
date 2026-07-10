@@ -152,10 +152,15 @@ If a time or work budget stops dispatch between two reducers registered for the 
 Entity creation and destruction requested while a tick is open are part of that tick:
 
 - A newly created entity is immediately usable by reducers and can receive facts in the same tick.
-- Reducer-side destruction tombstones the entity immediately for further dispatch, but its committed output state remains unchanged until closure.
-- Closing the tick commits created entities and deletes all output states for destroyed entities, publishing typed delete mutations once.
+- `DestroyEntity(entity)` emits the built-in `DeadFact`; directly emitting `DeadFact` has the same meaning.
+- Pending-dead entities remain reduction-visible through closure. Already queued facts, facts emitted after `DeadFact`, transactional reducers, state reducers, and reducer queries continue to include them.
+- `IsDestroyed` reports pending death immediately, while committed output remains readable until closure. `TryGetEntity` rejects pending-dead ids at host/persistence boundaries.
+- Reducers that should stop domain work must make that rule explicit with `context.Facts(entity).Has<DeadFact>()`. Cleanup reducers can register directly with `Reduce<DeadFact>()`.
+- Normal output projection is skipped for pending-dead entities. Closing the tick deletes all their output states and publishes one final typed delete mutation per existing output state.
 - A failed full tick rolls back destruction. Entities created by the failed tick become permanently destroyed; ids are never reused.
 - `SetStateSilently` is bootstrap/load authority only and throws while a tick is open because it would invalidate committed snapshot membership.
+
+Host-side destruction is also transactional: call `RunTick` or continue the open incremental tick to reach closure and publish deletion mutations. Facts emitted after closure to the permanently destroyed entity are rejected.
 
 At host or persistence boundaries, validate stored integer ids without manufacturing unchecked handles:
 
@@ -173,17 +178,34 @@ if (simulation.TryGetEntity(savedEntityId, out EntityRef entity))
 Fact and output ids are derived during feature registration from the CLR type name. Do not add static ids to fact or output structs. The feature registry owns the initialized name-to-id catalog and validates duplicates before a simulation can use it.
 
 ```csharp
-public readonly struct MoveRequestedFact : IFact
+public readonly struct MoveRequestedFact : IFact<MoveRequestedFact>
 {
-    public void Dispose()
+    public MoveRequestedFact(float distance)
     {
+        Distance = distance;
     }
+
+    public float Distance { get; }
+
+    public bool Equals(MoveRequestedFact other)
+        => Distance.Equals(other.Distance);
 }
 
-public readonly struct PositionState : IOutputState
+public readonly struct PositionState : IOutputState<PositionState>
 {
+    public PositionState(float value)
+    {
+        Value = value;
+    }
+
+    public float Value { get; }
+
+    public bool Equals(PositionState other)
+        => Value.Equals(other.Value);
 }
 ```
+
+Use the self-typed `IFact<TFact>` and `IOutputState<TState>` contracts for normal package values. They require only typed equality, which keeps deduplication and state change detection allocation-free. The engine does not hash payloads, so `Equals(object)` and `GetHashCode()` are not required. `IFact` supplies no-op disposal; only resource-owning facts implement `Dispose()` explicitly. The non-generic interfaces remain supported for existing code.
 
 Type names must be unique inside one full feature registration, including sub-features. Duplicate names or int-id collisions fail during registration. There is no id-to-type diagnostics map; routing maps use `CascadeTypeId`.
 
@@ -231,7 +253,7 @@ Use `FactListCapacityMode.Fixed` for gameplay hot paths that must not allocate. 
 
 Ownership rules:
 
-- Tick-local facts are owned by the `FactStore` only after `Emit` accepts them. Accepted facts are disposed when tick-local storage clears after a tick, after a failed tick, or during `Dispose()`. Rejected or deduplicated facts are not owned by the simulation.
+- Tick-local facts are owned by the `FactStore` only after `Emit` accepts them. Accepted facts are disposed when tick-local storage clears after a tick, after a failed tick, or during `Dispose()`. `IFact` provides no-op disposal; resource-owning facts override it. Rejected or deduplicated facts are not owned by the simulation.
 - Output state buckets are owned by the simulation. `Dispose()` clears every bucket and disposes current stored output states that implement `IDisposable`. Output states should still be immutable value snapshots; do not hide shared resource ownership in copied mutation payloads.
 - Mutation buffers are simulation-owned last-result records. They do not own `Previous` or `Next` state payloads and are cleared without disposing those copies.
 - `SubFeature` transfers registration ownership into the parent feature. The attached sub-feature is no longer a valid simulation root.
@@ -306,10 +328,13 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
+| `IFact<TFact>` | self-typed allocation-free fact equality with inherited no-op disposal |
+| `DeadFact` | built-in additive lifecycle fact; reduction continues through closure before durable state deletion |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
 | `ITransactionalReducer` | entity-scoped reducer used by required-fact and committed-state eligibility registrations |
 | `TransactionalReducerRegistrationExtensions` | appends required fact types with `.And<TFact>()` for entity or batch transactional registration |
 | `IOutputState` | durable committed state consumers can trust |
+| `IOutputState<TState>` | self-typed allocation-free durable-state equality |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
 | `CommitConflictPolicy` | declared output merge policy used by feature registration and committer examples |
 | `FactFeature` | registration hub for fact reducers, transactional reducers, state reducers, and outputs |

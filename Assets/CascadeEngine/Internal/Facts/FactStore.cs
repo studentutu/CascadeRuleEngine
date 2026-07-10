@@ -148,7 +148,7 @@ namespace CascadeEngineApi
             where TFact : struct, IFact
         {
             var factId = route.FactId;
-            if (entities.IsDestroyed(entity))
+            if (entities.IsRetired(entity))
             {
                 RejectedDestroyedEntityFacts++;
                 return false;

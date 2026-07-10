@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using CascadeEngineApi;
 
 namespace Hestia
@@ -8,7 +7,7 @@ namespace Hestia
     /// <summary>
     /// Derived fact: movement request resolved to a candidate durable position.
     /// </summary>
-    public readonly struct MoveResolvedFact : IFact, IEquatable<MoveResolvedFact>
+    public readonly struct MoveResolvedFact : IFact<MoveResolvedFact>
     {
         public MoveResolvedFact(float position)
         {
@@ -19,15 +18,5 @@ namespace Hestia
 
         public bool Equals(MoveResolvedFact other)
             => Position.Equals(other.Position);
-
-        public override bool Equals(object? obj)
-            => obj is MoveResolvedFact other && Equals(other);
-
-        public override int GetHashCode()
-            => Position.GetHashCode();
-
-        public void Dispose()
-        {
-        }
     }
 }

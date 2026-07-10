@@ -82,7 +82,7 @@ Intermediate reducer results must be facts.
 Same tick closure is mandatory when the graph can close within the configured budget.
 Multiple distinct facts at the winning output-registration priority are logic errors and throw before durable writes.
 Missing output state is real: consumers must use HasState/TryGetState or mutation create/delete flags.
-Destroyed entities are permanent. New facts for destroyed entities are rejected before reduction.
+Pending-dead entities remain reduction-visible through closure via the built-in DeadFact. Permanently destroyed entities reject new facts.
 Entity creation/destruction is part of the core lifecycle API, not a host-side convention.
 MVP consumer output is ForEachMutation(output), not a dirty entity queue.
 ```
@@ -502,10 +502,11 @@ Lifecycle rules:
 CreateEntity allocates a live entity id immediately and returns it to the reducer.
 New entities have no output state until committers set output state.
 Facts may be emitted to newly created entities in the same tick.
-DestroyEntity tombstones the entity immediately for dispatch and becomes permanent only after the tick closes.
-Facts emitted to destroyed entities are rejected before the reduction loop.
-Already queued facts for entities destroyed earlier in the same tick are skipped before reducer dispatch.
-Committers do not run for destroyed entities unless explicitly registered for lifecycle cleanup output.
+DestroyEntity emits the built-in DeadFact and stages permanent destruction for closure.
+Pending-dead entities remain eligible for immediate, transactional, batch, and state reducers through closure.
+Facts emitted after DeadFact are accepted until the entity becomes permanently destroyed.
+Reducers explicitly skip dead-domain work by checking Facts(entity).Has<DeadFact>(); cleanup reducers register on DeadFact.
+Normal output projection is skipped for pending-dead entities. Lifecycle reconciliation deletes durable output once after closure.
 Reducer-side destruction is transactional: committed output state remains readable until closure, then lifecycle reconciliation publishes typed delete mutations. A failed tick rolls the destruction back.
 ```
 
@@ -514,7 +515,7 @@ Host and consumer lifecycle parity:
 ```text
 IFactSimulation.CreateEntity can be called outside reduction before or after RunTick.
 IFactSimulation.DestroyEntity can be called outside reduction before or after RunTick.
-Destroying an entity deletes its output states and publishes typed delete mutations.
+Destroying an entity stages DeadFact; closure deletes its output states and publishes typed delete mutations.
 Reducer-side creation can participate in the same tick by receiving emitted facts.
 Consumer-side creation/destruction affects the next tick unless it is called before RunTick.
 Entity ids are handles owned by the Cascade runtime; destroyed ids are not reused in the MVP.
@@ -1082,7 +1083,7 @@ private ReduceResult ReduceAll(TickScope tick, ReduceOptions options)
 
         QueuedFact queued = tick.WorkQueue.PopNext();
 
-        if (tick.Entities.IsDestroyed(queued.Entity))
+        if (tick.Entities.IsPermanentlyDestroyed(queued.Entity))
             continue;
 
         ReducerList reducers = _registry.GetReducers(queued.FactType);
@@ -1107,7 +1108,7 @@ A newly emitted fact is added only if it is new.
 public void Emit<TFact>(EntityRef entity, in TFact fact)
     where TFact : struct, IFact
 {
-    if (_entities.IsDestroyed(entity))
+    if (_entities.IsPermanentlyDestroyed(entity))
         return;
 
     FactKey key = FactKey.Create(entity, fact);

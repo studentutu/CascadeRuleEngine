@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using CascadeEngineApi;
 
 namespace Hestia
@@ -8,7 +7,7 @@ namespace Hestia
     /// <summary>
     /// Derived fact: ammo spend passed reducer validation and can be folded by committers.
     /// </summary>
-    public readonly struct AmmoSpendAcceptedFact : IFact, IEquatable<AmmoSpendAcceptedFact>
+    public readonly struct AmmoSpendAcceptedFact : IFact<AmmoSpendAcceptedFact>
     {
         public AmmoSpendAcceptedFact(int amount)
         {
@@ -19,15 +18,5 @@ namespace Hestia
 
         public bool Equals(AmmoSpendAcceptedFact other)
             => Amount == other.Amount;
-
-        public override bool Equals(object? obj)
-            => obj is AmmoSpendAcceptedFact other && Equals(other);
-
-        public override int GetHashCode()
-            => Amount;
-
-        public void Dispose()
-        {
-        }
     }
 }

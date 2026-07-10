@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using CascadeEngineApi;
 
 namespace Hestia
@@ -8,7 +7,7 @@ namespace Hestia
     /// <summary>
     /// Input fact: gameplay requested ammo spend this tick.
     /// </summary>
-    public readonly struct AmmoSpendRequestedFact : IFact, IEquatable<AmmoSpendRequestedFact>
+    public readonly struct AmmoSpendRequestedFact : IFact<AmmoSpendRequestedFact>
     {
         public AmmoSpendRequestedFact(int amount)
         {
@@ -19,15 +18,5 @@ namespace Hestia
 
         public bool Equals(AmmoSpendRequestedFact other)
             => Amount == other.Amount;
-
-        public override bool Equals(object? obj)
-            => obj is AmmoSpendRequestedFact other && Equals(other);
-
-        public override int GetHashCode()
-            => Amount;
-
-        public void Dispose()
-        {
-        }
     }
 }

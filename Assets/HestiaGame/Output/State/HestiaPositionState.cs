@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using CascadeEngineApi;
 
 namespace Hestia
@@ -8,7 +7,7 @@ namespace Hestia
     /// <summary>
     /// Durable sample position output state.
     /// </summary>
-    public readonly struct HestiaPositionState : IOutputState, IEquatable<HestiaPositionState>
+    public readonly struct HestiaPositionState : IOutputState<HestiaPositionState>
     {
         public HestiaPositionState(float position)
         {
@@ -19,11 +18,5 @@ namespace Hestia
 
         public bool Equals(HestiaPositionState other)
             => Position.Equals(other.Position);
-
-        public override bool Equals(object? obj)
-            => obj is HestiaPositionState other && Equals(other);
-
-        public override int GetHashCode()
-            => Position.GetHashCode();
     }
 }

@@ -195,7 +195,7 @@ namespace CascadeEngineApi
                     SetLastFactContext(in _pendingFact);
                 }
 
-                if (_entities.IsDestroyed(_pendingFact.Entity))
+                if (_entities.IsRetired(_pendingFact.Entity))
                 {
                     ClearPendingFactDispatch();
                     continue;
@@ -340,7 +340,7 @@ namespace CascadeEngineApi
             for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
             {
                 var entity = _transactionBuffer[entityIndex];
-                if (_entities.IsDestroyed(entity))
+                if (_entities.IsRetired(entity))
                 {
                     continue;
                 }
@@ -420,7 +420,7 @@ namespace CascadeEngineApi
                 for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
                 {
                     var entity = _transactionBuffer[entityIndex];
-                    if (_entities.IsDestroyed(entity) || !_facts.HasAll(entity, registration.RequiredFactIds))
+                    if (_entities.IsRetired(entity) || !_facts.HasAll(entity, registration.RequiredFactIds))
                     {
                         continue;
                     }
@@ -476,7 +476,7 @@ namespace CascadeEngineApi
                 while (_stateEntityIndex < registration.EntityCount)
                 {
                     var entity = registration.EntityAt(_stateEntityIndex);
-                    if (_entities.IsDestroyed(entity))
+                    if (_entities.IsRetired(entity))
                     {
                         _stateEntityIndex++;
                         continue;

@@ -31,7 +31,7 @@ namespace CascadeEngineApi.Tests
             simulation.Warmup(hints);
             var before = simulation.CaptureCapacitySnapshot(entityCount);
 
-            Assert.AreEqual(6, before.FactBucketCount);
+            Assert.AreEqual(7, before.FactBucketCount); // Six feature facts plus built-in DeadFact.
             Assert.GreaterOrEqual(before.FactQueueCapacity, entityCount * 5);
             Assert.GreaterOrEqual(before.FactTouchedEntityCapacity, entityCount);
             Assert.GreaterOrEqual(before.FactCounterEntityCapacity, entityCount);
@@ -274,7 +274,7 @@ namespace CascadeEngineApi.Tests
                 => Value;
         }
 
-        public readonly struct WarmupResultState : IOutputState, IEquatable<WarmupResultState>
+        public readonly struct WarmupResultState : IOutputState<WarmupResultState>
         {
             public WarmupResultState(int value, int sourceCount)
             {
@@ -287,15 +287,9 @@ namespace CascadeEngineApi.Tests
 
             public bool Equals(WarmupResultState other)
                 => Value == other.Value && SourceCount == other.SourceCount;
-
-            public override bool Equals(object? obj)
-                => obj is WarmupResultState other && Equals(other);
-
-            public override int GetHashCode()
-                => unchecked((Value * 397) ^ SourceCount);
         }
 
-        public readonly struct WarmupStartFact : IFact, IEquatable<WarmupStartFact>
+        public readonly struct WarmupStartFact : IFact<WarmupStartFact>
         {
             public WarmupStartFact(int value)
             {
@@ -306,16 +300,6 @@ namespace CascadeEngineApi.Tests
 
             public bool Equals(WarmupStartFact other)
                 => Value == other.Value;
-
-            public override bool Equals(object? obj)
-                => obj is WarmupStartFact other && Equals(other);
-
-            public override int GetHashCode()
-                => Value;
-
-            public void Dispose()
-            {
-            }
         }
 
         public readonly struct WarmupPairFact : IFact, IEquatable<WarmupPairFact>

@@ -155,27 +155,20 @@ namespace CascadeEngineApi
             return entity;
         }
 
+        /// <summary>
+        /// [INTEGRATION] Range: known entity. Condition: first lifecycle deletion request. Output: DeadFact accepted and durable deletion staged for tick closure.
+        /// </summary>
         public void DestroyEntity(EntityRef entity)
         {
             ThrowIfDisposed();
 
-            var stageForActiveTick = _partial.IsActive;
-            if (!_entities.Destroy(entity, stageForActiveTick))
+            if (_entities.IsDestroyed(entity))
             {
                 return;
             }
 
-            if (stageForActiveTick)
-            {
-                return;
-            }
-
-            for (var i = 0; i < _registry.Outputs.Count; i++)
-            {
-                _registry.Outputs[i].DeleteState(this, entity);
-            }
-
-            RefreshMutationCount();
+            var dead = new DeadFact();
+            EmitCore(entity, in dead, _partial.CurrentCausalDepth);
         }
 
         public bool IsDestroyed(EntityRef entity)
@@ -495,13 +488,18 @@ namespace CascadeEngineApi
             var factId = route.FactId;
             try
             {
-                _facts.Emit(
+                var accepted = _facts.Emit(
                     _entities,
                     entity,
                     route,
                     in fact,
                     parentDepth,
                     _partial.CurrentGuardrails);
+
+                if (accepted && route.StagesEntityDeath)
+                {
+                    _entities.StageDestroy(entity);
+                }
             }
             catch (InvalidOperationException exception) when (_partial.IsActive)
             {

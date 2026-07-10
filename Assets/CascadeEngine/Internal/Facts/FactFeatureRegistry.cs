@@ -28,6 +28,11 @@ namespace CascadeEngineApi
 
         private readonly FactTypeList _knownFactTypes = new FactTypeList();
 
+        internal FactFeatureRegistry()
+        {
+            AddKnownFact(FactType.Of<DeadFact>());
+        }
+
         internal IReadOnlyList<IOutputRegistration> Outputs => _outputs;
         internal IReadOnlyList<ITransactionalRegistration> TransactionalReducers => _transactionalReducers;
         internal IReadOnlyList<IBatchTransactionalRegistration> BatchTransactionalReducers => _batchTransactionalReducers;

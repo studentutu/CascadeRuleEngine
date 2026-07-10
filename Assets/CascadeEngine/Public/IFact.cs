@@ -9,5 +9,8 @@ namespace CascadeEngineApi
     /// </summary>
     public interface IFact : IDisposable
     {
+        void IDisposable.Dispose()
+        {
+        }
     }
 }

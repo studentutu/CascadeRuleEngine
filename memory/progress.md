@@ -4,7 +4,7 @@
 
 - CascadeEngine package with full vertical-slice: fact -> reducer -> committer -> typed mutation pipeline.
 - HestiaGame reorganized into Core, Facts, Reducers, Output, and Utils.
-- Hestia hash-combine logic is centralized in `HestiaExtensions`.
+- Hestia facts and output states use the package self-typed equality contracts without object equality or hash boilerplate.
 - `System.Math` usage under `Assets` was replaced with `Mathf`.
 - Per-tick fact storage was refactored away from dictionary-heavy entity buckets into internal dense storage utilities:
   - `DenseEntitySet`
@@ -43,13 +43,16 @@
 - Incremental dispatch now preserves a popped fact and its next reducer index when a budget stops between multiple reducers for the same fact.
 - Reducer-side entity creation/destruction is transactional:
   - new entities can receive facts in the same open tick.
-  - destroyed entities are tombstoned for dispatch immediately but durable output deletion waits for closure.
+  - `DestroyEntity` and direct `DeadFact` emission stage the same additive lifecycle fact.
+  - pending-dead entities continue immediate, transactional, batch, and state reduction through closure; reducers explicitly skip work by querying `DeadFact`.
+  - normal output projection is skipped for pending-dead entities and durable output deletion waits for closure.
   - failed ticks roll back destruction and permanently tombstone ids created by the failed tick.
 - `FactSimulation.TryGetEntity(int, out EntityRef)` validates host/persistence ids without expanding `IFactSimulation`.
 - Output state storage now uses compact sparse membership/value arrays instead of per-output dictionaries. One-state queries iterate that state only; two-state queries iterate the smaller state set.
 - Entity lifecycle storage is warmed array state instead of an allocating destroyed-id `HashSet`.
 - The state-trigger vertical slice covers activation/deactivation, dormant filtering, cross-entity state query, incremental work suspension, reducer-side create/destroy, failure rollback, and same-fact multi-reducer continuation.
 - The 512-entity state-trigger allocation test reports 0 bytes for first-use and steady-state measured ticks after warmup.
+- `IFact<TFact>` and `IOutputState<TState>` now reduce normal fact/state equality boilerplate to one typed `Equals` method. `IFact` supplies default no-op disposal; resource-owning facts can still override it.
 
 ## Known Gaps
 
@@ -63,15 +66,12 @@
 1. Harden core policy:
    - Add tests proving committers read previous committed state, not partially committed output from another committer.
 
-2. Ergonomics tightening.
-  1.1 Improve Fact/Output ergonomics, currently always specified separate IEquatable/others methods, we need to reduce boilerplate code.
-
-3. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
+2. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
    - use presence of domain-owned `ActiveState`/equivalent as the first relevance filter.
    - measure starvation and frame-slice latency before designing scheduling metadata.
    - do not add `SimulationMode`, priority flags, or dormant scheduler state speculatively.
 
-4. Prepare production package:
+3. Prepare production package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
    - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)

@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using CascadeEngineApi;
 
 namespace Hestia
@@ -8,7 +7,7 @@ namespace Hestia
     /// <summary>
     /// Input fact: gameplay requested a position change.
     /// </summary>
-    public readonly struct MoveRequestedFact : IFact, IEquatable<MoveRequestedFact>
+    public readonly struct MoveRequestedFact : IFact<MoveRequestedFact>
     {
         public MoveRequestedFact(float position)
         {
@@ -19,15 +18,5 @@ namespace Hestia
 
         public bool Equals(MoveRequestedFact other)
             => Position.Equals(other.Position);
-
-        public override bool Equals(object? obj)
-            => obj is MoveRequestedFact other && Equals(other);
-
-        public override int GetHashCode()
-            => Position.GetHashCode();
-
-        public void Dispose()
-        {
-        }
     }
 }

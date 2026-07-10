@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using CascadeEngineApi;
 using UnityEngine;
 
@@ -9,7 +8,7 @@ namespace Hestia
     /// <summary>
     /// Durable ammo output state consumed by gameplay/UI after commit.
     /// </summary>
-    public readonly struct HestiaAmmoState : IOutputState, IEquatable<HestiaAmmoState>
+    public readonly struct HestiaAmmoState : IOutputState<HestiaAmmoState>
     {
         public HestiaAmmoState(int current)
         {
@@ -22,11 +21,5 @@ namespace Hestia
 
         public bool Equals(HestiaAmmoState other)
             => Current == other.Current && IsEmpty == other.IsEmpty;
-
-        public override bool Equals(object? obj)
-            => obj is HestiaAmmoState other && Equals(other);
-
-        public override int GetHashCode()
-            => Current.CombineHestiaHash(IsEmpty.GetHashCode());
     }
 }

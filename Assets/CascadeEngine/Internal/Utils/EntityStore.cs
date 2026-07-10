@@ -81,7 +81,13 @@ namespace CascadeEngineApi
                 || status == Destroyed;
         }
 
-        internal bool Destroy(EntityRef entity, bool stageForActiveTick)
+        internal bool IsRetired(EntityRef entity)
+        {
+            Validate(entity);
+            return _status[entity.Value] == Destroyed;
+        }
+
+        internal bool StageDestroy(EntityRef entity)
         {
             Validate(entity);
             var status = _status[entity.Value];
@@ -90,12 +96,6 @@ namespace CascadeEngineApi
                 || status == PendingCreatedAndDestroyed)
             {
                 return false;
-            }
-
-            if (!stageForActiveTick)
-            {
-                _status[entity.Value] = Destroyed;
-                return true;
             }
 
             _status[entity.Value] = status == PendingCreated
@@ -109,7 +109,7 @@ namespace CascadeEngineApi
         {
             Validate(entity);
             var status = _status[entity.Value];
-            return status == Live || status == PendingCreated;
+            return status != Destroyed;
         }
 
         internal EntityRef PendingDestroyAt(int index)
