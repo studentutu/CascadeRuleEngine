@@ -53,6 +53,7 @@
 - The state-trigger vertical slice covers activation/deactivation, dormant filtering, cross-entity state query, incremental work suspension, reducer-side create/destroy, failure rollback, and same-fact multi-reducer continuation.
 - The 512-entity state-trigger allocation test reports 0 bytes for first-use and steady-state measured ticks after warmup.
 - `IFact<TFact>` and `IOutputState<TState>` now reduce normal fact/state equality boilerplate to one typed `Equals` method. `IFact` supplies default no-op disposal; resource-owning facts can still override it.
+- Commit snapshot isolation is covered across both output registration order and touched-entity order: all committers read the previous committed snapshot before any queued durable write is applied.
 
 ## Known Gaps
 
@@ -63,15 +64,12 @@
 
 ## Next Work
 
-1. Harden core policy:
-   - Add tests proving committers read previous committed state, not partially committed output from another committer.
-
-2. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
+1. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
    - use presence of domain-owned `ActiveState`/equivalent as the first relevance filter.
    - measure starvation and frame-slice latency before designing scheduling metadata.
    - do not add `SimulationMode`, priority flags, or dormant scheduler state speculatively.
 
-3. Prepare production package:
+2. Prepare production package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
    - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)

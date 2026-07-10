@@ -514,6 +514,9 @@ namespace CascadeEngineApi
             }
         }
 
+        /// <summary>
+        /// Range: closed tick facts. Condition: no pending reduction work. Output: all commit decisions read one unchanged snapshot before any durable write is applied.
+        /// </summary>
         internal void CommitTouchedOutputs()
         {
             ClearQueuedCommitActions();

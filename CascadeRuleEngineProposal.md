@@ -1022,11 +1022,12 @@ The commit stage should do this:
 2. Check whether the reduction graph closed successfully.
 3. Find touched entities.
 4. Find output components affected by facts on those entities.
-5. Run only the relevant committers.
-6. Merge all same-output facts into one final output component.
-7. Write output components once.
-8. Publish typed output mutations and optional commit events.
-9. Leave next-tick fact scheduling to the host loop or an explicit next-tick queue.
+5. Run only the relevant committers against one unchanged previous committed-state snapshot.
+6. Buffer every commit decision; do not apply durable writes while any committer is still evaluating.
+7. Merge all same-output facts into one final output component.
+8. Apply output components once after every decision succeeds.
+9. Publish typed output mutations and optional commit events.
+10. Leave next-tick fact scheduling to the host loop or an explicit next-tick queue.
 ```
 
 In code:

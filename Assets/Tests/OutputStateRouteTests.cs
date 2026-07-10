@@ -83,6 +83,39 @@ namespace CascadeEngineApi.Tests
             }
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void CommittersReadOnePreviousStateSnapshotRegardlessOfOutputRegistrationOrder(
+            bool sourceOutputFirst)
+        {
+            var simulation = new FactSimulation(new SnapshotIsolationFeature(sourceOutputFirst));
+
+            try
+            {
+                var first = simulation.CreateEntity();
+                var second = simulation.CreateEntity();
+                simulation.SetStateSilently(first, new SnapshotSourceState(10));
+                simulation.SetStateSilently(second, new SnapshotSourceState(100));
+                simulation.SetStateSilently(first, new SnapshotObserverState(second, -1));
+                simulation.SetStateSilently(second, new SnapshotObserverState(first, -1));
+
+                simulation.Emit(first, new SnapshotCommitFact());
+                simulation.Emit(second, new SnapshotCommitFact());
+
+                var result = simulation.RunTick(ReduceOptions.Default());
+
+                Assert.AreEqual(11, simulation.Get<SnapshotSourceState>(first).Value);
+                Assert.AreEqual(101, simulation.Get<SnapshotSourceState>(second).Value);
+                Assert.AreEqual(100, simulation.Get<SnapshotObserverState>(first).ObservedValue);
+                Assert.AreEqual(10, simulation.Get<SnapshotObserverState>(second).ObservedValue);
+                Assert.AreEqual(4, result.MutationCount);
+            }
+            finally
+            {
+                simulation.Dispose();
+            }
+        }
+
         private sealed class RouteFeature : FactFeature
         {
             public RouteFeature()
@@ -143,6 +176,103 @@ namespace CascadeEngineApi.Tests
                     ? CommitDecision<RouteState>.Set(new RouteState(low.Value))
                     : CommitDecision<RouteState>.Unchanged();
             }
+        }
+
+        private sealed class SnapshotIsolationFeature : FactFeature
+        {
+            public SnapshotIsolationFeature(bool sourceOutputFirst)
+            {
+                if (sourceOutputFirst)
+                {
+                    RegisterSourceOutput();
+                    RegisterObserverOutput();
+                    return;
+                }
+
+                RegisterObserverOutput();
+                RegisterSourceOutput();
+            }
+
+            private void RegisterSourceOutput()
+            {
+                Output<SnapshotSourceState>("SnapshotSource")
+                    .AffectedBy<SnapshotCommitFact>(0)
+                    .CommitWith<SnapshotSourceCommitter>();
+            }
+
+            private void RegisterObserverOutput()
+            {
+                Output<SnapshotObserverState>("SnapshotObserver")
+                    .AffectedBy<SnapshotCommitFact>(0)
+                    .CommitWith<SnapshotObserverCommitter>();
+            }
+        }
+
+        private sealed class SnapshotSourceCommitter : IOutputCommitter<SnapshotSourceState>
+        {
+            public CommitDecision<SnapshotSourceState> Commit(
+                ICommitContext ctx,
+                EntityRef entity,
+                in Optional<SnapshotSourceState> previous)
+            {
+                return previous.HasValue
+                    ? CommitDecision<SnapshotSourceState>.Set(
+                        new SnapshotSourceState(previous.Value.Value + 1))
+                    : CommitDecision<SnapshotSourceState>.Unchanged();
+            }
+        }
+
+        private sealed class SnapshotObserverCommitter : IOutputCommitter<SnapshotObserverState>
+        {
+            public CommitDecision<SnapshotObserverState> Commit(
+                ICommitContext ctx,
+                EntityRef entity,
+                in Optional<SnapshotObserverState> previous)
+            {
+                if (!previous.HasValue)
+                {
+                    return CommitDecision<SnapshotObserverState>.Unchanged();
+                }
+
+                var target = previous.Value.Target;
+                var observed = ctx.GetState<SnapshotSourceState>(target).Value;
+                return CommitDecision<SnapshotObserverState>.Set(
+                    new SnapshotObserverState(target, observed));
+            }
+        }
+
+        private readonly struct SnapshotCommitFact : IFact<SnapshotCommitFact>
+        {
+            public bool Equals(SnapshotCommitFact other)
+                => true;
+        }
+
+        private readonly struct SnapshotSourceState : IOutputState<SnapshotSourceState>
+        {
+            public SnapshotSourceState(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(SnapshotSourceState other)
+                => Value == other.Value;
+        }
+
+        private readonly struct SnapshotObserverState : IOutputState<SnapshotObserverState>
+        {
+            public SnapshotObserverState(EntityRef target, int observedValue)
+            {
+                Target = target;
+                ObservedValue = observedValue;
+            }
+
+            public EntityRef Target { get; }
+            public int ObservedValue { get; }
+
+            public bool Equals(SnapshotObserverState other)
+                => Target == other.Target && ObservedValue == other.ObservedValue;
         }
 
         private readonly struct RouteFact : IFact, IEquatable<RouteFact>

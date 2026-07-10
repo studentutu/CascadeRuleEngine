@@ -301,6 +301,17 @@ The builder defaults to `FoldAll` for backward-compatible pass-through behavior.
 
 The engine cannot automatically merge arbitrary output state. Committers remain the final projection boundary, while the commit phase owns deterministic winner selection and tie rejection.
 
+## Commit Snapshot Isolation
+
+Every committer in one closing tick reads the same previous committed-state snapshot. The engine first evaluates and buffers every `CommitDecision` for every touched entity and output. Only after all decisions succeed does it apply durable writes.
+
+Consequences:
+
+- `previous` and `ICommitContext.GetState/TryGetState/HasState` observe pre-commit state.
+- One committer cannot observe another committer's pending decision, including decisions for another entity.
+- Output registration order and touched-entity order cannot change commit reads.
+- If any committer or conflict check throws, no queued durable write is applied and no partial mutation output is published.
+
 ## Transactional Registration Arity
 
 `ReduceWhen<TA, TB>()` and `ReduceBatchWhen<TA, TB>()` have generic overloads for two, three, and four required facts. All overloads are grouped in `FactFeature.TransactionalRegistration.cs`; adding another package-supported arity is a mechanical overload there.
