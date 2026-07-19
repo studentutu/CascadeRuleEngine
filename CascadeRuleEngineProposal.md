@@ -227,6 +227,7 @@ public sealed class MovementFeature : FactFeature
     public MovementFeature()
     {
         Reduce<MoveRequestedFact>()
+            .Without<DeadFact>()
             .With<MoveRequestReducer>();
 
         Reduce<MoveCandidateFact>()
@@ -249,12 +250,14 @@ public sealed class MovementFeature : FactFeature
             .With<PhysicsResolutionReducer>();
 
         Output<PositionState>()
+            .Without<DeadFact>()
             .AffectedBy<PositionResolvedFact>(priority: 100)
             .AffectedBy<TeleportResolvedFact>(priority: 1000)
             .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
             .CommitWith<PositionCommitter>();
 
         Output<MovementState>()
+            .Without<DeadFact>()
             .AffectedBy<MoveRequestedFact>(0)
             .AffectedBy<MoveResolvedFact>(0)
             .AffectedBy<MoveBlockedFact>(0)
