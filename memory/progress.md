@@ -54,13 +54,16 @@
 - The 512-entity state-trigger allocation test reports 0 bytes for first-use and steady-state measured ticks after warmup.
 - `IFact<TFact>` and `IOutputState<TState>` now reduce normal fact/state equality boilerplate to one typed `Equals` method. `IFact` supplies default no-op disposal; resource-owning facts can still override it.
 - Commit snapshot isolation is covered across both output registration order and touched-entity order: all committers read the previous committed snapshot before any queued durable write is applied.
+- `CascadeSettings` is the recommended single construction-time policy for concurrent entity capacity, fact cardinality, warmup, step/tick work budgets, pass/time limits, and causal depth. Parameterless tick methods reuse its captured policy.
+- Public entity ids remain monotonic and non-reused while internal storage slots recycle after committed destruction. Dense fact/state/reducer storage is now bounded by maximum concurrent slots instead of lifetime-created ids.
+- Per-fact storage now uses sparse flat typed slabs: slot-to-slab mapping, compact touched owners/counts, and one contiguous payload array. Per-entity fact-list objects and arrays were removed while zero-copy `ReadOnlySpan<TFact>` access, disposal ownership, fixed-capacity failure, and grow-on-demand compatibility remain covered.
 
 ## Known Gaps
 
-- Warmup is only as accurate as the host-provided hints.
+- Legacy manual warmup is only as accurate as the host-provided hints.
   - Underestimated entity count, queue size, output state capacity, or mutation capacity can still grow during gameplay.
-  - In fixed fact-list mode, underestimated per-entity fact count now throws instead of allocating.
-- Fact warmup still pre-creates per-entity fact-list objects for every known fact bucket. Replace that Cartesian entity/fact-type shape with sparse typed slabs without weakening `ReadOnlySpan<TFact>` access or fixed-capacity failure behavior.
+  - In fixed fact-slab mode, underestimated per-entity fact count throws instead of allocating.
+- The legacy constructor intentionally remains grow-on-demand and has no configured concurrent entity cap. Production code must use `FactSimulation(feature, CascadeSettings)`.
 
 ## Next Work
 

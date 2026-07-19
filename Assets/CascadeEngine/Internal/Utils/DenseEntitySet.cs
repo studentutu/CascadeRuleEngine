@@ -41,21 +41,21 @@ namespace CascadeEngineApi
 
         internal bool Add(EntityRef entity)
         {
-            EnsureCapacity(entity.Value + 1);
+            EnsureCapacity(entity.StorageIndex + 1);
 
-            if (_contains[entity.Value])
+            if (_contains[entity.StorageIndex])
             {
                 return false;
             }
 
-            _contains[entity.Value] = true;
+            _contains[entity.StorageIndex] = true;
             _entities.Add(entity);
             return true;
         }
 
         internal bool Contains(EntityRef entity)
         {
-            return (uint)entity.Value < _contains.Length && _contains[entity.Value];
+            return (uint)entity.StorageIndex < _contains.Length && _contains[entity.StorageIndex];
         }
 
         internal void CopyTo(EntityRefBuffer destination, out int count)
@@ -72,7 +72,7 @@ namespace CascadeEngineApi
         {
             for (var i = 0; i < _entities.Count; i++)
             {
-                _contains[_entities[i].Value] = false;
+                _contains[_entities[i].StorageIndex] = false;
             }
 
             _entities.Clear();

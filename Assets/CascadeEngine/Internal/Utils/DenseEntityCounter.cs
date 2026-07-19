@@ -30,21 +30,21 @@ namespace CascadeEngineApi
 
         internal int Increment(EntityRef entity)
         {
-            EnsureCapacity(entity.Value + 1);
-            _counts[entity.Value]++;
-            return _counts[entity.Value];
+            EnsureCapacity(entity.StorageIndex + 1);
+            _counts[entity.StorageIndex]++;
+            return _counts[entity.StorageIndex];
         }
 
         internal int Get(EntityRef entity)
         {
-            return (uint)entity.Value < _counts.Length ? _counts[entity.Value] : 0;
+            return (uint)entity.StorageIndex < _counts.Length ? _counts[entity.StorageIndex] : 0;
         }
 
         internal void Clear(DenseEntitySet touchedEntities)
         {
             for (var i = 0; i < touchedEntities.Count; i++)
             {
-                var entityIndex = touchedEntities[i].Value;
+                var entityIndex = touchedEntities[i].StorageIndex;
                 if ((uint)entityIndex < _counts.Length)
                 {
                     _counts[entityIndex] = 0;

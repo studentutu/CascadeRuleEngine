@@ -58,7 +58,7 @@ namespace CascadeEngineApi
 
         internal void Set(EntityRef entity, TState next)
         {
-            EnsureStorageCapacity(entity.Value + 1, _count + 1);
+            EnsureStorageCapacity(entity.StorageIndex + 1, _count + 1);
             if (TryGetDenseIndex(entity, out var index))
             {
                 var previous = _values[index];
@@ -82,7 +82,7 @@ namespace CascadeEngineApi
 
         internal void SetSilently(EntityRef entity, TState next)
         {
-            EnsureStorageCapacity(entity.Value + 1, _count + 1);
+            EnsureStorageCapacity(entity.StorageIndex + 1, _count + 1);
             if (TryGetDenseIndex(entity, out var index))
             {
                 _values[index] = next;
@@ -107,10 +107,10 @@ namespace CascadeEngineApi
             {
                 _entities[index] = lastEntity;
                 _values[index] = _values[lastIndex];
-                _sparse[lastEntity.Value] = index + 1;
+                _sparse[lastEntity.StorageIndex] = index + 1;
             }
 
-            _sparse[entity.Value] = 0;
+            _sparse[entity.StorageIndex] = 0;
             _entities[lastIndex] = default;
             _values[lastIndex] = default;
             _count--;
@@ -172,15 +172,15 @@ namespace CascadeEngineApi
             var index = _count;
             _entities[index] = entity;
             _values[index] = state;
-            _sparse[entity.Value] = index + 1;
+            _sparse[entity.StorageIndex] = index + 1;
             _count++;
         }
 
         private bool TryGetDenseIndex(EntityRef entity, out int index)
         {
-            if ((uint)entity.Value < _sparse.Length)
+            if ((uint)entity.StorageIndex < _sparse.Length)
             {
-                var stored = _sparse[entity.Value];
+                var stored = _sparse[entity.StorageIndex];
                 if (stored != 0)
                 {
                     index = stored - 1;

@@ -217,6 +217,7 @@ namespace CascadeEngineApi
                     _processedWorkItems++;
                     var reducer = reduceRoute.ReducerAt(_pendingFactReducerIndex);
                     SetCurrentFactContext(in _pendingFact, reducer.DebugName);
+                    ThrowIfTickWorkLimitExceeded(options);
                     if (_reducerInvocations > options.Guardrails.MaxReducerInvocationsPerTick)
                     {
                         throw CreateReductionException("maximum reducer invocation count exceeded");
@@ -370,6 +371,7 @@ namespace CascadeEngineApi
                     _transactionalInvocations++;
                     _processedWorkItems++;
                     SetCurrentTransactionalContext(registration.DebugName, registration.RequiredFactIds, entity);
+                    ThrowIfTickWorkLimitExceeded(options);
                     if (_transactionalInvocations > options.Guardrails.MaxTransactionalReducerInvocationsPerTick)
                     {
                         throw CreateReductionException("maximum transactional reducer invocation count exceeded");
@@ -442,6 +444,7 @@ namespace CascadeEngineApi
                 _transactionalInvocations++;
                 _processedWorkItems++;
                 SetCurrentTransactionalContext(registration.DebugName, registration.RequiredFactIds, _batchBuffer[0]);
+                ThrowIfTickWorkLimitExceeded(options);
                 if (_transactionalInvocations > options.Guardrails.MaxTransactionalReducerInvocationsPerTick)
                 {
                     throw CreateReductionException("maximum transactional reducer invocation count exceeded");
@@ -495,6 +498,7 @@ namespace CascadeEngineApi
                     _transactionalInvocations++;
                     _processedWorkItems++;
                     SetCurrentStateContext(registration.DebugName, registration.StateId, entity);
+                    ThrowIfTickWorkLimitExceeded(options);
                     if (_transactionalInvocations > options.Guardrails.MaxTransactionalReducerInvocationsPerTick)
                     {
                         throw CreateReductionException("maximum transactional reducer invocation count exceeded");
@@ -521,6 +525,14 @@ namespace CascadeEngineApi
             if (_passes > options.MaxPasses)
             {
                 throw CreateReductionException("maximum pass count exceeded");
+            }
+        }
+
+        private void ThrowIfTickWorkLimitExceeded(ReduceOptions options)
+        {
+            if (_processedWorkItems > options.Guardrails.MaxWorkItemsPerTick)
+            {
+                throw CreateReductionException("maximum tick work item count exceeded");
             }
         }
 

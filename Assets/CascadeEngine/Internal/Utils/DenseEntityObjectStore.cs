@@ -33,28 +33,28 @@ namespace CascadeEngineApi
 
         internal TValue GetOrCreate(EntityRef entity)
         {
-            EnsureCapacity(entity.Value + 1);
+            EnsureCapacity(entity.StorageIndex + 1);
 
-            var value = _values[entity.Value];
+            var value = _values[entity.StorageIndex];
             if (value != null)
             {
                 return value;
             }
 
             value = _factory();
-            _values[entity.Value] = value;
+            _values[entity.StorageIndex] = value;
             return value;
         }
 
         internal bool TryGet(EntityRef entity, out TValue value)
         {
-            if ((uint)entity.Value >= _values.Length)
+            if ((uint)entity.StorageIndex >= _values.Length)
             {
                 value = null!;
                 return false;
             }
 
-            value = _values[entity.Value]!;
+            value = _values[entity.StorageIndex]!;
             return value != null;
         }
 

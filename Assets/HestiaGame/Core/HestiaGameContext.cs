@@ -9,12 +9,10 @@ namespace Hestia
     /// </summary>
     public sealed class HestiaGameContext
     {
-        private readonly ReduceOptions _defaultOptions = ReduceOptions.Default();
-
-        public HestiaGameContext()
+        public HestiaGameContext(CascadeSettings? settings = null)
         {
             Feature = new HestiaGameSimulationFeature();
-            Simulation = new FactSimulation(Feature);
+            Simulation = new FactSimulation(Feature, settings ?? CreateDefaultSettings());
         }
 
         public HestiaGameSimulationFeature Feature { get; }
@@ -31,6 +29,21 @@ namespace Hestia
             => Simulation.DestroyEntity(entity);
 
         public SimulationResult RunTick()
-            => Simulation.RunTick(_defaultOptions);
+            => Simulation.RunTick();
+
+        private static CascadeSettings CreateDefaultSettings()
+        {
+            return new CascadeSettings(
+                maxEntities: 512,
+                maxFactsPerEntity: 8,
+                maxFactsPerTypePerEntity: 2)
+            {
+                MaxWorkItemsPerStep = 4096,
+                MaxWorkItemsPerTick = 8192,
+                MaxPasses = 32,
+                MaxMillisecondsPerStep = 8,
+                MaxCausalDepth = 16
+            };
+        }
     }
 }

@@ -44,15 +44,15 @@ namespace CascadeEngineApi
         internal bool MarkIfNew(int registrationIndex, EntityRef entity)
         {
             EnsureRegistrationCapacity(registrationIndex + 1);
-            EnsureEntityCapacity(entity.Value + 1);
+            EnsureEntityCapacity(entity.StorageIndex + 1);
 
             var stamps = _stampsByRegistration[registrationIndex];
-            if (stamps[entity.Value] == _currentStamp)
+            if (stamps[entity.StorageIndex] == _currentStamp)
             {
                 return false;
             }
 
-            stamps[entity.Value] = _currentStamp;
+            stamps[entity.StorageIndex] = _currentStamp;
             return true;
         }
 

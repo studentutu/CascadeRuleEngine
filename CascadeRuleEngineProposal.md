@@ -87,6 +87,8 @@ Entity creation/destruction is part of the core lifecycle API, not a host-side c
 MVP consumer output is ForEachMutation(output), not a dirty entity queue.
 ```
 
+Runtime fact storage uses one sparse typed slab per fact type. Entity storage slots map to compact slab indexes only after that entity receives the fact type. Each active entity slice is contiguous, so `All<TFact>()` remains a zero-copy `ReadOnlySpan<TFact>`. Fixed settings reserve the declared worst case and throw before overflow; grow-on-demand storage may allocate and repack only in explicitly non-production workflows.
+
 The implementation must stay C# 8 / Unity compatible. Any snippet using newer syntax is descriptive only until rewritten into package code.
 
 ---
@@ -174,6 +176,19 @@ public sealed class GameSimulationLoop
         });
     }
 }
+```
+
+Production construction uses one project-owned settings object. It defines concurrent entity capacity, fact cardinality, and reduction work limits; construction warms the engine and parameterless ticks reuse the captured policy:
+
+```csharp
+var simulation = new FactSimulation(feature, new CascadeSettings(
+    maxEntities: 1024,
+    maxFactsPerEntity: 32,
+    maxFactsPerTypePerEntity: 4)
+{
+    MaxWorkItemsPerStep = 50_000,
+    MaxWorkItemsPerTick = 100_000
+});
 ```
 
 From the outside, the usage becomes:
@@ -519,6 +534,7 @@ Destroying an entity stages DeadFact; closure deletes its output states and publ
 Reducer-side creation can participate in the same tick by receiving emitted facts.
 Consumer-side creation/destruction affects the next tick unless it is called before RunTick.
 Entity ids are handles owned by the Cascade runtime; destroyed ids are not reused in the MVP.
+Internal storage slots are reused after committed destruction. Dense runtime storage is bounded by concurrent entity capacity rather than lifetime-created entity count.
 ```
 
 Entity fact view:

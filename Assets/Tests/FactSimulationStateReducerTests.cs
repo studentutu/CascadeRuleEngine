@@ -290,6 +290,89 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
+        public void UnifiedSettingsBoundConcurrentEntitiesAndReuseStorageSlots()
+        {
+            var settings = new CascadeSettings(
+                maxEntities: 1,
+                maxFactsPerEntity: 4,
+                maxFactsPerTypePerEntity: 1)
+            {
+                MaxWorkItemsPerStep = 16,
+                MaxWorkItemsPerTick = 32,
+                MaxPasses = 8,
+                MaxMillisecondsPerStep = 0,
+                MaxCausalDepth = 4
+            };
+            var simulation = new FactSimulation(new LifecycleFeature(), settings);
+            var first = simulation.CreateEntity();
+            simulation.SetStateSilently(first, new LifecycleState(1));
+
+            Assert.Throws<InvalidOperationException>(() => simulation.CreateEntity());
+
+            simulation.DestroyEntity(first);
+            simulation.RunTick();
+            var boundedCapacity = simulation.CaptureCapacitySnapshot(settings.MaxEntities);
+            Assert.AreEqual(
+                settings.MaxEntities,
+                boundedCapacity.MinimumFactBucketEntityCapacity);
+            Assert.AreEqual(
+                settings.MaxFactsPerTypePerEntity,
+                boundedCapacity.MinimumFactListCapacity);
+            var lastId = first.Value;
+
+            for (var i = 0; i < 32; i++)
+            {
+                var entity = simulation.CreateEntity();
+                Assert.Greater(entity.Value, lastId);
+                lastId = entity.Value;
+                simulation.SetStateSilently(entity, new LifecycleState(i + 2));
+                simulation.DestroyEntity(entity);
+                simulation.RunTick();
+            }
+
+            Assert.AreEqual(
+                boundedCapacity,
+                simulation.CaptureCapacitySnapshot(settings.MaxEntities));
+
+            var current = simulation.CreateEntity();
+            simulation.SetStateSilently(current, new LifecycleState(99));
+            simulation.Emit(first, new DeadFact());
+            var staleResult = simulation.RunTick();
+
+            Assert.AreEqual(1, staleResult.RejectedDestroyedEntityFacts);
+            Assert.IsFalse(simulation.IsDestroyed(current));
+            Assert.AreEqual(99, simulation.Get<LifecycleState>(current).Value);
+        }
+
+        [Test]
+        public void UnifiedSettingsEnforceCumulativeTickWorkAcrossIncrementalSteps()
+        {
+            var settings = new CascadeSettings(
+                maxEntities: 1,
+                maxFactsPerEntity: 3,
+                maxFactsPerTypePerEntity: 1)
+            {
+                MaxWorkItemsPerStep = 1,
+                MaxWorkItemsPerTick = 1,
+                MaxPasses = 4,
+                MaxMillisecondsPerStep = 0,
+                MaxCausalDepth = 4
+            };
+            var simulation = new FactSimulation(new ResumeFeature(), settings);
+            var entity = simulation.CreateEntity();
+            simulation.Emit(entity, new ResumeStartFact());
+
+            Assert.IsFalse(simulation.RunTickIncremental(out var incomplete));
+            Assert.IsFalse(incomplete.Complete);
+
+            var exception = Assert.Throws<CascadeReductionException>(
+                () => simulation.RunTickIncremental(out _));
+
+            Assert.AreEqual("maximum tick work item count exceeded", exception!.BudgetReason);
+            Assert.IsFalse(simulation.TryGet<ResumeState>(entity, out _));
+        }
+
+        [Test]
         public void ReducerCreatedEntityCanReceiveFactsAndCommitStateInSameTick()
         {
             var feature = new LifecycleFeature();

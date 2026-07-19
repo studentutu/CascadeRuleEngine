@@ -117,12 +117,23 @@ Fact ECS
 
 ```csharp
 var feature = new GameplayFeature();
-var simulation = new FactSimulation(feature);
+var settings = new CascadeSettings(
+    maxEntities: 1024,
+    maxFactsPerEntity: 32,
+    maxFactsPerTypePerEntity: 4)
+{
+    MaxWorkItemsPerStep = 50_000,
+    MaxWorkItemsPerTick = 100_000,
+    MaxPasses = 64,
+    MaxMillisecondsPerStep = 8,
+    MaxCausalDepth = 32
+};
+var simulation = new FactSimulation(feature, settings);
 var entity = simulation.CreateEntity();
 
 simulation.Emit(entity, new MoveRequestedFact(12f));
 
-SimulationResult result = simulation.RunTick(ReduceOptions.Default());
+SimulationResult result = simulation.RunTick();
 
 simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
@@ -132,7 +143,7 @@ simulation.ForEachMutation(feature.Position, OnPositionChanged);
 `RunTick` keeps the original full-closure contract. `RunTickIncremental` runs one reduction pass on `FactSimulation` and returns `true` only when the tick closes and commit has been applied.
 
 ```csharp
-while (!simulation.RunTickIncremental(options, out SimulationResult result))
+while (!simulation.RunTickIncremental(out SimulationResult result))
 {
     // No durable output state has been committed yet.
     // Yield to the host frame loop, then continue the same open tick.
@@ -142,6 +153,8 @@ simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
 Incomplete incremental results are diagnostic only. Consumers must keep trusting committed `IOutputState`; commit still happens only after reduction closure.
+
+The parameterless tick methods use the immutable settings snapshot captured by the simulation constructor. Existing overloads accepting `ReduceOptions` remain available for diagnostics and exceptional host-controlled overrides.
 
 `ReduceOptions.MaxFacts` bounds dequeued facts per incremental call. `ReduceOptions.MaxWorkItems` separately bounds reducer invocations per call: immediate reducer invocation, entity transactional/state invocation, or one atomic batch reducer invocation. `MaxMilliseconds` remains the hard elapsed-time slice. Budget suspensions do not consume `MaxPasses`; only completed logical closure passes do.
 
@@ -211,6 +224,19 @@ Type names must be unique inside one full feature registration, including sub-fe
 
 ## Warmup For 500+ Entities
 
+`CascadeSettings` is the recommended production setup surface. Constructing `FactSimulation` with settings validates hard limits and warms every runtime buffer automatically:
+
+The three cardinality limits are mandatory constructor arguments. The package deliberately has no guessed defaults for them.
+
+- `MaxEntities` is the maximum number of concurrent live or pending entities, not a lifetime creation limit.
+- Public entity ids remain monotonic and are never reused. Internal storage slots are recycled after destruction closes, so storage remains bounded by `MaxEntities` under entity churn.
+- `MaxFactsPerEntity` and `MaxFactsPerTypePerEntity` are hard per-tick limits and exact warm capacities.
+- The settings-backed path uses fixed typed-slab capacity. Underestimation throws instead of allocating during reduction.
+- `MaxWorkItemsPerStep` controls incremental frame slicing. `MaxWorkItemsPerTick` is the cumulative closure guardrail across all continuation steps.
+- Mutating the settings object after construction does not reconfigure an existing simulation.
+
+The older `Warmup(WarmupCapacityHints)` and `RunTick(ReduceOptions)` APIs remain source-compatible for adapters and exploratory grow-on-demand workflows. Do not combine them accidentally with the settings-backed path; project production code should own one `CascadeSettings` instance and construct the simulation once.
+
 Warmup is a capacity phase only. It does not create entities, emit facts, run reducers, commit output state, or publish mutations.
 
 ```csharp
@@ -243,9 +269,13 @@ Keep the hints honest. If one gameplay tick can enqueue two input facts and two 
 
 Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code still need a declaration in the feature, usually as an affected fact for the output that consumes them.
 
+Each fact type owns one flat typed payload slab, one sparse entity-slot-to-slab map, one compact slab-owner array, and one count array. Touched entities receive contiguous fixed-width slices on demand; untouched entities have no active slice and no per-entity list object. `IEntityFactView.All<TFact>()` returns a zero-copy `ReadOnlySpan<TFact>` over the entity's active slice.
+
+The settings-backed path reserves the worst-case payload size `MaxEntities * MaxFactsPerTypePerEntity` for each registered fact type. That reservation is required to guarantee no allocation when every entity can emit that type. `GrowOnDemand` may repack one fact type's slab and allocate; it remains a legacy/prototyping policy only.
+
 Output state uses sparse-set storage: entity membership and values are compact and directly iterable. Single-state queries iterate only entities containing that state; two-state queries iterate the smaller state bucket and test membership in the other. Warm `OutputStateCapacityPerOutput` for both expected entity ids and state membership so state-trigger and query hot paths do not resize.
 
-Use `FactListCapacityMode.Fixed` for gameplay hot paths that must not allocate. In fixed mode, an underestimated `FactsPerEntityPerTypeCapacity` throws instead of silently resizing an `EntityFactList<TFact>`. Use the default `GrowOnDemand` only while prototyping or when the host explicitly accepts capacity growth.
+Use `FactListCapacityMode.Fixed` for gameplay hot paths that must not allocate. In fixed mode, an underestimated `FactsPerEntityPerTypeCapacity` throws before writing past the entity's slab slice. Use the default `GrowOnDemand` only while prototyping or when the host explicitly accepts slab repacking and capacity growth. The enum retains its original name for public-contract compatibility.
 
 ## Dispose Ownership Rules
 
@@ -335,7 +365,8 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 
 | Type | Role |
 | --- | --- |
-| `EntityRef` | stable non-reused entity handle; validate external integer ids with `FactSimulation.TryGetEntity` |
+| `EntityRef` | stable non-reused public entity handle backed by a recyclable internal storage slot; validate external integer ids with `FactSimulation.TryGetEntity` |
+| `CascadeSettings` | single project-level hard-cap, warmup, and default reduction-budget configuration |
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
@@ -352,7 +383,7 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 | `FactSimulation` | transactional entity lifecycle, validated id lookup, fact queue, reduction, commit, mutation routing, terminal disposal |
 | `ReduceOptions` | per-call fact, work-item, pass, and elapsed-time budgets |
 | `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
-| `FactListCapacityMode` | grow or fixed capacity policy for per-entity fact lists |
+| `FactListCapacityMode` | legacy-named grow or fixed policy for per-entity typed-slab slices |
 | `OutputState<TState>` | typed mutation stream descriptor |
 | `StateMutation<TState>` | create/update/delete diff for one output state |
 | `SimulationResultCounters` | numeric tick counters, including processed reducer work items, grouped away from result construction |

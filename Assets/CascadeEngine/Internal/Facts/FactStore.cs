@@ -49,6 +49,11 @@ namespace CascadeEngineApi
             var normalizedEntityCapacity = NormalizeCapacity(entityCapacity);
             var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
 
+            if (_buckets.Count == 0 && normalizedEntityCapacity < _entityCapacity)
+            {
+                _entityCapacity = normalizedEntityCapacity;
+            }
+
             EnsureEntityCapacity(normalizedEntityCapacity);
             WarmupFactRouteLists(normalizedEntityCapacity, NormalizeCapacity(knownFactTypes.Length));
             if (_queue.Capacity < factQueueCapacity)
@@ -56,7 +61,7 @@ namespace CascadeEngineApi
                 _queue.Capacity = factQueueCapacity;
             }
 
-            if (normalizedFactCapacity > _factCapacityPerEntity)
+            if (_buckets.Count == 0 || normalizedFactCapacity > _factCapacityPerEntity)
             {
                 _factCapacityPerEntity = normalizedFactCapacity;
             }

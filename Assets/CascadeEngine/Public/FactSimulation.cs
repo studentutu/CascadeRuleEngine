@@ -18,7 +18,7 @@ namespace CascadeEngineApi
     {
         private readonly FactFeature _feature;
         private readonly FactFeatureRegistry _registry;
-        private readonly EntityStore _entities = new EntityStore();
+        private readonly EntityStore _entities;
         private readonly FactStore _facts = new FactStore();
         private readonly Dictionary<CascadeTypeId, IStateBucket> _stateBuckets = new Dictionary<CascadeTypeId, IStateBucket>();
         private readonly EntityFactView _factView;
@@ -29,6 +29,7 @@ namespace CascadeEngineApi
         private readonly FiredReducerTracker _firedTransactional;
         private readonly FiredReducerTracker _firedBatchEntities;
         private readonly PartialSimulation _partial;
+        private readonly ReduceOptions _defaultOptions;
         private int[] _commitOutputMarks = new int[0];
         private int _commitOutputMark;
         private int _mutationCount;
@@ -41,6 +42,19 @@ namespace CascadeEngineApi
         /// [INTEGRATION] Range: fully constructed feature. Condition: bootstrap. Output: simulation bound to the feature registrations.
         /// </summary>
         public FactSimulation(FactFeature feature)
+            : this(feature, null, true)
+        {
+        }
+
+        /// <summary>
+        /// [INTEGRATION] Range: feature and project settings. Condition: bootstrap. Output: bounded, warmed simulation with reusable entity storage slots.
+        /// </summary>
+        public FactSimulation(FactFeature feature, CascadeSettings settings)
+            : this(feature, settings ?? throw new ArgumentNullException(nameof(settings)), true)
+        {
+        }
+
+        private FactSimulation(FactFeature feature, CascadeSettings? settings, bool _)
         {
             if (feature == null)
             {
@@ -57,8 +71,11 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException("Sub-feature registrations are owned by its parent feature.");
             }
 
+            settings?.Validate();
             _feature = feature;
             _registry = feature.Registry;
+            _entities = new EntityStore(settings?.MaxEntities ?? int.MaxValue);
+            _defaultOptions = settings?.CreateReduceOptions() ?? ReduceOptions.Default();
             _factView = new EntityFactView(_facts, _registry);
             _commitFactView = new EntityFactView(_facts, _registry);
             _firedTransactional = new FiredReducerTracker(_registry.TransactionalReducers.Count, 64);
@@ -75,6 +92,11 @@ namespace CascadeEngineApi
             _registry.ValidateStateReducerOutputs();
             CreateRegisteredStateBuckets();
             BindStateReducerBuckets();
+
+            if (settings != null)
+            {
+                Warmup(settings.CreateWarmupHints());
+            }
         }
 
         public ICommittedStateStore State
@@ -202,6 +224,9 @@ namespace CascadeEngineApi
             return LastResult;
         }
 
+        public SimulationResult RunTick()
+            => RunTick(_defaultOptions);
+
         /// <summary>
         /// [INTEGRATION] Range: one reduction pass. Condition: open or pending tick. Output: true only after closure and commit.
         /// </summary>
@@ -214,6 +239,9 @@ namespace CascadeEngineApi
             LastResult = result;
             return complete;
         }
+
+        public bool RunTickIncremental(out SimulationResult result)
+            => RunTickIncremental(_defaultOptions, out result);
 
         /// <summary>
         /// [INTEGRATION] Range: terminal simulation lifecycle. Condition: scene/domain unload or host replacement. Output: runtime-owned stores and the bound feature registry are disposed once.
@@ -284,35 +312,42 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException("Committed state cannot be initialized while a simulation tick is open.");
             }
 
-            ThrowIfNotLive(entity);
-            GetStateBucket<TState>().SetSilently(entity, state);
+            var resolved = RequireLiveEntity(entity);
+            GetStateBucket<TState>().SetSilently(resolved, state);
         }
 
         public bool Has<TState>(EntityRef entity)
             where TState : struct, IOutputState
         {
             ThrowIfDisposed();
-            return GetStateBucket<TState>().Has(entity);
+            return _entities.TryResolveForStorage(entity, out var resolved)
+                && GetStateBucket<TState>().Has(resolved);
         }
 
         public TState Get<TState>(EntityRef entity)
             where TState : struct, IOutputState
         {
             ThrowIfDisposed();
-            return GetStateBucket<TState>().Get(entity);
+            return GetStateBucket<TState>().Get(_entities.ResolveForStorage(entity));
         }
 
         public bool TryGet<TState>(EntityRef entity, out TState state)
             where TState : struct, IOutputState
         {
             ThrowIfDisposed();
-            return GetStateBucket<TState>().TryGet(entity, out state);
+            if (_entities.TryResolveForStorage(entity, out var resolved))
+            {
+                return GetStateBucket<TState>().TryGet(resolved, out state);
+            }
+
+            state = default;
+            return false;
         }
 
         public IEntityFactView Facts(EntityRef entity)
         {
             ThrowIfDisposed();
-            return _factView.Bind(entity);
+            return _factView.Bind(_entities.ResolveForStorage(entity));
         }
 
         IEntityFactView ICommitContext.Facts(EntityRef entity)
@@ -323,15 +358,16 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException("Commit facts are available only while an output committer is running.");
             }
 
+            var resolved = _entities.ResolveForStorage(entity);
             if (!_activeCommitOutput.UsesPrioritySelection)
             {
-                return _commitFactView.Bind(entity);
+                return _commitFactView.Bind(resolved);
             }
 
-            var selectedFact = entity.Equals(_activeCommitEntity)
+            var selectedFact = resolved.Equals(_activeCommitEntity)
                 ? _activeCommitFact
-                : _activeCommitOutput.SelectPriorityWinner(this, entity);
-            return _commitFactView.Bind(entity, selectedFact);
+                : _activeCommitOutput.SelectPriorityWinner(this, resolved);
+            return _commitFactView.Bind(resolved, selectedFact);
         }
 
         public bool HasState<TState>(EntityRef entity)
@@ -484,13 +520,14 @@ namespace CascadeEngineApi
         private void EmitCore<TFact>(EntityRef entity, in TFact fact, int parentDepth)
             where TFact : struct, IFact
         {
+            var resolved = _entities.ResolveForEmission(entity);
             var route = _registry.RequireFactRoute<TFact>();
             var factId = route.FactId;
             try
             {
                 var accepted = _facts.Emit(
                     _entities,
-                    entity,
+                    resolved,
                     route,
                     in fact,
                     parentDepth,
@@ -498,7 +535,7 @@ namespace CascadeEngineApi
 
                 if (accepted && route.StagesEntityDeath)
                 {
-                    _entities.StageDestroy(entity);
+                    _entities.StageDestroy(resolved);
                 }
             }
             catch (InvalidOperationException exception) when (_partial.IsActive)
@@ -507,7 +544,7 @@ namespace CascadeEngineApi
                     "fact acceptance guardrail failed",
                     factId,
                     _registry.Describe(factId),
-                    entity,
+                    resolved,
                     parentDepth,
                     _partial.CurrentReducerName,
                     exception);
@@ -638,13 +675,15 @@ namespace CascadeEngineApi
             return minimum == int.MaxValue ? 0 : minimum;
         }
 
-        private void ThrowIfNotLive(EntityRef entity)
+        private EntityRef RequireLiveEntity(EntityRef entity)
         {
-            _entities.Validate(entity);
-            if (_entities.IsDestroyed(entity))
+            var resolved = _entities.ResolveForStorage(entity);
+            if (_entities.IsDestroyed(resolved))
             {
                 throw new InvalidOperationException($"Destroyed entity '{entity}' cannot receive output state.");
             }
+
+            return resolved;
         }
 
         private void ThrowIfDisposed()

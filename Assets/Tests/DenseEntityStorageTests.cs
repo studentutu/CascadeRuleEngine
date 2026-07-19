@@ -101,38 +101,61 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void EntityFactListClearsByDisposingStoredFactsAndCanBeReused()
+        public void FactBucketTypedSlabsPreserveSpansAcrossGrowthAndReuse()
         {
             DenseStorageDisposableFact.DisposeCount = 0;
-            var facts = new EntityFactList<DenseStorageDisposableFact>();
+            var facts = new FactBucket<DenseStorageDisposableFact>(
+                CascadeTypeId.FromName(nameof(DenseStorageDisposableFact)),
+                entityCapacity: 2,
+                factCapacityPerEntity: 1,
+                factListCapacityMode: FactListCapacityMode.GrowOnDemand);
+            var first = new EntityRef(0);
+            var second = new EntityRef(1);
 
-            Assert.AreEqual(0, facts.Add(new DenseStorageDisposableFact(10)));
-            Assert.AreEqual(1, facts.Add(new DenseStorageDisposableFact(20)));
-            Assert.AreEqual(2, facts.Count);
+            Assert.AreEqual(0, facts.Add(first, new DenseStorageDisposableFact(10)));
+            Assert.AreEqual(1, facts.Add(first, new DenseStorageDisposableFact(20)));
+            Assert.AreEqual(0, facts.Add(second, new DenseStorageDisposableFact(30)));
+
+            var firstSpan = facts.All(first);
+            var secondSpan = facts.All(second);
+            Assert.AreEqual(2, firstSpan.Length);
+            Assert.AreEqual(10, firstSpan[0].Value);
+            Assert.AreEqual(20, firstSpan[1].Value);
+            Assert.AreEqual(1, secondSpan.Length);
+            Assert.AreEqual(30, secondSpan[0].Value);
+            Assert.AreEqual(2, facts.ActiveSlabCount);
+            Assert.AreEqual(2, facts.MinimumFactListCapacity(entityCapacity: 2));
 
             facts.Clear();
 
-            Assert.AreEqual(0, facts.Count);
-            Assert.AreEqual(2, DenseStorageDisposableFact.DisposeCount);
+            Assert.AreEqual(0, facts.CountFor(first));
+            Assert.AreEqual(0, facts.CountFor(second));
+            Assert.AreEqual(0, facts.ActiveSlabCount);
+            Assert.AreEqual(3, DenseStorageDisposableFact.DisposeCount);
 
-            Assert.AreEqual(0, facts.Add(new DenseStorageDisposableFact(30)));
-            Assert.IsTrue(facts.TryGetLatest(out var latest));
-            Assert.AreEqual(30, latest.Value);
+            Assert.AreEqual(0, facts.Add(first, new DenseStorageDisposableFact(40)));
+            Assert.AreEqual(1, facts.ActiveSlabCount);
+            Assert.IsTrue(facts.TryGetLatest(first, out var latest));
+            Assert.AreEqual(40, latest.Value);
         }
 
         [Test]
-        public void EntityFactListFixedCapacityRejectsUnexpectedGrowth()
+        public void FactBucketFixedSlabRejectsUnexpectedGrowthBeforeWrite()
         {
-            var facts = new EntityFactList<DenseStorageDisposableFact>(
-                initialCapacity: 1,
-                capacityMode: FactListCapacityMode.Fixed);
+            var facts = new FactBucket<DenseStorageDisposableFact>(
+                CascadeTypeId.FromName(nameof(DenseStorageDisposableFact)),
+                entityCapacity: 1,
+                factCapacityPerEntity: 1,
+                factListCapacityMode: FactListCapacityMode.Fixed);
+            var entity = new EntityRef(0);
 
-            facts.Add(new DenseStorageDisposableFact(10));
+            facts.Add(entity, new DenseStorageDisposableFact(10));
 
             Assert.Throws<InvalidOperationException>(
-                () => facts.Add(new DenseStorageDisposableFact(20)));
-            Assert.AreEqual(1, facts.Count);
-            Assert.AreEqual(1, facts.Capacity);
+                () => facts.Add(entity, new DenseStorageDisposableFact(20)));
+            Assert.AreEqual(1, facts.CountFor(entity));
+            Assert.AreEqual(10, facts.All(entity)[0].Value);
+            Assert.AreEqual(1, facts.MinimumFactListCapacity(entityCapacity: 1));
         }
 
         private readonly struct DenseStorageDisposableFact : IFact, IEquatable<DenseStorageDisposableFact>

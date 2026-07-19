@@ -1,19 +1,25 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Typed tick-local fact storage for one fact type.
+    /// Typed tick-local fact slab: touched entities own contiguous slices without per-entity list objects.
     /// </summary>
     internal sealed class FactBucket<TFact> : IFactBucket
         where TFact : struct, IFact
     {
+        private static readonly EqualityComparer<TFact> Comparer = EqualityComparer<TFact>.Default;
+
         private readonly CascadeTypeId _factId;
-        private readonly DenseEntityObjectStore<EntityFactList<TFact>> _factsByEntity;
-        private readonly DenseEntitySet _touchedEntities;
+        private int[] _slabByEntity;
+        private EntityRef[] _entitiesBySlab;
+        private int[] _countsBySlab;
+        private TFact[] _items;
         private int _factCapacityPerEntity;
+        private int _slabCount;
         private FactListCapacityMode _factListCapacityMode;
 
         public FactBucket(
@@ -23,45 +29,70 @@ namespace CascadeEngineApi
             FactListCapacityMode factListCapacityMode)
         {
             _factId = factId;
+            var normalizedEntityCapacity = NormalizeCapacity(entityCapacity);
             _factCapacityPerEntity = NormalizeCapacity(factCapacityPerEntity);
             _factListCapacityMode = factListCapacityMode;
-            _factsByEntity = new DenseEntityObjectStore<EntityFactList<TFact>>(
-                CreateFactList,
-                entityCapacity);
-            _touchedEntities = new DenseEntitySet(entityCapacity);
+            _slabByEntity = new int[normalizedEntityCapacity];
+            _entitiesBySlab = new EntityRef[normalizedEntityCapacity];
+            _countsBySlab = new int[normalizedEntityCapacity];
+            _items = new TFact[PayloadCapacity(normalizedEntityCapacity, _factCapacityPerEntity)];
         }
 
         public CascadeTypeId FactId => _factId;
-        public int EntityCapacity => _factsByEntity.Capacity;
-        public int TouchedEntityCapacity => _touchedEntities.Capacity;
+        public int EntityCapacity => _slabByEntity.Length;
+        public int TouchedEntityCapacity => _entitiesBySlab.Length;
+        internal int ActiveSlabCount => _slabCount;
 
         internal bool Contains(EntityRef entity, in TFact fact)
         {
-            return TryGetList(entity, out var facts) && facts.Contains(in fact);
+            if (!TryGetSlab(entity, out var slab))
+            {
+                return false;
+            }
+
+            var count = _countsBySlab[slab];
+            var offset = Offset(slab);
+            for (var i = 0; i < count; i++)
+            {
+                if (Comparer.Equals(_items[offset + i], fact))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal int Add(EntityRef entity, in TFact fact)
         {
-            var facts = GetOrCreateList(entity);
-            if (facts.Count == 0)
+            var slab = GetOrCreateSlab(entity);
+            var count = _countsBySlab[slab];
+            if (count == _factCapacityPerEntity)
             {
-                TrackTouched(entity);
+                GrowForAdd();
             }
 
-            return facts.Add(in fact);
+            _items[Offset(slab) + count] = fact;
+            _countsBySlab[slab] = count + 1;
+            return count;
         }
 
         public bool Has(EntityRef entity)
-            => TryGetList(entity, out var facts) && facts.Count > 0;
+            => TryGetSlab(entity, out var slab) && _countsBySlab[slab] > 0;
 
         public int CountFor(EntityRef entity)
-            => TryGetList(entity, out var facts) ? facts.Count : 0;
+            => TryGetSlab(entity, out var slab) ? _countsBySlab[slab] : 0;
 
         internal bool TryGetLatest(EntityRef entity, out TFact fact)
         {
-            if (TryGetList(entity, out var facts))
+            if (TryGetSlab(entity, out var slab))
             {
-                return facts.TryGetLatest(out fact);
+                var count = _countsBySlab[slab];
+                if (count > 0)
+                {
+                    fact = _items[Offset(slab) + count - 1];
+                    return true;
+                }
             }
 
             fact = default;
@@ -70,21 +101,30 @@ namespace CascadeEngineApi
 
         internal ReadOnlySpan<TFact> All(EntityRef entity)
         {
-            if (TryGetList(entity, out var facts))
-            {
-                return facts.AsSpan();
-            }
-
-            return ReadOnlySpan<TFact>.Empty;
+            return TryGetSlab(entity, out var slab)
+                ? new ReadOnlySpan<TFact>(_items, Offset(slab), _countsBySlab[slab])
+                : ReadOnlySpan<TFact>.Empty;
         }
 
         internal ref readonly TFact Get(EntityRef entity, int index)
-            => ref GetRequiredList(entity).Get(index);
+        {
+            if (!TryGetSlab(entity, out var slab) || (uint)index >= _countsBySlab[slab])
+            {
+                throw new InvalidOperationException($"Queued fact storage is missing for entity '{entity}'.");
+            }
+
+            return ref _items[Offset(slab) + index];
+        }
 
         public void EnsureEntityCapacity(int entityCapacity)
         {
-            _factsByEntity.EnsureCapacity(entityCapacity);
-            _touchedEntities.EnsureCapacity(entityCapacity);
+            var normalized = NormalizeCapacity(entityCapacity);
+            if (normalized <= EntityCapacity)
+            {
+                return;
+            }
+
+            ResizeStorage(normalized, _factCapacityPerEntity);
         }
 
         public void Warmup(
@@ -92,76 +132,160 @@ namespace CascadeEngineApi
             int factCapacityPerEntity,
             FactListCapacityMode factListCapacityMode)
         {
-            EnsureEntityCapacity(entityCapacity);
+            var normalizedEntityCapacity = Math.Max(EntityCapacity, NormalizeCapacity(entityCapacity));
+            var normalizedFactCapacity = Math.Max(
+                _factCapacityPerEntity,
+                NormalizeCapacity(factCapacityPerEntity));
+            if (normalizedEntityCapacity != EntityCapacity
+                || normalizedFactCapacity != _factCapacityPerEntity)
+            {
+                ResizeStorage(normalizedEntityCapacity, normalizedFactCapacity);
+            }
+
             _factListCapacityMode = factListCapacityMode;
-
-            var normalizedFactCapacity = NormalizeCapacity(factCapacityPerEntity);
-            if (normalizedFactCapacity > _factCapacityPerEntity)
-            {
-                _factCapacityPerEntity = normalizedFactCapacity;
-            }
-
-            for (var i = 0; i < entityCapacity; i++)
-            {
-                var facts = _factsByEntity.GetOrCreate(new EntityRef(i));
-                facts.SetCapacityMode(_factListCapacityMode);
-                facts.EnsureCapacity(_factCapacityPerEntity);
-            }
         }
 
         public int MinimumFactListCapacity(int entityCapacity)
         {
-            var minimum = int.MaxValue;
-            for (var i = 0; i < entityCapacity; i++)
-            {
-                if (!_factsByEntity.TryGet(new EntityRef(i), out var facts))
-                {
-                    return 0;
-                }
-
-                if (facts.Capacity < minimum)
-                {
-                    minimum = facts.Capacity;
-                }
-            }
-
-            return minimum == int.MaxValue ? 0 : minimum;
+            var normalized = NormalizeCapacity(entityCapacity);
+            return normalized <= EntityCapacity
+                && _items.Length >= PayloadCapacity(normalized, _factCapacityPerEntity)
+                    ? _factCapacityPerEntity
+                    : 0;
         }
 
         public void Clear()
         {
-            for (var i = 0; i < _touchedEntities.Count; i++)
+            for (var slab = 0; slab < _slabCount; slab++)
             {
-                if (_factsByEntity.TryGet(_touchedEntities[i], out var facts))
+                var entity = _entitiesBySlab[slab];
+                var count = _countsBySlab[slab];
+                var offset = Offset(slab);
+                for (var i = 0; i < count; i++)
                 {
-                    facts.Clear();
+                    _items[offset + i].Dispose();
+                }
+
+                if (count > 0)
+                {
+                    Array.Clear(_items, offset, count);
+                }
+
+                if ((uint)entity.StorageIndex < _slabByEntity.Length
+                    && _slabByEntity[entity.StorageIndex] == slab + 1)
+                {
+                    _slabByEntity[entity.StorageIndex] = 0;
+                }
+
+                _entitiesBySlab[slab] = default;
+                _countsBySlab[slab] = 0;
+            }
+
+            _slabCount = 0;
+        }
+
+        private int GetOrCreateSlab(EntityRef entity)
+        {
+            EnsureEntityCapacity(entity.StorageIndex + 1);
+            var stored = _slabByEntity[entity.StorageIndex];
+            if (stored != 0)
+            {
+                var existing = stored - 1;
+                if (_entitiesBySlab[existing].Equals(entity))
+                {
+                    return existing;
+                }
+
+                throw new InvalidOperationException(
+                    $"Fact slab slot '{entity.StorageIndex}' is still owned by entity '{_entitiesBySlab[existing]}'.");
+            }
+
+            var slab = _slabCount;
+            if (slab >= _entitiesBySlab.Length)
+            {
+                EnsureEntityCapacity(slab + 1);
+            }
+
+            _slabCount++;
+            _slabByEntity[entity.StorageIndex] = slab + 1;
+            _entitiesBySlab[slab] = entity;
+            return slab;
+        }
+
+        private bool TryGetSlab(EntityRef entity, out int slab)
+        {
+            if ((uint)entity.StorageIndex < _slabByEntity.Length)
+            {
+                var stored = _slabByEntity[entity.StorageIndex];
+                if (stored != 0)
+                {
+                    var candidate = stored - 1;
+                    if (candidate < _slabCount && _entitiesBySlab[candidate].Equals(entity))
+                    {
+                        slab = candidate;
+                        return true;
+                    }
                 }
             }
 
-            _touchedEntities.Clear();
+            slab = -1;
+            return false;
         }
 
-        private EntityFactList<TFact> GetOrCreateList(EntityRef entity)
-            => _factsByEntity.GetOrCreate(entity);
-
-        private bool TryGetList(EntityRef entity, out EntityFactList<TFact> facts)
-            => _factsByEntity.TryGet(entity, out facts) && facts.Count > 0;
-
-        private EntityFactList<TFact> GetRequiredList(EntityRef entity)
+        private void GrowForAdd()
         {
-            if (_factsByEntity.TryGet(entity, out var facts))
+            if (_factListCapacityMode == FactListCapacityMode.Fixed)
             {
-                return facts;
+                throw new InvalidOperationException(
+                    $"Fact slab for '{typeof(TFact).Name}' exceeded fixed per-entity capacity '{_factCapacityPerEntity}'. Increase CascadeSettings maxFactsPerTypePerEntity or WarmupCapacityHints.FactsPerEntityPerTypeCapacity.");
             }
 
-            throw new InvalidOperationException($"Queued fact storage is missing for entity '{entity}'.");
+            if (_factCapacityPerEntity > int.MaxValue / 2)
+            {
+                throw new InvalidOperationException($"Fact slab for '{typeof(TFact).Name}' cannot grow further.");
+            }
+
+            ResizeStorage(EntityCapacity, _factCapacityPerEntity * 2);
         }
 
-        private void TrackTouched(EntityRef entity)
-            => _touchedEntities.Add(entity);
+        private void ResizeStorage(int entityCapacity, int factCapacityPerEntity)
+        {
+            var nextItems = new TFact[PayloadCapacity(entityCapacity, factCapacityPerEntity)];
+            for (var slab = 0; slab < _slabCount; slab++)
+            {
+                Array.Copy(
+                    _items,
+                    slab * _factCapacityPerEntity,
+                    nextItems,
+                    slab * factCapacityPerEntity,
+                    _countsBySlab[slab]);
+            }
 
-        private EntityFactList<TFact> CreateFactList()
-            => new EntityFactList<TFact>(_factCapacityPerEntity, _factListCapacityMode);
+            if (entityCapacity > EntityCapacity)
+            {
+                Array.Resize(ref _slabByEntity, entityCapacity);
+                Array.Resize(ref _entitiesBySlab, entityCapacity);
+                Array.Resize(ref _countsBySlab, entityCapacity);
+            }
+
+            _items = nextItems;
+            _factCapacityPerEntity = factCapacityPerEntity;
+        }
+
+        private int Offset(int slab)
+            => slab * _factCapacityPerEntity;
+
+        private static int PayloadCapacity(int entityCapacity, int factCapacityPerEntity)
+        {
+            var capacity = (long)entityCapacity * factCapacityPerEntity;
+            if (capacity > int.MaxValue)
+            {
+                throw new InvalidOperationException(
+                    $"Typed fact slab for '{typeof(TFact).Name}' exceeds supported array capacity.");
+            }
+
+            return (int)capacity;
+        }
 
         private static int NormalizeCapacity(int capacity)
             => Math.Max(capacity, 1);

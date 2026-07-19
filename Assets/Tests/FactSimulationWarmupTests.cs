@@ -85,25 +85,18 @@ namespace CascadeEngineApi.Tests
             const int entityCount = 512;
 
             var feature = new WarmupFeature();
-            var simulation = new FactSimulation(feature);
-            var options = new ReduceOptions
+            var settings = new CascadeSettings(
+                maxEntities: entityCount,
+                maxFactsPerEntity: 5,
+                maxFactsPerTypePerEntity: 1)
             {
-                MaxMilliseconds = 0
+                MaxWorkItemsPerStep = entityCount * 4,
+                MaxWorkItemsPerTick = entityCount * 4,
+                MaxPasses = 8,
+                MaxMillisecondsPerStep = 0,
+                MaxCausalDepth = 8
             };
-
-            simulation.Warmup(new WarmupCapacityHints
-            {
-                EntityCapacity = entityCount,
-                FactQueueCapacity = entityCount * 5,
-                FactsPerEntityPerTypeCapacity = 1,
-                QueryEntityCapacity = entityCount,
-                TransactionEntityCapacity = entityCount,
-                BatchEntityCapacity = entityCount,
-                CommitActionCapacity = entityCount,
-                OutputStateCapacityPerOutput = entityCount,
-                MutationCapacityPerOutput = entityCount,
-                FactListCapacityMode = FactListCapacityMode.Fixed
-            });
+            var simulation = new FactSimulation(feature, settings);
 
             var entities = new EntityRef[entityCount];
             for (var i = 0; i < entityCount; i++)
@@ -114,9 +107,9 @@ namespace CascadeEngineApi.Tests
             }
 
             var firstUseBytes = MeasureAllocatedBytes(
-                () => RunRepresentativeTick(simulation, entities, options));
+                () => RunRepresentativeTick(simulation, entities));
             var steadyStateBytes = MeasureAllocatedBytes(
-                () => RunRepresentativeTick(simulation, entities, options));
+                () => RunRepresentativeTick(simulation, entities));
 
             TestContext.WriteLine($"Cascade allocation measurement for {entityCount} entities: first-use={firstUseBytes} bytes, steady-state={steadyStateBytes} bytes.");
             Assert.GreaterOrEqual(firstUseBytes, 0);
@@ -132,8 +125,7 @@ namespace CascadeEngineApi.Tests
 
         private static SimulationResult RunRepresentativeTick(
             FactSimulation simulation,
-            EntityRef[] entities,
-            ReduceOptions options)
+            EntityRef[] entities)
         {
             for (var i = 0; i < entities.Length; i++)
             {
@@ -141,7 +133,7 @@ namespace CascadeEngineApi.Tests
                 simulation.Emit(entities[i], new WarmupPairFact(i));
             }
 
-            return simulation.RunTick(options);
+            return simulation.RunTick();
         }
 
         public sealed class WarmupFeature : FactFeature
