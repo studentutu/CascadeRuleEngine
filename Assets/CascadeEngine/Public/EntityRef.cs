@@ -5,45 +5,57 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Stable entity handle owned by the Cascade runtime. Public ids are never reused; internal storage slots may be recycled.
+    /// Generational entity handle owned by the Cascade runtime. Value identifies a recyclable slot;
+    /// Generation prevents stale handles from resolving after that slot is reused.
     /// </summary>
     public readonly struct EntityRef : IEquatable<EntityRef>
     {
+        /// <summary>
+        /// Creates a generation-zero handle. Prefer handles returned by FactSimulation for runtime entities.
+        /// </summary>
         public EntityRef(int value)
-            : this(value, value)
+            : this(value, 0)
         {
         }
 
-        internal EntityRef(int value, int storageIndex)
+        internal EntityRef(int value, uint generation)
         {
             if (value < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(value));
             }
 
-            if (storageIndex < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(storageIndex));
-            }
-
             Value = value;
-            StorageIndex = storageIndex;
+            Generation = generation;
         }
 
+        /// <summary>
+        /// Recyclable runtime slot id.
+        /// </summary>
         public int Value { get; }
-        internal int StorageIndex { get; }
+
+        /// <summary>
+        /// Slot version used to reject stale handles.
+        /// </summary>
+        public uint Generation { get; }
+        internal int StorageIndex => Value;
 
         public bool Equals(EntityRef other)
-            => Value == other.Value;
+            => Value == other.Value && Generation == other.Generation;
 
         public override bool Equals(object? obj)
             => obj is EntityRef other && Equals(other);
 
         public override int GetHashCode()
-            => Value;
+        {
+            unchecked
+            {
+                return (Value * 397) ^ (int)Generation;
+            }
+        }
 
         public override string ToString()
-            => Value.ToString();
+            => $"{Value}:{Generation}";
 
         public static bool operator ==(EntityRef left, EntityRef right)
             => left.Equals(right);

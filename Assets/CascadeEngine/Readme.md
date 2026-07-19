@@ -167,20 +167,22 @@ Entity creation and destruction requested while a tick is open are part of that 
 - A newly created entity is immediately usable by reducers and can receive facts in the same tick.
 - `DestroyEntity(entity)` emits the built-in `DeadFact`; directly emitting `DeadFact` has the same meaning.
 - Pending-dead entities remain reduction-visible through closure. Already queued facts, facts emitted after `DeadFact`, transactional reducers, state reducers, and reducer queries continue to include them.
-- `IsDestroyed` reports pending death immediately, while committed output remains readable until closure. `TryGetEntity` rejects pending-dead ids at host/persistence boundaries.
+- `IsDestroyed` reports pending death immediately, while committed output remains readable until closure. `TryGetEntity` rejects pending-dead slots.
 - Reducers that should stop domain work must make that rule explicit with `context.Facts(entity).Has<DeadFact>()`. Cleanup reducers can register directly with `Reduce<DeadFact>()`.
 - Normal output projection is skipped for pending-dead entities. Closing the tick deletes all their output states and publishes one final typed delete mutation per existing output state.
-- A failed full tick rolls back destruction. Entities created by the failed tick become permanently destroyed; ids are never reused.
+- A failed full tick rolls back destruction. Handles created by the failed tick are invalidated; their slots can be reused with a higher generation after rollback.
 - `SetStateSilently` is bootstrap/load authority only and throws while a tick is open because it would invalidate committed snapshot membership.
 
-Host-side destruction is also transactional: call `RunTick` or continue the open incremental tick to reach closure and publish deletion mutations. Facts emitted after closure to the permanently destroyed entity are rejected.
+Host-side destruction is also transactional: call `RunTick` or continue the open incremental tick to reach closure and publish deletion mutations. Facts emitted after closure through the stale handle are rejected.
 
-At host or persistence boundaries, validate stored integer ids without manufacturing unchecked handles:
+`EntityRef.Value` is a recyclable runtime slot id, not a persistent identity. `EntityRef.Generation` changes before that slot is reused, and equality includes both fields. Preserve the complete handle for transient runtime references. Use a domain-owned stable key for save data, network identity, or references that must survive entity destruction.
+
+`TryGetEntity` resolves the current live generation for a runtime slot. It is useful for current-world `FindById` lookup, but an old integer slot id can resolve to a different entity after reuse:
 
 ```csharp
-if (simulation.TryGetEntity(savedEntityId, out EntityRef entity))
+if (simulation.TryGetEntity(currentRuntimeSlot, out EntityRef entity))
 {
-    simulation.Emit(entity, new RestoreRequestedFact());
+    simulation.Emit(entity, new SelectedFact());
 }
 ```
 
@@ -229,7 +231,8 @@ Type names must be unique inside one full feature registration, including sub-fe
 The three cardinality limits are mandatory constructor arguments. The package deliberately has no guessed defaults for them.
 
 - `MaxEntities` is the maximum number of concurrent live or pending entities, not a lifetime creation limit.
-- Public entity ids remain monotonic and are never reused. Internal storage slots are recycled after destruction closes, so storage remains bounded by `MaxEntities` under entity churn.
+- Entity slots are recycled only after committed destruction or failed-tick rollback cleanup. Reuse increments the slot generation, so stale `EntityRef` values cannot alias the new entity.
+- Generation exhaustion retires that individual slot instead of wrapping and accepting a stale handle.
 - `MaxFactsPerEntity` and `MaxFactsPerTypePerEntity` are hard per-tick limits and exact warm capacities.
 - The settings-backed path uses fixed typed-slab capacity. Underestimation throws instead of allocating during reduction.
 - `MaxWorkItemsPerStep` controls incremental frame slicing. `MaxWorkItemsPerTick` is the cumulative closure guardrail across all continuation steps.
@@ -365,7 +368,7 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 
 | Type | Role |
 | --- | --- |
-| `EntityRef` | stable non-reused public entity handle backed by a recyclable internal storage slot; validate external integer ids with `FactSimulation.TryGetEntity` |
+| `EntityRef` | generational entity handle: `Value` is a recyclable runtime slot and `Generation` prevents stale-handle aliasing |
 | `CascadeSettings` | single project-level hard-cap, warmup, and default reduction-budget configuration |
 | `CascadeTypeId` | compact fact/output-state identity derived from feature registration |
 | `CascadeReductionException` | reduction guardrail failure with budget reason, fact id/name, entity, causal depth, and reducer name |
@@ -380,7 +383,7 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
 | `CommitConflictPolicy` | declared output merge policy used by feature registration and committer examples |
 | `FactFeature` | registration hub for fact reducers, transactional reducers, state reducers, and outputs |
-| `FactSimulation` | transactional entity lifecycle, validated id lookup, fact queue, reduction, commit, mutation routing, terminal disposal |
+| `FactSimulation` | transactional entity lifecycle, current-slot lookup, fact queue, reduction, commit, mutation routing, terminal disposal |
 | `ReduceOptions` | per-call fact, work-item, pass, and elapsed-time budgets |
 | `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
 | `FactListCapacityMode` | legacy-named grow or fixed policy for per-entity typed-slab slices |

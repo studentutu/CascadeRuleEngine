@@ -200,7 +200,7 @@ namespace CascadeEngineApi
         }
 
         /// <summary>
-        /// [INTEGRATION] Range: host-owned integer id. Condition: known live entity. Output: validated Cascade entity handle.
+        /// [INTEGRATION] Range: current runtime slot id. Condition: live entity in that slot. Output: current generational handle.
         /// </summary>
         public bool TryGetEntity(int id, out EntityRef entity)
         {

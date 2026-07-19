@@ -92,6 +92,12 @@ SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
+## Generational Entity Lifecycle
+
+`EntityRef` is a complete runtime identity: `Value` is a recyclable slot and `Generation` prevents stale handles from resolving after that slot is reused. Slots recycle only after committed tick closure or failed-tick rollback cleanup, never while the old entity can still participate in the open reduction.
+
+Do not persist `EntityRef.Value` as durable identity. `TryGetEntity(slotId, out entity)` finds the current live entity occupying a runtime slot; save data and network references need a domain-owned stable key.
+
 ## Stable Type Ids
 
 Every fact and output state type must declare one stable id:
@@ -191,6 +197,7 @@ Transactional registration provides generic `ReduceWhen` and `ReduceBatchWhen` o
 
 | Type | Role |
 | --- | --- |
+| `EntityRef` | generational entity handle with a recyclable runtime slot and stale-handle protection |
 | `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
 | `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |

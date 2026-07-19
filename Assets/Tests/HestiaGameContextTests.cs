@@ -212,7 +212,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void DestroyEntityPublishesDeleteMutationAtClosureAndRejectsLaterFacts()
+        public void DestroyedSlotIsReusedWithNewGenerationWithoutAcceptingStaleFacts()
         {
             var cascade = new HestiaGameContext();
             var entity = cascade.CreateEntity();
@@ -241,13 +241,22 @@ namespace CascadeEngineApi.Tests
 
             Assert.AreEqual(1, deleteMutations);
 
+            var replacement = cascade.CreateEntity();
+            Assert.AreEqual(entity.Value, replacement.Value);
+            Assert.Greater(replacement.Generation, entity.Generation);
+            Assert.AreNotEqual(entity, replacement);
+            cascade.SetInitialAmmo(replacement, ammo: 5);
+
             cascade.InputFireWeapon(entity);
+            cascade.InputFireWeapon(replacement);
             var result = cascade.RunTick();
 
             Assert.AreEqual(1, result.RejectedDestroyedEntityFacts);
-            Assert.AreEqual(0, result.ProcessedFacts);
-            Assert.AreEqual(0, result.MutationCount);
+            Assert.AreEqual(2, result.AcceptedFacts);
+            Assert.AreEqual(2, result.ProcessedFacts);
+            Assert.AreEqual(1, result.MutationCount);
             Assert.IsFalse(cascade.TryGetAmmo(entity, out _));
+            Assert.AreEqual(4, cascade.GetAmmo(replacement).Current);
         }
 
         [Test]

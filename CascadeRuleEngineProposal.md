@@ -514,7 +514,7 @@ public interface IReduceContext
 Lifecycle rules:
 
 ```text
-CreateEntity allocates a live entity id immediately and returns it to the reducer.
+CreateEntity allocates a live generational entity handle immediately and returns it to the reducer.
 New entities have no output state until committers set output state.
 Facts may be emitted to newly created entities in the same tick.
 DestroyEntity emits the built-in DeadFact and stages permanent destruction for closure.
@@ -533,8 +533,9 @@ IFactSimulation.DestroyEntity can be called outside reduction before or after Ru
 Destroying an entity stages DeadFact; closure deletes its output states and publishes typed delete mutations.
 Reducer-side creation can participate in the same tick by receiving emitted facts.
 Consumer-side creation/destruction affects the next tick unless it is called before RunTick.
-Entity ids are handles owned by the Cascade runtime; destroyed ids are not reused in the MVP.
-Internal storage slots are reused after committed destruction. Dense runtime storage is bounded by concurrent entity capacity rather than lifetime-created entity count.
+EntityRef.Value is a recyclable runtime slot id; EntityRef.Generation prevents a stale handle from resolving after reuse.
+Slots are reused only after committed destruction or failed-tick rollback cleanup. Dense runtime storage is bounded by concurrent entity capacity rather than lifetime-created entity count.
+TryGetEntity(slotId, out entity) resolves the current live generation for current-world lookup. A slot id alone is not persistent identity; save data and network identity require a domain-owned stable key.
 ```
 
 Entity fact view:

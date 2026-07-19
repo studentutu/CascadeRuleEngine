@@ -5,7 +5,7 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Entity lifecycle store with monotonic public ids and reusable bounded internal storage slots.
+    /// Bounded generational entity store. Entity values are recyclable sparse slots and generations reject stale handles.
     /// </summary>
     internal sealed class EntityStore
     {
@@ -14,17 +14,17 @@ namespace CascadeEngineApi
         private const byte PendingDestroyed = 3;
         private const byte PendingCreatedAndDestroyed = 4;
         private const byte Destroyed = 5;
+        private const byte Retired = 6;
 
         private readonly int _maxEntities;
         private readonly DenseEntitySet _pendingCreated;
         private readonly DenseEntitySet _pendingDestroyed;
         private byte[] _status;
-        private int[] _ownerIds;
+        private uint[] _generations;
         private int[] _freeSlots;
         private int _slotCount;
         private int _activeCount;
         private int _freeSlotCount;
-        private int _nextEntityId;
 
         internal EntityStore(int maxEntities = int.MaxValue)
         {
@@ -36,9 +36,8 @@ namespace CascadeEngineApi
             _maxEntities = maxEntities;
             var initialCapacity = maxEntities == int.MaxValue ? 64 : maxEntities;
             _status = new byte[initialCapacity];
-            _ownerIds = new int[initialCapacity];
+            _generations = new uint[initialCapacity];
             _freeSlots = new int[initialCapacity];
-            FillOwnerIds(0, _ownerIds.Length);
             _pendingCreated = new DenseEntitySet(initialCapacity);
             _pendingDestroyed = new DenseEntitySet(initialCapacity);
         }
@@ -54,19 +53,11 @@ namespace CascadeEngineApi
                     $"Concurrent entity limit '{_maxEntities}' reached. Increase CascadeSettings.MaxEntities.");
             }
 
-            if (_nextEntityId == int.MaxValue)
-            {
-                throw new InvalidOperationException("Entity id space exhausted. Public entity ids are never reused.");
-            }
-
             var slot = TakeStorageSlot();
-            var id = _nextEntityId;
-            _nextEntityId++;
-            _ownerIds[slot] = id;
             _status[slot] = stageForActiveTick ? PendingCreated : Live;
             _activeCount++;
 
-            var entity = new EntityRef(id, slot);
+            var entity = new EntityRef(slot, _generations[slot]);
             if (stageForActiveTick)
             {
                 _pendingCreated.Add(entity);
@@ -88,17 +79,16 @@ namespace CascadeEngineApi
         }
 
         internal bool IsKnown(EntityRef entity)
-            => (uint)entity.Value < _nextEntityId;
+            => (uint)entity.Value < _slotCount;
 
         internal bool TryGetLive(int id, out EntityRef entity)
         {
-            var slot = FindSlotById(id);
-            if (slot >= 0)
+            if ((uint)id < _slotCount)
             {
-                var status = _status[slot];
+                var status = _status[id];
                 if (status == Live || status == PendingCreated)
                 {
-                    entity = new EntityRef(id, slot);
+                    entity = new EntityRef(id, _generations[id]);
                     return true;
                 }
             }
@@ -112,7 +102,7 @@ namespace CascadeEngineApi
             Validate(entity);
             if (TryResolveActiveSlot(entity, out var slot))
             {
-                return new EntityRef(entity.Value, slot);
+                return new EntityRef(slot, _generations[slot]);
             }
 
             throw new InvalidOperationException($"Destroyed entity '{entity}' has no active storage slot.");
@@ -122,7 +112,7 @@ namespace CascadeEngineApi
         {
             Validate(entity);
             return TryResolveActiveSlot(entity, out var slot)
-                ? new EntityRef(entity.Value, slot)
+                ? new EntityRef(slot, _generations[slot])
                 : entity;
         }
 
@@ -134,7 +124,7 @@ namespace CascadeEngineApi
                 return false;
             }
 
-            resolved = new EntityRef(entity.Value, slot);
+            resolved = new EntityRef(slot, _generations[slot]);
             return true;
         }
 
@@ -158,14 +148,13 @@ namespace CascadeEngineApi
 
             var status = _status[slot];
             return status == PendingDestroyed
-                || status == PendingCreatedAndDestroyed
-                || status == Destroyed;
+                || status == PendingCreatedAndDestroyed;
         }
 
         internal bool IsRetired(EntityRef entity)
         {
             Validate(entity);
-            return !TryResolveActiveSlot(entity, out var slot) || _status[slot] == Destroyed;
+            return !TryResolveActiveSlot(entity, out _);
         }
 
         internal bool StageDestroy(EntityRef entity)
@@ -188,7 +177,7 @@ namespace CascadeEngineApi
         internal bool IsLive(EntityRef entity)
         {
             Validate(entity);
-            return TryResolveActiveSlot(entity, out var slot) && _status[slot] != Destroyed;
+            return TryResolveActiveSlot(entity, out _);
         }
 
         internal EntityRef PendingDestroyAt(int index)
@@ -210,7 +199,7 @@ namespace CascadeEngineApi
                 }
                 else if (_status[slot] == PendingCreatedAndDestroyed)
                 {
-                    ReleaseStorageSlot(entity, slot);
+                    ReleaseStorageSlot(slot);
                 }
             }
 
@@ -219,7 +208,7 @@ namespace CascadeEngineApi
                 var entity = _pendingDestroyed[i];
                 if (TryResolveActiveSlot(entity, out var slot) && _status[slot] == PendingDestroyed)
                 {
-                    ReleaseStorageSlot(entity, slot);
+                    ReleaseStorageSlot(slot);
                 }
             }
 
@@ -233,7 +222,7 @@ namespace CascadeEngineApi
                 var entity = _pendingCreated[i];
                 if (TryResolveActiveSlot(entity, out var slot))
                 {
-                    ReleaseStorageSlot(entity, slot);
+                    ReleaseStorageSlot(slot);
                 }
             }
 
@@ -253,12 +242,11 @@ namespace CascadeEngineApi
         {
             ClearPending();
             _status = Array.Empty<byte>();
-            _ownerIds = Array.Empty<int>();
+            _generations = Array.Empty<uint>();
             _freeSlots = Array.Empty<int>();
             _slotCount = 0;
             _activeCount = 0;
             _freeSlotCount = 0;
-            _nextEntityId = 0;
         }
 
         private int TakeStorageSlot()
@@ -269,45 +257,47 @@ namespace CascadeEngineApi
                 return _freeSlots[_freeSlotCount];
             }
 
+            if (_slotCount >= _maxEntities)
+            {
+                throw new InvalidOperationException(
+                    "No reusable entity slots remain because their generation space is exhausted.");
+            }
+
             EnsureCapacity(_slotCount + 1);
             var slot = _slotCount;
             _slotCount++;
             return slot;
         }
 
-        private void ReleaseStorageSlot(EntityRef entity, int slot)
+        private void ReleaseStorageSlot(int slot)
         {
-            _status[slot] = Destroyed;
-            _ownerIds[slot] = -1;
             _activeCount--;
+
+            if (_generations[slot] == uint.MaxValue)
+            {
+                _status[slot] = Retired;
+                return;
+            }
+
+            _generations[slot]++;
+            _status[slot] = Destroyed;
             _freeSlots[_freeSlotCount] = slot;
             _freeSlotCount++;
         }
 
         private bool TryResolveActiveSlot(EntityRef entity, out int slot)
         {
-            var candidate = entity.StorageIndex;
-            if ((uint)candidate < _slotCount && _ownerIds[candidate] == entity.Value)
+            var candidate = entity.Value;
+            if ((uint)candidate < _slotCount
+                && _generations[candidate] == entity.Generation
+                && IsActiveStatus(_status[candidate]))
             {
                 slot = candidate;
                 return true;
             }
 
-            slot = FindSlotById(entity.Value);
-            return slot >= 0;
-        }
-
-        private int FindSlotById(int id)
-        {
-            for (var slot = 0; slot < _slotCount; slot++)
-            {
-                if (_ownerIds[slot] == id)
-                {
-                    return slot;
-                }
-            }
-
-            return -1;
+            slot = -1;
+            return false;
         }
 
         private void EnsureCapacity(int required)
@@ -327,11 +317,9 @@ namespace CascadeEngineApi
                 ? 1L
                 : (long)_status.Length * 2L;
             var capacity = (int)Math.Min(_maxEntities, Math.Max(required, doubled));
-            var previousCapacity = _ownerIds.Length;
             Array.Resize(ref _status, capacity);
-            Array.Resize(ref _ownerIds, capacity);
+            Array.Resize(ref _generations, capacity);
             Array.Resize(ref _freeSlots, capacity);
-            FillOwnerIds(previousCapacity, capacity);
             _pendingCreated.EnsureCapacity(capacity);
             _pendingDestroyed.EnsureCapacity(capacity);
         }
@@ -342,12 +330,10 @@ namespace CascadeEngineApi
             _pendingDestroyed.Clear();
         }
 
-        private void FillOwnerIds(int start, int end)
-        {
-            for (var i = start; i < end; i++)
-            {
-                _ownerIds[i] = -1;
-            }
-        }
+        private static bool IsActiveStatus(byte status)
+            => status == Live
+                || status == PendingCreated
+                || status == PendingDestroyed
+                || status == PendingCreatedAndDestroyed;
     }
 }

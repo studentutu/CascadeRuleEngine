@@ -13,7 +13,7 @@
   - `EntityRefBuffer`
 - Raw dense storage mechanics are now isolated behind tested utilities instead of being embedded directly in `FactStore`, `FactBucket`, or `FactSimulation`.
 - `IFact` now inherits `IDisposable`; accepted stored facts are disposed when tick-local fact storage clears.
-- `EntityStore` now tracks destroyed entity ids.
+- `EntityStore` tracks recyclable entity slots with generations, rejecting stale handles in O(1).
 - `FactSimulation.Warmup(WarmupCapacityHints)` now pre-sizes dense fact stores, query/transaction/batch buffers, commit and mutation buffers, the fact queue, and registered fact buckets for expected gameplay load.
 - Fact emit routing now uses per-fact typed routes containing the fact id, so emit avoids type-catalog fact id lookup.
 - Output state routing now binds simulation-owned typed state buckets, so `GetStateBucket<TState>()` and query/state access avoid type-catalog output id lookup.
@@ -46,8 +46,8 @@
   - `DestroyEntity` and direct `DeadFact` emission stage the same additive lifecycle fact.
   - pending-dead entities continue immediate, transactional, batch, and state reduction through closure; reducers explicitly skip work by querying `DeadFact`.
   - normal output projection is skipped for pending-dead entities and durable output deletion waits for closure.
-  - failed ticks roll back destruction and permanently tombstone ids created by the failed tick.
-- `FactSimulation.TryGetEntity(int, out EntityRef)` validates host/persistence ids without expanding `IFactSimulation`.
+  - failed ticks roll back destruction and invalidate handles created by the failed tick before their slots can be reused.
+- `FactSimulation.TryGetEntity(int, out EntityRef)` resolves the current live generation for a runtime slot without expanding `IFactSimulation`; integer slot ids are not persistent identity.
 - Output state storage now uses compact sparse membership/value arrays instead of per-output dictionaries. One-state queries iterate that state only; two-state queries iterate the smaller state set.
 - Entity lifecycle storage is warmed array state instead of an allocating destroyed-id `HashSet`.
 - The state-trigger vertical slice covers activation/deactivation, dormant filtering, cross-entity state query, incremental work suspension, reducer-side create/destroy, failure rollback, and same-fact multi-reducer continuation.
@@ -55,7 +55,7 @@
 - `IFact<TFact>` and `IOutputState<TState>` now reduce normal fact/state equality boilerplate to one typed `Equals` method. `IFact` supplies default no-op disposal; resource-owning facts can still override it.
 - Commit snapshot isolation is covered across both output registration order and touched-entity order: all committers read the previous committed snapshot before any queued durable write is applied.
 - `CascadeSettings` is the recommended single construction-time policy for concurrent entity capacity, fact cardinality, warmup, step/tick work budgets, pass/time limits, and causal depth. Parameterless tick methods reuse its captured policy.
-- Public entity ids remain monotonic and non-reused while internal storage slots recycle after committed destruction. Dense fact/state/reducer storage is now bounded by maximum concurrent slots instead of lifetime-created ids.
+- `EntityRef` is generational: `Value` is a recyclable runtime slot, `Generation` changes before reuse, and stale handles cannot alias new entities. Slots recycle only after closure or rollback cleanup, keeping dense fact/state/reducer storage bounded by maximum concurrent entities.
 - Per-fact storage now uses sparse flat typed slabs: slot-to-slab mapping, compact touched owners/counts, and one contiguous payload array. Per-entity fact-list objects and arrays were removed while zero-copy `ReadOnlySpan<TFact>` access, disposal ownership, fixed-capacity failure, and grow-on-demand compatibility remain covered.
 
 ## Known Gaps

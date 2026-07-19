@@ -290,7 +290,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void UnifiedSettingsBoundConcurrentEntitiesAndReuseStorageSlots()
+        public void UnifiedSettingsBoundConcurrentEntitiesAndReuseGenerationalIds()
         {
             var settings = new CascadeSettings(
                 maxEntities: 1,
@@ -318,16 +318,21 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(
                 settings.MaxFactsPerTypePerEntity,
                 boundedCapacity.MinimumFactListCapacity);
-            var lastId = first.Value;
+            var previous = first;
 
             for (var i = 0; i < 32; i++)
             {
                 var entity = simulation.CreateEntity();
-                Assert.Greater(entity.Value, lastId);
-                lastId = entity.Value;
+                Assert.AreEqual(first.Value, entity.Value);
+                Assert.Greater(entity.Generation, previous.Generation);
+                Assert.AreNotEqual(previous, entity);
+                Assert.IsTrue(simulation.IsDestroyed(previous));
+                Assert.IsTrue(simulation.TryGetEntity(entity.Value, out var currentById));
+                Assert.AreEqual(entity, currentById);
                 simulation.SetStateSilently(entity, new LifecycleState(i + 2));
                 simulation.DestroyEntity(entity);
                 simulation.RunTick();
+                previous = entity;
             }
 
             Assert.AreEqual(
@@ -335,6 +340,8 @@ namespace CascadeEngineApi.Tests
                 simulation.CaptureCapacitySnapshot(settings.MaxEntities));
 
             var current = simulation.CreateEntity();
+            Assert.AreEqual(first.Value, current.Value);
+            Assert.Greater(current.Generation, previous.Generation);
             simulation.SetStateSilently(current, new LifecycleState(99));
             simulation.Emit(first, new DeadFact());
             var staleResult = simulation.RunTick();
@@ -390,7 +397,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void FailedTickPermanentlyTombstonesReducerCreatedEntity()
+        public void FailedTickInvalidatesReducerCreatedEntityGeneration()
         {
             var feature = new LifecycleFeature();
             var simulation = new FactSimulation(feature);
@@ -409,6 +416,12 @@ namespace CascadeEngineApi.Tests
             Assert.IsFalse(simulation.TryGetEntity(child.Value, out _));
             Assert.IsTrue(simulation.IsDestroyed(child));
             Assert.IsFalse(simulation.TryGet<ChildState>(child, out _));
+
+            var replacement = simulation.CreateEntity();
+            Assert.AreEqual(child.Value, replacement.Value);
+            Assert.Greater(replacement.Generation, child.Generation);
+            Assert.AreNotEqual(child, replacement);
+            Assert.IsTrue(simulation.IsDestroyed(child));
         }
 
         [Test]
