@@ -18,6 +18,8 @@ namespace CascadeEngineApi
 
         void BindAffectedOutput(FactFeatureRegistry registry, IOutputRegistration output);
 
+        void MarkNegativeConditionInput(FactFeatureRegistry registry);
+
         IFactBucket Create(
             CascadeTypeId id,
             int entityCapacity,

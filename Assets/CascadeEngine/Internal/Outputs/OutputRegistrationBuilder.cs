@@ -14,6 +14,7 @@ namespace CascadeEngineApi
         private readonly FactFeatureRegistry _registry;
         private readonly string _name;
         private readonly FactTypeList _affectedFacts = new FactTypeList();
+        private readonly FactTypeList _absentFacts = new FactTypeList();
         private readonly List<int> _affectedFactPriorities = new List<int>();
         private CommitConflictPolicy _conflictPolicy = CommitConflictPolicy.FoldAll;
 
@@ -39,6 +40,21 @@ namespace CascadeEngineApi
             return this;
         }
 
+        /// <summary>
+        /// [INTEGRATION] Reconciles entities already containing this output when the closed tick has none of the declared facts.
+        /// </summary>
+        public OutputRegistrationBuilder<TState> Without<TFact>()
+            where TFact : struct, IFact
+        {
+            if (!_absentFacts.Add(FactType.Of<TFact>()))
+            {
+                throw new InvalidOperationException(
+                    $"Absent fact '{typeof(TFact).Name}' is already registered for output '{_name}'.");
+            }
+
+            return this;
+        }
+
         public OutputRegistrationBuilder<TState> ConflictPolicy(CommitConflictPolicy policy)
         {
             _conflictPolicy = policy;
@@ -51,6 +67,7 @@ namespace CascadeEngineApi
                 _name,
                 _affectedFacts.ToArray(),
                 _affectedFactPriorities.ToArray(),
+                _absentFacts.ToArray(),
                 _conflictPolicy);
     }
 }

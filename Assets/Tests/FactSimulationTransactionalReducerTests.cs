@@ -148,6 +148,171 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(default(ClosureResultState), incompleteState);
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ForbiddenFactSuppressesNegativeReducerRegardlessOfArrivalOrder(
+            bool forbiddenFirst)
+        {
+            NegativeRuleReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new NegativeRuleFeature());
+            var entity = simulation.CreateEntity();
+
+            if (forbiddenFirst)
+            {
+                simulation.Emit(entity, new NegativeBlockedFact());
+            }
+
+            simulation.Emit(entity, new NegativeLeftFact(4));
+
+            if (!forbiddenFirst)
+            {
+                simulation.Emit(entity, new NegativeBlockedFact());
+            }
+
+            var result = simulation.RunTick(new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            });
+
+            Assert.IsTrue(result.Complete);
+            Assert.AreEqual(0, NegativeRuleReducer.InvocationCount);
+            Assert.AreEqual(0, result.TransactionalReducerInvocations);
+            Assert.AreEqual(0, result.ReducerInvocations);
+            Assert.IsFalse(simulation.TryGet<NegativeResultState>(entity, out _));
+        }
+
+        [Test]
+        public void NegativeReducerRunsAfterPositiveClosureWhenForbiddenFactIsAbsent()
+        {
+            NegativeRuleReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new NegativeRuleFeature());
+            var entity = simulation.CreateEntity();
+
+            simulation.Emit(entity, new NegativeLeftFact(4));
+
+            var result = simulation.RunTick(new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            });
+
+            Assert.IsTrue(result.Complete);
+            Assert.AreEqual(1, NegativeRuleReducer.InvocationCount);
+            Assert.AreEqual(1, result.ReducerInvocations);
+            Assert.AreEqual(0, result.TransactionalReducerInvocations);
+            Assert.AreEqual(4, simulation.Get<NegativeResultState>(entity).Value);
+        }
+
+        [Test]
+        public void NegativeReducerPreservesDistinctTriggerFactMultiplicity()
+        {
+            NegativeRuleReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new NegativeRuleFeature());
+            var entity = simulation.CreateEntity();
+
+            simulation.Emit(entity, new NegativeLeftFact(4));
+            simulation.Emit(entity, new NegativeLeftFact(5));
+
+            var result = simulation.RunTick(new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            });
+
+            Assert.IsTrue(result.Complete);
+            Assert.AreEqual(2, NegativeRuleReducer.InvocationCount);
+            Assert.AreEqual(2, result.ReducerInvocations);
+            Assert.AreEqual(5, simulation.Get<NegativeResultState>(entity).Value);
+        }
+
+        [Test]
+        public void IncrementalNegativePhaseSealsLateHostInputUntilClosure()
+        {
+            NegativeRuleReducer.InvocationCount = 0;
+            NegativeStartReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new IncrementalNegativeRuleFeature());
+            var entity = simulation.CreateEntity();
+            simulation.Emit(entity, new NegativeLeftFact(4));
+            var options = new ReduceOptions
+            {
+                MaxFacts = 100,
+                MaxWorkItems = 1,
+                MaxMilliseconds = 0
+            };
+
+            Assert.IsFalse(simulation.RunTickIncremental(options, out _));
+            Assert.AreEqual(1, NegativeStartReducer.InvocationCount);
+            Assert.AreEqual(0, NegativeRuleReducer.InvocationCount);
+
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => simulation.Emit(entity, new NegativeBlockedFact()));
+            StringAssert.Contains("input is sealed", exception.Message);
+
+            SimulationResult result;
+            do
+            {
+                simulation.RunTickIncremental(options, out result);
+            }
+            while (!result.Complete);
+
+            Assert.AreEqual(1, NegativeRuleReducer.InvocationCount);
+            Assert.AreEqual(4, simulation.Get<NegativeResultState>(entity).Value);
+        }
+
+        [Test]
+        public void ContradictoryNegativeRegistrationFailsDuringFeatureConstruction()
+        {
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => new ContradictoryNegativeRuleFeature());
+
+            StringAssert.Contains("trigger on and forbid", exception.Message);
+        }
+
+        [Test]
+        public void StaleEntityCannotInjectForbiddenFactIntoReusedSlot()
+        {
+            NegativeRuleReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new NegativeRuleFeature());
+            var stale = simulation.CreateEntity();
+            simulation.DestroyEntity(stale);
+            simulation.RunTick(new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            });
+
+            var current = simulation.CreateEntity();
+            Assert.AreEqual(stale.Value, current.Value);
+            Assert.AreNotEqual(stale.Generation, current.Generation);
+            simulation.Emit(stale, new NegativeBlockedFact());
+
+            simulation.Emit(current, new NegativeLeftFact(4));
+            var result = simulation.RunTick(new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            });
+
+            Assert.AreEqual(1, result.RejectedDestroyedEntityFacts);
+            Assert.AreEqual(1, NegativeRuleReducer.InvocationCount);
+            Assert.AreEqual(4, simulation.Get<NegativeResultState>(current).Value);
+        }
+
+        [Test]
+        public void NegativeReducerCannotMutateAnotherNegativeCondition()
+        {
+            var simulation = new FactSimulation(new InvalidNegativeEmissionFeature());
+            var entity = simulation.CreateEntity();
+            simulation.Emit(entity, new NegativeLeftFact(4));
+
+            var exception = Assert.Throws<CascadeReductionException>(
+                () => simulation.RunTick(new ReduceOptions
+                {
+                    MaxMilliseconds = 0
+                }));
+
+            Assert.IsNotNull(exception.InnerException);
+            StringAssert.Contains(
+                "sealed Without condition",
+                exception.InnerException!.Message);
+        }
+
         private sealed class ArityFeature : FactFeature
         {
             public ArityFeature()
@@ -201,6 +366,111 @@ namespace CascadeEngineApi.Tests
             }
 
             public OutputState<EntityPairResultState> Result { get; }
+        }
+
+        private sealed class NegativeRuleFeature : FactFeature
+        {
+            public NegativeRuleFeature()
+            {
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeBlockedFact>()
+                    .With<NegativeRuleReducer>();
+
+                Output<NegativeResultState>("NegativeResult")
+                    .AffectedBy<NegativeResolvedFact>(0)
+                    .CommitWith<NegativeResultCommitter>();
+            }
+        }
+
+        private sealed class IncrementalNegativeRuleFeature : FactFeature
+        {
+            public IncrementalNegativeRuleFeature()
+            {
+                Reduce<NegativeLeftFact>()
+                    .With<NegativeStartReducer>();
+
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeBlockedFact>()
+                    .With<NegativeRuleReducer>();
+
+                Output<NegativeResultState>("IncrementalNegativeResult")
+                    .AffectedBy<NegativeResolvedFact>(0)
+                    .CommitWith<NegativeResultCommitter>();
+            }
+        }
+
+        private sealed class ContradictoryNegativeRuleFeature : FactFeature
+        {
+            public ContradictoryNegativeRuleFeature()
+            {
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeLeftFact>()
+                    .With<NegativeRuleReducer>();
+            }
+        }
+
+        private sealed class InvalidNegativeEmissionFeature : FactFeature
+        {
+            public InvalidNegativeEmissionFeature()
+            {
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeBlockedFact>()
+                    .With<InvalidNegativeEmissionReducer>();
+            }
+        }
+
+        private sealed class NegativeStartReducer : IFactReducer<NegativeLeftFact>
+        {
+            internal static int InvocationCount;
+
+            public void Reduce(
+                IReduceContext ctx,
+                EntityRef entity,
+                in NegativeLeftFact fact)
+            {
+                InvocationCount++;
+            }
+        }
+
+        private sealed class NegativeRuleReducer : IFactReducer<NegativeLeftFact>
+        {
+            internal static int InvocationCount;
+
+            public void Reduce(
+                IReduceContext ctx,
+                EntityRef entity,
+                in NegativeLeftFact fact)
+            {
+                InvocationCount++;
+                ctx.Emit(entity, new NegativeResolvedFact(fact.Value));
+            }
+        }
+
+        private sealed class InvalidNegativeEmissionReducer :
+            IFactReducer<NegativeLeftFact>
+        {
+            public void Reduce(
+                IReduceContext ctx,
+                EntityRef entity,
+                in NegativeLeftFact fact)
+            {
+                ctx.Emit(entity, new NegativeBlockedFact());
+            }
+        }
+
+        private sealed class NegativeResultCommitter :
+            IOutputCommitter<NegativeResultState>
+        {
+            public CommitDecision<NegativeResultState> Commit(
+                ICommitContext ctx,
+                EntityRef entity,
+                in Optional<NegativeResultState> previous)
+            {
+                return ctx.Facts(entity).TryGetLatest<NegativeResolvedFact>(out var fact)
+                    ? CommitDecision<NegativeResultState>.Set(
+                        new NegativeResultState(fact.Value))
+                    : CommitDecision<NegativeResultState>.Unchanged();
+            }
         }
 
         private sealed class EntityPairReducer : ITransactionalReducer
@@ -770,6 +1040,51 @@ namespace CascadeEngineApi.Tests
 
             public override int GetHashCode()
                 => unchecked((BatchCall * 397) ^ RightStrategy);
+        }
+
+        private readonly struct NegativeLeftFact : IFact<NegativeLeftFact>
+        {
+            public NegativeLeftFact(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(NegativeLeftFact other)
+                => Value == other.Value;
+        }
+
+        private readonly struct NegativeBlockedFact : IFact<NegativeBlockedFact>
+        {
+            public bool Equals(NegativeBlockedFact other)
+                => true;
+        }
+
+        private readonly struct NegativeResolvedFact : IFact<NegativeResolvedFact>
+        {
+            public NegativeResolvedFact(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(NegativeResolvedFact other)
+                => Value == other.Value;
+        }
+
+        private readonly struct NegativeResultState : IOutputState<NegativeResultState>
+        {
+            public NegativeResultState(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(NegativeResultState other)
+                => Value == other.Value;
         }
     }
 }

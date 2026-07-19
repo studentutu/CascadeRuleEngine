@@ -123,6 +123,36 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(0, result.MutationCount);
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void DeadFactSuppressesAmmoSpendRegardlessOfArrivalOrder(
+            bool destroyFirst)
+        {
+            var cascade = new HestiaGameContext();
+            var entity = cascade.CreateEntity();
+            cascade.SetInitialAmmo(entity, ammo: 2);
+
+            if (destroyFirst)
+            {
+                cascade.DestroyEntity(entity);
+            }
+
+            cascade.InputFireWeapon(entity);
+
+            if (!destroyFirst)
+            {
+                cascade.DestroyEntity(entity);
+            }
+
+            var result = cascade.RunTick();
+
+            Assert.IsTrue(result.Complete);
+            Assert.AreEqual(2, result.AcceptedFacts);
+            Assert.AreEqual(0, result.ReducerInvocations);
+            Assert.AreEqual(1, result.MutationCount);
+            Assert.IsFalse(cascade.TryGetAmmo(entity, out _));
+        }
+
         [Test]
         public void SingleMovePublishesTypedMutation()
         {

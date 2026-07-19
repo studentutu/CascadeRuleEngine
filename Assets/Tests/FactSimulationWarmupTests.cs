@@ -17,7 +17,7 @@ namespace CascadeEngineApi.Tests
             var hints = new WarmupCapacityHints
             {
                 EntityCapacity = entityCount,
-                FactQueueCapacity = entityCount * 5,
+                FactQueueCapacity = entityCount * 6,
                 FactsPerEntityPerTypeCapacity = 2,
                 QueryEntityCapacity = entityCount,
                 TransactionEntityCapacity = entityCount,
@@ -31,8 +31,8 @@ namespace CascadeEngineApi.Tests
             simulation.Warmup(hints);
             var before = simulation.CaptureCapacitySnapshot(entityCount);
 
-            Assert.AreEqual(7, before.FactBucketCount); // Six feature facts plus built-in DeadFact.
-            Assert.GreaterOrEqual(before.FactQueueCapacity, entityCount * 5);
+            Assert.AreEqual(8, before.FactBucketCount); // Seven feature facts plus built-in DeadFact.
+            Assert.GreaterOrEqual(before.FactQueueCapacity, entityCount * 6);
             Assert.GreaterOrEqual(before.FactTouchedEntityCapacity, entityCount);
             Assert.GreaterOrEqual(before.FactCounterEntityCapacity, entityCount);
             Assert.GreaterOrEqual(before.MinimumFactBucketEntityCapacity, entityCount);
@@ -59,8 +59,8 @@ namespace CascadeEngineApi.Tests
             });
 
             Assert.IsTrue(result.Complete);
-            Assert.AreEqual(entityCount * 5, result.AcceptedFacts);
-            Assert.AreEqual(entityCount, result.ReducerInvocations);
+            Assert.AreEqual(entityCount * 6, result.AcceptedFacts);
+            Assert.AreEqual(entityCount * 2, result.ReducerInvocations);
             Assert.AreEqual(entityCount + 1, result.TransactionalReducerInvocations);
             Assert.AreEqual(entityCount, result.MutationCount);
 
@@ -72,7 +72,7 @@ namespace CascadeEngineApi.Tests
                     mutations++;
                     Assert.IsTrue(mutation.HasNext);
                     Assert.AreEqual(entity.Value, mutation.Next.Value);
-                    Assert.AreEqual(3, mutation.Next.SourceCount);
+                    Assert.AreEqual(4, mutation.Next.SourceCount);
                 });
 
             Assert.AreEqual(entityCount, mutations);
@@ -87,7 +87,7 @@ namespace CascadeEngineApi.Tests
             var feature = new WarmupFeature();
             var settings = new CascadeSettings(
                 maxEntities: entityCount,
-                maxFactsPerEntity: 5,
+                maxFactsPerEntity: 6,
                 maxFactsPerTypePerEntity: 1)
             {
                 MaxWorkItemsPerStep = entityCount * 4,
@@ -149,10 +149,16 @@ namespace CascadeEngineApi.Tests
                 ReduceBatchWhen<WarmupStartFact, WarmupPairFact>()
                     .With<WarmupBatchReducer>();
 
+                Reduce<WarmupStartFact>()
+                    .Without<WarmupUnusedFact>()
+                    .With<WarmupNegativeReducer>();
+
                 Result = Output<WarmupResultState>("WarmupResult")
                     .AffectedBy<WarmupDerivedFact>(0)
                     .AffectedBy<WarmupTransactionalFact>(0)
                     .AffectedBy<WarmupBatchFact>(0)
+                    .AffectedBy<WarmupNegativeFact>(0)
+                    .Without<WarmupUnusedFact>()
                     .CommitWith<WarmupResultCommitter>();
 
                 Bootstrap = Output<WarmupBootstrapState>("WarmupBootstrap")
@@ -207,6 +213,18 @@ namespace CascadeEngineApi.Tests
             }
         }
 
+        public sealed class WarmupNegativeReducer :
+            IFactReducer<WarmupStartFact>
+        {
+            public void Reduce(
+                IReduceContext ctx,
+                EntityRef entity,
+                in WarmupStartFact fact)
+            {
+                ctx.Emit(entity, new WarmupNegativeFact(entity.Value));
+            }
+        }
+
         public sealed class WarmupResultCommitter : IOutputCommitter<WarmupResultState>
         {
             public CommitDecision<WarmupResultState> Commit(
@@ -229,6 +247,16 @@ namespace CascadeEngineApi.Tests
                 if (facts.Has<WarmupBatchFact>())
                 {
                     sourceCount++;
+                }
+
+                if (facts.Has<WarmupNegativeFact>())
+                {
+                    sourceCount++;
+                }
+
+                if (sourceCount == 0)
+                {
+                    return CommitDecision<WarmupResultState>.Unchanged();
                 }
 
                 return CommitDecision<WarmupResultState>.Set(
@@ -400,6 +428,19 @@ namespace CascadeEngineApi.Tests
             public void Dispose()
             {
             }
+        }
+
+        public readonly struct WarmupNegativeFact : IFact<WarmupNegativeFact>
+        {
+            public WarmupNegativeFact(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(WarmupNegativeFact other)
+                => Value == other.Value;
         }
     }
 

@@ -12,6 +12,7 @@ namespace Hestia
         public HestiaGameSimulationFeature()
         {
             Reduce<AmmoSpendRequestedFact>()
+                .Without<DeadFact>()
                 .With<HestiaAmmoSpendRequestReducer>();
 
             Reduce<MoveRequestedFact>()
@@ -23,6 +24,7 @@ namespace Hestia
                 .CommitWith<HestiaAmmoCommitter>();
 
             Position = Output<HestiaPositionState>("Position")
+                .Without<DeadFact>()
                 .AffectedBy<MoveResolvedFact>(priority: 100)
                 .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
                 .CommitWith<HestiaPositionCommitter>();

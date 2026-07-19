@@ -29,6 +29,9 @@ namespace CascadeEngineApi
         public void BindAffectedOutput(FactFeatureRegistry registry, IOutputRegistration output)
             => FactEmitRouteCache<TFact>.Require(registry).AddAffectedOutput(output);
 
+        public void MarkNegativeConditionInput(FactFeatureRegistry registry)
+            => FactEmitRouteCache<TFact>.Require(registry).MarkNegativeConditionInput();
+
         public IFactBucket Create(
             CascadeTypeId id,
             int entityCapacity,

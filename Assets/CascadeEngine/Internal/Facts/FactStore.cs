@@ -36,6 +36,7 @@ namespace CascadeEngineApi
         internal int TouchedEntityCapacity => _touchedEntities.Capacity;
         internal int FactCounterEntityCapacity => _factCountsByEntity.Capacity;
         internal int BucketCount => _buckets.Count;
+        internal int QueuedFactCount => _queue.Count;
 
         internal bool HasQueuedFacts => _queueHead < _queue.Count;
 
@@ -214,6 +215,9 @@ namespace CascadeEngineApi
             return true;
         }
 
+        internal QueuedFact QueuedFactAt(int index)
+            => _queue[index];
+
         internal bool Has(EntityRef entity, CascadeTypeId factId)
             => _buckets.TryGetValue(factId, out var bucket) && bucket.Has(entity);
 
@@ -254,6 +258,19 @@ namespace CascadeEngineApi
             }
 
             return true;
+        }
+
+        internal bool HasAny(EntityRef entity, CascadeTypeId[] factIds)
+        {
+            for (var i = 0; i < factIds.Length; i++)
+            {
+                if (Has(entity, factIds[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal void CopyTouchedEntities(EntityRefBuffer destination, out int count)

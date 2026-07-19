@@ -12,10 +12,13 @@ namespace CascadeEngineApi
         string Name { get; }
         FactType[] AffectedFacts { get; }
         bool UsesPrioritySelection { get; }
+        bool HasAbsenceReconciliation { get; }
 
         void Reindex(int index);
 
         void QueueCommitAction(FactSimulation simulation, EntityRef entity);
+
+        void QueueAbsentCommitActions(FactSimulation simulation);
 
         CascadeTypeId SelectPriorityWinner(FactSimulation simulation, EntityRef entity);
 

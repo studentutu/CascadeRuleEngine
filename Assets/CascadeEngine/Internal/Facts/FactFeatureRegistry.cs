@@ -14,6 +14,7 @@ namespace CascadeEngineApi
         private readonly List<IReducerInvoker> _reducers = new List<IReducerInvoker>();
 
         private readonly List<IOutputRegistration> _outputs = new List<IOutputRegistration>();
+        private readonly List<IOutputRegistration> _absenceOutputs = new List<IOutputRegistration>();
         private readonly Dictionary<CascadeTypeId, IOutputRegistration> _outputsByState =
             new Dictionary<CascadeTypeId, IOutputRegistration>();
 
@@ -27,6 +28,8 @@ namespace CascadeEngineApi
             new List<IStateReducerRegistration>();
 
         private readonly FactTypeList _knownFactTypes = new FactTypeList();
+        private readonly FactTypeList _negativeConditionFactTypes = new FactTypeList();
+        private int _negativeReducerCount;
 
         internal FactFeatureRegistry()
         {
@@ -34,19 +37,33 @@ namespace CascadeEngineApi
         }
 
         internal IReadOnlyList<IOutputRegistration> Outputs => _outputs;
+        internal IReadOnlyList<IOutputRegistration> AbsenceOutputs => _absenceOutputs;
         internal IReadOnlyList<ITransactionalRegistration> TransactionalReducers => _transactionalReducers;
         internal IReadOnlyList<IBatchTransactionalRegistration> BatchTransactionalReducers => _batchTransactionalReducers;
         internal IReadOnlyList<IStateReducerRegistration> StateReducers => _stateReducers;
         internal FactType[] KnownFactTypes => _knownFactTypes.ToArray();
+        internal bool HasNegativeReducers => _negativeReducerCount > 0;
 
-        internal void AddReducer<TFact, TReducer>()
+        internal void AddReducer<TFact, TReducer>(FactType[] forbiddenFacts)
             where TFact : struct, IFact
             where TReducer : IFactReducer<TFact>, new()
         {
             var factType = FactType.Of<TFact>();
+            ValidateReducerConditions(factType, forbiddenFacts);
             AddKnownFact(factType);
+            AddKnownFacts(forbiddenFacts);
+            if (forbiddenFacts.Length > 0)
+            {
+                AddNegativeConditionFact(factType);
+                AddNegativeConditionFacts(forbiddenFacts);
+                _negativeReducerCount++;
+            }
+
             var reducer = Create<TReducer>();
-            var invoker = new ReducerInvoker<TFact>(reducer, typeof(TReducer).Name);
+            var invoker = new ReducerInvoker<TFact>(
+                reducer,
+                ToIds(forbiddenFacts),
+                typeof(TReducer).Name);
             invoker.BindRoute(this);
             _reducers.Add(invoker);
         }
@@ -93,6 +110,7 @@ namespace CascadeEngineApi
             string name,
             FactType[] affectedFacts,
             int[] affectedFactPriorities,
+            FactType[] absentFacts,
             CommitConflictPolicy conflictPolicy)
             where TState : struct, IOutputState
             where TCommitter : IOutputCommitter<TState>, new()
@@ -115,15 +133,27 @@ namespace CascadeEngineApi
                     $"Output state '{stateName}' must declare one commit priority per affected fact.");
             }
 
+            if (absentFacts == null)
+            {
+                throw new ArgumentNullException(nameof(absentFacts));
+            }
+
             AddKnownFacts(affectedFacts);
+            AddKnownFacts(absentFacts);
             var output = new OutputState<TState>(_outputs.Count, stateId, name, conflictPolicy);
             var committer = Create<TCommitter>();
             var registration = new OutputRegistration<TState>(
                 output,
                 affectedFacts,
                 affectedFactPriorities,
+                absentFacts,
                 committer);
             _outputs.Add(registration);
+            if (registration.HasAbsenceReconciliation)
+            {
+                _absenceOutputs.Add(registration);
+            }
+
             _outputsByState.Add(stateId, registration);
             BindAffectedOutputRoutes(affectedFacts, registration);
             return output;
@@ -186,11 +216,14 @@ namespace CascadeEngineApi
             UnbindKnownFactRoutes();
             _reducers.Clear();
             _outputs.Clear();
+            _absenceOutputs.Clear();
             _outputsByState.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
             _stateReducers.Clear();
             _knownFactTypes.Clear();
+            _negativeConditionFactTypes.Clear();
+            _negativeReducerCount = 0;
             _typeCatalog.Clear();
         }
 
@@ -198,12 +231,14 @@ namespace CascadeEngineApi
         {
             _typeCatalog.AbsorbFrom(other._typeCatalog);
             AddKnownFacts(other._knownFactTypes.ToArray());
+            AddNegativeConditionFacts(other._negativeConditionFactTypes.ToArray());
 
             for (var i = 0; i < other._reducers.Count; i++)
             {
                 other._reducers[i].BindRoute(this);
                 _reducers.Add(other._reducers[i]);
             }
+            _negativeReducerCount += other._negativeReducerCount;
 
             for (var i = 0; i < other._outputs.Count; i++)
             {
@@ -215,6 +250,11 @@ namespace CascadeEngineApi
 
                 output.Reindex(_outputs.Count);
                 _outputs.Add(output);
+                if (output.HasAbsenceReconciliation)
+                {
+                    _absenceOutputs.Add(output);
+                }
+
                 _outputsByState.Add(output.StateId, output);
                 BindAffectedOutputRoutes(output.AffectedFacts, output);
             }
@@ -255,6 +295,23 @@ namespace CascadeEngineApi
             if (_knownFactTypes.Add(factType))
             {
                 factType.BindRoute(this);
+            }
+        }
+
+        private void AddNegativeConditionFacts(FactType[] factTypes)
+        {
+            for (var i = 0; i < factTypes.Length; i++)
+            {
+                AddNegativeConditionFact(factTypes[i]);
+            }
+        }
+
+        private void AddNegativeConditionFact(FactType factType)
+        {
+            AddKnownFact(factType);
+            if (_negativeConditionFactTypes.Add(factType))
+            {
+                factType.MarkNegativeConditionInput(this);
             }
         }
 
@@ -299,16 +356,48 @@ namespace CascadeEngineApi
             }
         }
 
+        private static void ValidateReducerConditions(
+            FactType triggerFact,
+            FactType[] forbiddenFacts)
+        {
+            if (forbiddenFacts == null)
+            {
+                throw new ArgumentNullException(nameof(forbiddenFacts));
+            }
+
+            for (var forbiddenIndex = 0; forbiddenIndex < forbiddenFacts.Length; forbiddenIndex++)
+            {
+                var forbidden = forbiddenFacts[forbiddenIndex];
+                if (forbidden.Id == triggerFact.Id)
+                {
+                    throw new InvalidOperationException(
+                        $"Fact reducer cannot trigger on and forbid fact '{forbidden.DebugName}'.");
+                }
+
+                for (var previousIndex = 0; previousIndex < forbiddenIndex; previousIndex++)
+                {
+                    if (forbidden.Id == forbiddenFacts[previousIndex].Id)
+                    {
+                        throw new InvalidOperationException(
+                            $"Fact reducer forbids fact '{forbidden.DebugName}' more than once.");
+                    }
+                }
+            }
+        }
+
         private void ClearWithoutDisposing()
         {
             UnbindKnownFactRoutes();
             _reducers.Clear();
             _outputs.Clear();
+            _absenceOutputs.Clear();
             _outputsByState.Clear();
             _transactionalReducers.Clear();
             _batchTransactionalReducers.Clear();
             _stateReducers.Clear();
             _knownFactTypes.Clear();
+            _negativeConditionFactTypes.Clear();
+            _negativeReducerCount = 0;
             _typeCatalog.Clear();
         }
 

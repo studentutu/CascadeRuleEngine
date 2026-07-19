@@ -38,8 +38,14 @@ namespace CascadeEngineApi
         private int _pendingFactReducerIndex;
         private int _stateReducerIndex;
         private int _stateEntityIndex;
+        private int _negativeQueuedFactCount;
+        private int _negativeFactIndex;
+        private int _negativeFactReducerIndex;
         private bool _hasPendingFact;
         private bool _stateReducersComplete;
+        private bool _negativePhaseStarted;
+        private bool _negativeReducersComplete;
+        private bool _reducerInvocationActive;
         private bool _active;
 
         internal PartialSimulation(
@@ -67,6 +73,28 @@ namespace CascadeEngineApi
         internal int CurrentCausalDepth => _currentCausalDepth;
         internal string CurrentReducerName => _currentReducerName;
         internal bool IsActive => _active;
+
+        internal void ValidateHostInput()
+        {
+            if (_active && _negativePhaseStarted && !_reducerInvocationActive)
+            {
+                throw new InvalidOperationException(
+                    "The open tick input is sealed because closure-safe Without evaluation has started. Resume the tick to closure, then emit the input for the next tick.");
+            }
+        }
+
+        internal void ValidateFactEmission(
+            bool isNegativeConditionInput,
+            CascadeTypeId factId)
+        {
+            if (!_negativePhaseStarted || !isNegativeConditionInput)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"Fact '{_registry.Describe(factId)}' is a sealed Without condition and cannot be emitted after positive closure.");
+        }
 
         internal SimulationResult RunTick(ReduceOptions options)
         {
@@ -139,6 +167,8 @@ namespace CascadeEngineApi
             _currentCausalDepth = 0;
             ClearPendingFactDispatch();
             ClearDiagnosticContext();
+            ResetNegativePhase();
+            _reducerInvocationActive = false;
             _active = false;
         }
 
@@ -204,6 +234,13 @@ namespace CascadeEngineApi
                 var reduceRoute = _pendingFact.ReduceRoute;
                 while (_pendingFactReducerIndex < reduceRoute.ReducerCount)
                 {
+                    var reducer = reduceRoute.ReducerAt(_pendingFactReducerIndex);
+                    if (reducer.HasForbiddenFacts)
+                    {
+                        _pendingFactReducerIndex++;
+                        continue;
+                    }
+
                     if (WorkOrTimeBudgetExceeded(
                             options,
                             startTimestamp,
@@ -215,7 +252,6 @@ namespace CascadeEngineApi
 
                     _reducerInvocations++;
                     _processedWorkItems++;
-                    var reducer = reduceRoute.ReducerAt(_pendingFactReducerIndex);
                     SetCurrentFactContext(in _pendingFact, reducer.DebugName);
                     ThrowIfTickWorkLimitExceeded(options);
                     if (_reducerInvocations > options.Guardrails.MaxReducerInvocationsPerTick)
@@ -224,10 +260,19 @@ namespace CascadeEngineApi
                     }
 
                     _currentCausalDepth = _pendingFact.Depth + 1;
-                    reducer.Reduce(_simulation, in _pendingFact);
+                    BeginReducerInvocation();
+                    try
+                    {
+                        reducer.Reduce(_simulation, in _pendingFact);
+                    }
+                    finally
+                    {
+                        EndReducerInvocation();
+                        _currentCausalDepth = 0;
+                        ClearCurrentFactContext();
+                    }
+
                     _pendingFactReducerIndex++;
-                    _currentCausalDepth = 0;
-                    ClearCurrentFactContext();
                 }
 
                 ClearPendingFactDispatch();
@@ -260,6 +305,22 @@ namespace CascadeEngineApi
             }
 
             RunReadyStateReducers(
+                options,
+                startTimestamp,
+                stepStartProcessedWorkItems,
+                out budgetReason);
+            if (budgetReason.Length > 0)
+            {
+                return ReductionStepStatus.BudgetExceeded;
+            }
+
+            if (_facts.HasQueuedFacts)
+            {
+                CompleteReductionPass(options);
+                return ReductionStepStatus.Incomplete;
+            }
+
+            RunReadyNegativeReducers(
                 options,
                 startTimestamp,
                 stepStartProcessedWorkItems,
@@ -378,9 +439,18 @@ namespace CascadeEngineApi
                     }
 
                     _currentCausalDepth = 1;
-                    registration.Reduce(_simulation, entity);
-                    _currentCausalDepth = 0;
-                    ClearCurrentFactContext();
+                    BeginReducerInvocation();
+                    try
+                    {
+                        registration.Reduce(_simulation, entity);
+                    }
+                    finally
+                    {
+                        EndReducerInvocation();
+                        _currentCausalDepth = 0;
+                        ClearCurrentFactContext();
+                    }
+
                     ranAny = true;
                 }
             }
@@ -451,9 +521,18 @@ namespace CascadeEngineApi
                 }
 
                 _currentCausalDepth = 1;
-                registration.ReduceBatch(_simulation, _batchBuffer.AsSpan(batchCount));
-                _currentCausalDepth = 0;
-                ClearCurrentFactContext();
+                BeginReducerInvocation();
+                try
+                {
+                    registration.ReduceBatch(_simulation, _batchBuffer.AsSpan(batchCount));
+                }
+                finally
+                {
+                    EndReducerInvocation();
+                    _currentCausalDepth = 0;
+                    ClearCurrentFactContext();
+                }
+
                 ranAny = true;
             }
 
@@ -505,9 +584,18 @@ namespace CascadeEngineApi
                     }
 
                     _currentCausalDepth = 1;
-                    registration.Reduce(_simulation, entity);
-                    _currentCausalDepth = 0;
-                    ClearCurrentFactContext();
+                    BeginReducerInvocation();
+                    try
+                    {
+                        registration.Reduce(_simulation, entity);
+                    }
+                    finally
+                    {
+                        EndReducerInvocation();
+                        _currentCausalDepth = 0;
+                        ClearCurrentFactContext();
+                    }
+
                     ranAny = true;
                 }
 
@@ -517,6 +605,101 @@ namespace CascadeEngineApi
 
             _stateReducersComplete = true;
             return ranAny;
+        }
+
+        private void RunReadyNegativeReducers(
+            ReduceOptions options,
+            long startTimestamp,
+            int stepStartProcessedWorkItems,
+            out string budgetReason)
+        {
+            budgetReason = string.Empty;
+            if (_negativeReducersComplete)
+            {
+                return;
+            }
+
+            if (!_negativePhaseStarted)
+            {
+                BeginNegativePhase();
+            }
+
+            while (_negativeFactIndex < _negativeQueuedFactCount)
+            {
+                if (TimeBudgetExceeded(options, startTimestamp, out budgetReason))
+                {
+                    return;
+                }
+
+                var queued = _facts.QueuedFactAt(_negativeFactIndex);
+                if (_entities.IsRetired(queued.Entity))
+                {
+                    AdvanceNegativeFact();
+                    continue;
+                }
+
+                var reduceRoute = queued.ReduceRoute;
+                while (_negativeFactReducerIndex < reduceRoute.ReducerCount)
+                {
+                    var reducer = reduceRoute.ReducerAt(_negativeFactReducerIndex);
+                    if (!reducer.HasForbiddenFacts
+                        || _facts.HasAny(queued.Entity, reducer.ForbiddenFactIds))
+                    {
+                        _negativeFactReducerIndex++;
+                        continue;
+                    }
+
+                    if (WorkOrTimeBudgetExceeded(
+                            options,
+                            startTimestamp,
+                            stepStartProcessedWorkItems,
+                            out budgetReason))
+                    {
+                        return;
+                    }
+
+                    _reducerInvocations++;
+                    _processedWorkItems++;
+                    SetCurrentFactContext(in queued, reducer.DebugName);
+                    ThrowIfTickWorkLimitExceeded(options);
+                    if (_reducerInvocations > options.Guardrails.MaxReducerInvocationsPerTick)
+                    {
+                        throw CreateReductionException(
+                            "maximum reducer invocation count exceeded");
+                    }
+
+                    _currentCausalDepth = queued.Depth + 1;
+                    BeginReducerInvocation();
+                    try
+                    {
+                        reducer.Reduce(_simulation, in queued);
+                    }
+                    finally
+                    {
+                        EndReducerInvocation();
+                        _currentCausalDepth = 0;
+                        ClearCurrentFactContext();
+                    }
+
+                    _negativeFactReducerIndex++;
+                }
+
+                AdvanceNegativeFact();
+            }
+
+            _negativeReducersComplete = true;
+        }
+
+        private void BeginNegativePhase()
+        {
+            _negativeQueuedFactCount = _facts.QueuedFactCount;
+            _negativePhaseStarted = true;
+        }
+
+        private void AdvanceNegativeFact()
+        {
+            _negativeFactIndex++;
+            _negativeFactReducerIndex = 0;
         }
 
         private void CompleteReductionPass(ReduceOptions options)
@@ -558,6 +741,9 @@ namespace CascadeEngineApi
             _stateReducerIndex = 0;
             _stateEntityIndex = 0;
             _stateReducersComplete = _registry.StateReducers.Count == 0;
+            ResetNegativePhase();
+            _negativeReducersComplete = !_registry.HasNegativeReducers;
+            _reducerInvocationActive = false;
             ClearDiagnosticContext();
             _active = true;
         }
@@ -578,6 +764,8 @@ namespace CascadeEngineApi
             ClearPendingFactDispatch();
             ClearCurrentFactContext();
             ClearDiagnosticContext();
+            ResetNegativePhase();
+            _reducerInvocationActive = false;
             _active = false;
         }
 
@@ -681,6 +869,28 @@ namespace CascadeEngineApi
             _lastEntity = _currentEntity;
             _lastCausalDepth = _currentCausalDepth;
             _lastReducerName = _currentReducerName;
+        }
+
+        private void BeginReducerInvocation()
+        {
+            if (_reducerInvocationActive)
+            {
+                throw new InvalidOperationException("Reducer invocations cannot be nested.");
+            }
+
+            _reducerInvocationActive = true;
+        }
+
+        private void EndReducerInvocation()
+            => _reducerInvocationActive = false;
+
+        private void ResetNegativePhase()
+        {
+            _negativeQueuedFactCount = 0;
+            _negativeFactIndex = 0;
+            _negativeFactReducerIndex = 0;
+            _negativePhaseStarted = false;
+            _negativeReducersComplete = false;
         }
 
         private void ClearPendingFactDispatch()

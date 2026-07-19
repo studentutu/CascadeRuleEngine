@@ -21,6 +21,7 @@ namespace CascadeEngineApi
 
         internal CascadeTypeId FactId { get; }
         internal bool StagesEntityDeath { get; }
+        internal bool IsNegativeConditionInput { get; private set; }
         public int AffectedOutputCount => _affectedOutputs.Count;
         public int ReducerCount => _reducers.Count;
 
@@ -35,5 +36,8 @@ namespace CascadeEngineApi
 
         internal void AddReducer(IReducerInvoker reducer)
             => _reducers.Add(reducer);
+
+        internal void MarkNegativeConditionInput()
+            => IsNegativeConditionInput = true;
     }
 }

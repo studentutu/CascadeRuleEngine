@@ -8,6 +8,8 @@ namespace CascadeEngineApi
     internal interface IReducerInvoker
     {
         string DebugName { get; }
+        CascadeTypeId[] ForbiddenFactIds { get; }
+        bool HasForbiddenFacts { get; }
 
         void BindRoute(FactFeatureRegistry registry);
 

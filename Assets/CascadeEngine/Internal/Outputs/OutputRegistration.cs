@@ -13,19 +13,23 @@ namespace CascadeEngineApi
     {
         private readonly FactType[] _affectedFacts;
         private readonly int[] _affectedFactPriorities;
+        private readonly CascadeTypeId[] _absentFactIds;
         private readonly IOutputCommitter<TState> _committer;
         private readonly List<CommitAction<TState>> _commitActions = new List<CommitAction<TState>>();
+        private readonly DenseEntitySet _queuedEntities = new DenseEntitySet(64);
         private StateBucket<TState>? _bucket;
 
         internal OutputRegistration(
             OutputState<TState> output,
             FactType[] affectedFacts,
             int[] affectedFactPriorities,
+            FactType[] absentFacts,
             IOutputCommitter<TState> committer)
         {
             Output = output;
             _affectedFacts = affectedFacts;
             _affectedFactPriorities = affectedFactPriorities;
+            _absentFactIds = ToIds(absentFacts);
             _committer = committer;
         }
 
@@ -37,6 +41,7 @@ namespace CascadeEngineApi
         public FactType[] AffectedFacts => _affectedFacts;
         public bool UsesPrioritySelection =>
             Output.ConflictPolicy == CommitConflictPolicy.PriorityWinnerOrThrowOnTie;
+        public bool HasAbsenceReconciliation => _absentFactIds.Length > 0;
         public int CommitActionCapacity => _commitActions.Capacity;
 
         public void Reindex(int index)
@@ -44,6 +49,11 @@ namespace CascadeEngineApi
 
         public void QueueCommitAction(FactSimulation simulation, EntityRef entity)
         {
+            if (!_queuedEntities.Add(entity))
+            {
+                return;
+            }
+
             var bucket = RequireBucket();
             var previous = bucket.TryGet(entity, out var value)
                 ? new Optional<TState>(value)
@@ -70,6 +80,21 @@ namespace CascadeEngineApi
             }
 
             _commitActions.Add(new CommitAction<TState>(bucket, entity, decision));
+        }
+
+        public void QueueAbsentCommitActions(FactSimulation simulation)
+        {
+            var bucket = RequireBucket();
+            for (var entityIndex = 0; entityIndex < bucket.EntityCount; entityIndex++)
+            {
+                var entity = bucket.EntityAt(entityIndex);
+                if (simulation.IsDestroyed(entity) || HasAnyAbsentFact(simulation, entity))
+                {
+                    continue;
+                }
+
+                QueueCommitAction(simulation, entity);
+            }
         }
 
         public CascadeTypeId SelectPriorityWinner(FactSimulation simulation, EntityRef entity)
@@ -123,6 +148,7 @@ namespace CascadeEngineApi
         public void ClearQueuedCommitActions()
         {
             _commitActions.Clear();
+            _queuedEntities.Clear();
         }
 
         public IStateBucket CreateStateBucket()
@@ -155,6 +181,8 @@ namespace CascadeEngineApi
             {
                 _commitActions.Capacity = commitActionCapacity;
             }
+
+            _queuedEntities.EnsureCapacity(stateCapacity);
         }
 
         public void ClearMutations(FactSimulation simulation)
@@ -167,6 +195,7 @@ namespace CascadeEngineApi
         {
             _commitActions.Clear();
             _commitActions.Capacity = 0;
+            _queuedEntities.Clear();
 
             if (_committer is IDisposable disposable)
             {
@@ -182,6 +211,30 @@ namespace CascadeEngineApi
             }
 
             return _bucket;
+        }
+
+        private bool HasAnyAbsentFact(FactSimulation simulation, EntityRef entity)
+        {
+            for (var i = 0; i < _absentFactIds.Length; i++)
+            {
+                if (simulation.FactCount(entity, _absentFactIds[i]) > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static CascadeTypeId[] ToIds(FactType[] facts)
+        {
+            var ids = new CascadeTypeId[facts.Length];
+            for (var i = 0; i < facts.Length; i++)
+            {
+                ids[i] = facts[i].Id;
+            }
+
+            return ids;
         }
     }
 }

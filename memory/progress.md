@@ -57,17 +57,19 @@
 - `CascadeSettings` is the recommended single construction-time policy for concurrent entity capacity, fact cardinality, warmup, step/tick work budgets, pass/time limits, and causal depth. Parameterless tick methods reuse its captured policy.
 - `EntityRef` is generational: `Value` is a recyclable runtime slot, `Generation` changes before reuse, and stale handles cannot alias new entities. Slots recycle only after closure or rollback cleanup, keeping dense fact/state/reducer storage bounded by maximum concurrent entities.
 - Per-fact storage now uses sparse flat typed slabs: slot-to-slab mapping, compact touched owners/counts, and one contiguous payload array. Per-entity fact-list objects and arrays were removed while zero-copy `ReadOnlySpan<TFact>` access, disposal ownership, fixed-capacity failure, and grow-on-demand compatibility remain covered.
+- Closure-safe negative fact rules extend the existing direct fact-reducer builder: `Reduce<TFact>().Without<TForbiddenFact>().With<TReducer>()`.
+  - positive immediate, transactional, batch, and state-driven work closes before negative eligibility is evaluated.
+  - each accepted distinct trigger fact retains normal `IFactReducer<TFact>` multiplicity and is invoked only when every declared forbidden fact is absent for its entity.
+  - trigger and forbidden condition fact types are sealed for the terminal negative stratum.
+  - late host input is rejected after negative evaluation starts; resume the incremental tick to closure before submitting next-tick input.
+  - contradictory trigger/forbidden registrations fail during feature construction.
+  - no parallel `ReduceStateWithout`, transactional `Without`, or batch `Without` public surface exists.
+- Output registrations can use `.Without<TFact>()` to reconcile prior output members when the final closed fact set lacks every declared fact. Affected-fact and absence routing deduplicate to one committer decision per entity/output.
+- The warmed 512-entity allocation slice now includes terminal negative reduction and remains expected to report 0 B on the steady-state tick.
 
 ## Known Gaps
 
-- The package has no `Without` primitive for negative fact/state conditions.
-  - `Without<TFact>` cannot mean "the fact is absent at this moment" during an open reduction pass. A later reducer may still emit that fact, leaving already-derived consequences that cannot be retracted.
-  - Fact absence therefore requires closure-safe, stratified semantics: close the positive fact frontier first, evaluate negative eligibility only when its forbidden fact set is stable, and reject registration cycles that cross a negative dependency.
-  - Stratification does not by itself handle a new root fact arriving after a negative reducer has emitted downstream facts. Before implementation, choose one explicit policy: seal/defer input once negative evaluation begins, or retain root inputs and replay invalidated later strata. The minimal recommendation is seal/defer; silently invalidating a plan cannot retract already-derived facts.
-  - Committed-state absence is evaluated against the immutable state-membership snapshot captured for the open tick.
-  - Reconciliation absence is evaluated against the final closed fact set and the previous committed-state snapshot.
-  - Any accepted API must precompile required/forbidden masks during registration and remain allocation-free during reduction and reconciliation.
-  - The exact public call shape must be designed from one production usage before adding builders or overloads. Do not implement `Without` as an ad-hoc query inside reducers.
+- Negative fact rules intentionally support one terminal stratum. General multi-stratum negation is not available because the current reducer API does not declare emitted fact types; adding dependency sorting would require a separate public rule-head contract.
 - Legacy manual warmup is only as accurate as the host-provided hints.
   - Underestimated entity count, queue size, output state capacity, or mutation capacity can still grow during gameplay.
   - In fixed fact-slab mode, underestimated per-entity fact count throws instead of allocating.
@@ -75,26 +77,12 @@
 
 ## Next Work
 
-1. Design and deliver the `Without` primitive for fact reduction and state reconciliation.
-   - Start with one thin vertical slice:
-     - positive facts make an entity eligible;
-     - a forbidden fact suppresses the negative rule regardless of fact arrival order;
-     - an absent committed state can filter a state-triggered reducer;
-     - reconciliation can choose `Set`, `Delete`, or `Unchanged` from the closed fact set plus previous committed state;
-     - incremental suspension before and after negative-eligibility evaluation produces the same final output;
-     - a late forbidden root fact follows the selected seal/defer or replay policy and cannot leave consequences derived from stale absence.
-   - Define the dependency rules before the fluent API. Negative cycles must fail during feature construction, not at runtime.
-   - Reconcile the selected late-input policy with the open-tick input-revision behavior proposed in `memory/improvements.md` before coding.
-   - Preserve the current public API; new registration methods must be additive and justified by the vertical slice.
-   - Precompute forbidden fact/state membership and routing during registration. No runtime reflection, dictionary construction, or hot-path allocation.
-   - Add order-permutation, incremental-budget, conflict, stale-entity, and 500+ entity allocation tests.
-
-2. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
+1. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
    - use presence of domain-owned `ActiveState`/equivalent as the first relevance filter.
    - measure starvation and frame-slice latency before designing scheduling metadata.
    - do not add `SimulationMode`, priority flags, or dormant scheduler state speculatively.
 
-3. Prepare production package:
+2. Prepare production package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
    - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)

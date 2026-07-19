@@ -63,6 +63,17 @@ namespace CascadeEngineApi
             _bucketFactory.BindAffectedOutput(registry, output);
         }
 
+        internal void MarkNegativeConditionInput(FactFeatureRegistry registry)
+        {
+            if (_bucketFactory == null)
+            {
+                throw new InvalidOperationException(
+                    $"Fact type '{DebugName}' cannot bind a negative condition without a typed route.");
+            }
+
+            _bucketFactory.MarkNegativeConditionInput(registry);
+        }
+
         internal IFactBucket CreateBucket(
             int entityCapacity,
             int factCapacityPerEntity,

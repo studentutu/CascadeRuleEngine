@@ -13,13 +13,19 @@ namespace CascadeEngineApi
         private readonly IFactReducer<TFact> _reducer;
         private readonly string _debugName;
 
-        internal ReducerInvoker(IFactReducer<TFact> reducer, string debugName)
+        internal ReducerInvoker(
+            IFactReducer<TFact> reducer,
+            CascadeTypeId[] forbiddenFactIds,
+            string debugName)
         {
             _reducer = reducer ?? throw new ArgumentNullException(nameof(reducer));
+            ForbiddenFactIds = forbiddenFactIds ?? throw new ArgumentNullException(nameof(forbiddenFactIds));
             _debugName = debugName ?? string.Empty;
         }
 
         public string DebugName => _debugName;
+        public CascadeTypeId[] ForbiddenFactIds { get; }
+        public bool HasForbiddenFacts => ForbiddenFactIds.Length > 0;
 
         public void BindRoute(FactFeatureRegistry registry)
             => registry.RequireFactRoute<TFact>().AddReducer(this);

@@ -169,6 +169,7 @@ namespace CascadeEngineApi
         public EntityRef CreateEntity()
         {
             ThrowIfDisposed();
+            _partial.ValidateHostInput();
 
             var entity = _entities.Create(_partial.IsActive);
             _facts.EnsureEntityCapacity(_entities.Count);
@@ -183,6 +184,7 @@ namespace CascadeEngineApi
         public void DestroyEntity(EntityRef entity)
         {
             ThrowIfDisposed();
+            _partial.ValidateHostInput();
 
             if (_entities.IsDestroyed(entity))
             {
@@ -212,6 +214,7 @@ namespace CascadeEngineApi
             where TFact : struct, IFact
         {
             ThrowIfDisposed();
+            _partial.ValidateHostInput();
             EmitCore(entity, in fact, _partial.CurrentCausalDepth);
         }
 
@@ -525,6 +528,7 @@ namespace CascadeEngineApi
             var factId = route.FactId;
             try
             {
+                _partial.ValidateFactEmission(route.IsNegativeConditionInput, factId);
                 var accepted = _facts.Emit(
                     _entities,
                     resolved,
@@ -570,6 +574,11 @@ namespace CascadeEngineApi
                 }
 
                 QueueAffectedOutputCommits(entity);
+            }
+
+            for (var i = 0; i < _registry.AbsenceOutputs.Count; i++)
+            {
+                _registry.AbsenceOutputs[i].QueueAbsentCommitActions(this);
             }
 
             for (var i = 0; i < _registry.Outputs.Count; i++)

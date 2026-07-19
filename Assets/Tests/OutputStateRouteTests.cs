@@ -116,6 +116,39 @@ namespace CascadeEngineApi.Tests
             }
         }
 
+        [Test]
+        public void OutputWithoutReconcilesSetDeleteAndUnchangedOncePerEntity()
+        {
+            AbsenceCommitter.InvocationCount = 0;
+            var simulation = new FactSimulation(new AbsenceFeature());
+            var created = simulation.CreateEntity();
+            var unchanged = simulation.CreateEntity();
+            var deleted = simulation.CreateEntity();
+            var empty = simulation.CreateEntity();
+            simulation.SetStateSilently(unchanged, new AbsenceState(7));
+            simulation.SetStateSilently(deleted, new AbsenceState(9));
+            simulation.Emit(created, new AbsenceObservedFact(5));
+            simulation.Emit(unchanged, new AbsenceObservedFact(7));
+            simulation.Emit(deleted, new AbsencePulseFact());
+            simulation.Emit(empty, new AbsencePulseFact());
+
+            var first = simulation.RunTick(ReduceOptions.Default());
+
+            Assert.AreEqual(2, first.MutationCount);
+            Assert.AreEqual(4, AbsenceCommitter.InvocationCount);
+            Assert.AreEqual(5, simulation.Get<AbsenceState>(created).Value);
+            Assert.AreEqual(7, simulation.Get<AbsenceState>(unchanged).Value);
+            Assert.IsFalse(simulation.Has<AbsenceState>(deleted));
+            Assert.IsFalse(simulation.Has<AbsenceState>(empty));
+
+            var second = simulation.RunTick(ReduceOptions.Default());
+
+            Assert.AreEqual(2, second.MutationCount);
+            Assert.AreEqual(6, AbsenceCommitter.InvocationCount);
+            Assert.IsFalse(simulation.Has<AbsenceState>(created));
+            Assert.IsFalse(simulation.Has<AbsenceState>(unchanged));
+        }
+
         private sealed class RouteFeature : FactFeature
         {
             public RouteFeature()
@@ -208,6 +241,42 @@ namespace CascadeEngineApi.Tests
             }
         }
 
+        private sealed class AbsenceFeature : FactFeature
+        {
+            public AbsenceFeature()
+            {
+                Output<AbsenceState>("Absence")
+                    .AffectedBy<AbsenceObservedFact>(0)
+                    .AffectedBy<AbsencePulseFact>(0)
+                    .Without<AbsenceObservedFact>()
+                    .CommitWith<AbsenceCommitter>();
+            }
+        }
+
+        private sealed class AbsenceCommitter : IOutputCommitter<AbsenceState>
+        {
+            internal static int InvocationCount;
+
+            public CommitDecision<AbsenceState> Commit(
+                ICommitContext ctx,
+                EntityRef entity,
+                in Optional<AbsenceState> previous)
+            {
+                InvocationCount++;
+                if (ctx.Facts(entity).TryGetLatest<AbsenceObservedFact>(out var observed))
+                {
+                    var next = new AbsenceState(observed.Value);
+                    return previous.HasValue && previous.Value.Equals(next)
+                        ? CommitDecision<AbsenceState>.Unchanged()
+                        : CommitDecision<AbsenceState>.Set(next);
+                }
+
+                return previous.HasValue
+                    ? CommitDecision<AbsenceState>.Delete()
+                    : CommitDecision<AbsenceState>.Unchanged();
+            }
+        }
+
         private sealed class SnapshotSourceCommitter : IOutputCommitter<SnapshotSourceState>
         {
             public CommitDecision<SnapshotSourceState> Commit(
@@ -245,6 +314,38 @@ namespace CascadeEngineApi.Tests
         {
             public bool Equals(SnapshotCommitFact other)
                 => true;
+        }
+
+        private readonly struct AbsenceObservedFact : IFact<AbsenceObservedFact>
+        {
+            public AbsenceObservedFact(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(AbsenceObservedFact other)
+                => Value == other.Value;
+        }
+
+        private readonly struct AbsencePulseFact : IFact<AbsencePulseFact>
+        {
+            public bool Equals(AbsencePulseFact other)
+                => true;
+        }
+
+        private readonly struct AbsenceState : IOutputState<AbsenceState>
+        {
+            public AbsenceState(int value)
+            {
+                Value = value;
+            }
+
+            public int Value { get; }
+
+            public bool Equals(AbsenceState other)
+                => Value == other.Value;
         }
 
         private readonly struct SnapshotSourceState : IOutputState<SnapshotSourceState>

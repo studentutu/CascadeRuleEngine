@@ -97,6 +97,81 @@ State-trigger rules:
 - State reducers emit facts only. Committers remain the only durable-state writers.
 - The trigger state must be registered as an output in the full feature tree. Missing output registration is a setup error.
 
+## Closure-Safe `Without`
+
+Fact absence is not safe to test during ordinary positive reduction. A later reducer can still emit the forbidden fact, and already emitted consequences cannot be retracted. Chain `Without<TFact>()` from the existing fact-reducer registration when that reducer requires closure-safe absence:
+
+```csharp
+Reduce<AmmoSpendRequestedFact>()
+    .Without<DeadFact>()
+    .With<HestiaAmmoSpendRequestReducer>();
+```
+
+This registration preserves the `IFactReducer<AmmoSpendRequestedFact>` contract. Each accepted distinct `AmmoSpendRequestedFact` is deferred until immediate, positive transactional, batch, and state-driven work reaches closure. The reducer then runs once for that trigger fact only when the entity has no `DeadFact`.
+
+Multiple forbidden facts can be chained; every declared fact must be absent:
+
+```csharp
+Reduce<MoveRequestedFact>()
+    .Without<DeadFact>()
+    .Without<MoveBlockedFact>()
+    .With<ResolveUnblockedMoveReducer>();
+```
+
+The scheduling boundary is explicit:
+
+```text
+Reduce<TFact>().With<TReducer>()
+  -> immediate, once per accepted distinct TFact
+
+Reduce<TFact>().Without<TForbidden>().With<TReducer>()
+  -> terminal negative stratum, once per accepted distinct TFact
+  -> only when no declared forbidden fact exists for that entity
+```
+
+Trigger and forbidden fact types used by a negative rule are sealed when this final stratum starts. A reducer running in or after that stratum cannot emit one of those condition facts; doing so fails the tick. This deliberately supports one safe terminal negative stratum, not opaque multi-stratum negation. Because reducers do not declare their emitted fact types, general negative dependency sorting would require a larger public rule-head contract.
+
+Direct contradictions fail during feature construction:
+
+```csharp
+// Invalid: the same registration cannot trigger on and forbid MoveRequestedFact.
+Reduce<MoveRequestedFact>()
+    .Without<MoveRequestedFact>()
+    .With<InvalidReducer>();
+```
+
+When incremental execution reaches negative evaluation, host input for that open tick is sealed. Calls to `Emit`, `CreateEntity`, or `DestroyEntity` between incremental steps throw until the tick reaches closure. Resume the open tick, then submit the new input for the next tick. This prevents a late root fact from invalidating already derived absence consequences.
+
+`Without<TFact>()` is intentionally not exposed on `ReduceWhen`, `ReduceBatchWhen`, or `ReduceState`. Those contracts are entity-level eligibility rules with different invocation semantics. Committed-state membership can be queried safely because it is an immutable tick snapshot. Closure-safe fact absence must use an explicit trigger fact and the direct `Reduce<TFact>().Without<TForbiddenFact>()` contract.
+
+Output reconciliation has its own `Without<TFact>()`:
+
+```csharp
+Output<VisibleState>("Visible")
+    .AffectedBy<VisibleObservedFact>(0)
+    .AffectedBy<VisibilityPulseFact>(0)
+    .Without<VisibleObservedFact>()
+    .CommitWith<VisibleCommitter>();
+```
+
+For output registration, `Without<TFact>()` is an additional reconciliation trigger over entities that held that output in the previous committed snapshot. When none of the declared facts exists in the final closed fact set, the committer runs and can return `Set`, `Delete`, or `Unchanged`. It is not a filter: normal `AffectedBy` facts still invoke the committer. One entity/output pair is planned once even if both affected-fact and absence routing select it.
+
+## Add And Remove Semantics
+
+`Emit` adds a transient fact. Accepted facts are immutable and are never physically removed from an open reduction loop. Removing an accepted fact would leave already derived consequences behind and make results depend on reducer order.
+
+Model cancellation and removal additively:
+
+```text
+RemoveShieldRequestedFact
+-> validation reducers
+-> ShieldRemovalAcceptedFact
+-> ShieldCommitter returns Delete()
+-> one ShieldState delete mutation
+```
+
+Facts clear automatically when the tick completes or fails. Durable output removal is `CommitDecision<TState>.Delete()`. Entity removal remains `DestroyEntity` -> `DeadFact` -> closure -> typed state deletion mutations.
+
 That is the closest ECS equivalent to React-style reconciliation:
 
 ```text
@@ -376,8 +451,9 @@ Each extension returns a new builder with one appended required fact. Its `FactT
 | `IFact<TFact>` | self-typed allocation-free fact equality with inherited no-op disposal |
 | `DeadFact` | built-in additive lifecycle fact; reduction continues through closure before durable state deletion |
 | `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
+| `ReducerRegistrationBuilder<TFact>` | existing `Reduce<TFact>()` fluent contract; optionally declares closure-safe absence with `.Without<TForbiddenFact>()`, then binds `.With<TReducer>()` |
 | `ITransactionalReducer` | entity-scoped reducer used by required-fact and committed-state eligibility registrations |
-| `TransactionalReducerRegistrationExtensions` | appends required fact types with `.And<TFact>()` for entity or batch transactional registration |
+| `TransactionalReducerRegistrationExtensions` | appends required facts with `.And<TFact>()` |
 | `IOutputState` | durable committed state consumers can trust |
 | `IOutputState<TState>` | self-typed allocation-free durable-state equality |
 | `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
