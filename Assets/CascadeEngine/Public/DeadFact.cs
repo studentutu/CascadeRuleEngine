@@ -9,5 +9,7 @@ namespace CascadeEngineApi
     {
         public bool Equals(DeadFact other)
             => true;
+
+        public void Dispose() { }
     }
 }

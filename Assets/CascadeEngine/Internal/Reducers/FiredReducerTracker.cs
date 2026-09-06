@@ -12,6 +12,8 @@ namespace CascadeEngineApi
         private int[][] _stampsByRegistration;
         private int _entityCapacity;
         private int _currentStamp = 1;
+        private bool _fixedCapacity;
+        internal void FreezeCapacity() => _fixedCapacity = true;
 
         internal FiredReducerTracker(int registrationCapacity, int entityCapacity)
         {
@@ -40,6 +42,9 @@ namespace CascadeEngineApi
 
             _currentStamp++;
         }
+
+        internal bool HasFired(int registrationIndex, EntityRef entity)
+            => _stampsByRegistration[registrationIndex][entity.StorageIndex] == _currentStamp;
 
         internal bool MarkIfNew(int registrationIndex, EntityRef entity)
         {
@@ -71,6 +76,7 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed fired registration capacity exceeded.");
             var oldLength = _stampsByRegistration.Length;
             Array.Resize(ref _stampsByRegistration, normalized);
             for (var i = oldLength; i < _stampsByRegistration.Length; i++)
@@ -87,11 +93,15 @@ namespace CascadeEngineApi
                 return;
             }
 
-            _entityCapacity = normalized;
-            for (var i = 0; i < _stampsByRegistration.Length; i++)
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed fired entity capacity exceeded.");
+            var next = new int[_stampsByRegistration.Length][];
+            for (var i = 0; i < next.Length; i++)
             {
-                Array.Resize(ref _stampsByRegistration[i], _entityCapacity);
+                next[i] = new int[normalized];
+                Array.Copy(_stampsByRegistration[i], next[i], _entityCapacity);
             }
+            _stampsByRegistration = next;
+            _entityCapacity = normalized;
         }
 
         private void EnsureRegistrationArrays()

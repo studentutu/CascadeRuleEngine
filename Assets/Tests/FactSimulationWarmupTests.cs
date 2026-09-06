@@ -106,26 +106,35 @@ namespace CascadeEngineApi.Tests
                 simulation.SetStateSilently(entity, new WarmupBootstrapState(i));
             }
 
-            var firstUseBytes = MeasureAllocatedBytes(
-                () => RunRepresentativeTick(simulation, entities));
-            var steadyStateBytes = MeasureAllocatedBytes(
+            var inputAllocations = AllocationProbe.Count(() => EmitRepresentativeInputs(simulation, entities));
+            var stepOptions = new ReduceOptions { MaxWorkItems = 1, MaxMilliseconds = 0 };
+            var complete = false;
+            Action step = () => complete = simulation.RunTickIncremental(stepOptions, out _);
+            long firstUseAllocations = inputAllocations;
+            for (var stepIndex = 0; !complete && stepIndex < 4096; stepIndex++)
+            {
+                var count = AllocationProbe.Count(step);
+                firstUseAllocations += count;
+                if (count > 0) TestContext.WriteLine($"First tick step {stepIndex}: {count} allocation events; completed={complete}; work={simulation.LastResult.ProcessedWorkItems}");
+            }
+            Assert.IsTrue(complete);
+            var steadyStateAllocations = AllocationProbe.Count(
                 () => RunRepresentativeTick(simulation, entities));
 
-            TestContext.WriteLine($"Cascade allocation measurement for {entityCount} entities: first-use={firstUseBytes} bytes, steady-state={steadyStateBytes} bytes.");
-            Assert.GreaterOrEqual(firstUseBytes, 0);
-            Assert.AreEqual(0, steadyStateBytes);
-        }
-
-        private static long MeasureAllocatedBytes(Action action)
-        {
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            action();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.WriteLine($"Cascade allocation measurement for {entityCount} entities: first-use={firstUseAllocations} events, steady-state={steadyStateAllocations} events.");
+            Assert.AreEqual(0, firstUseAllocations);
+            Assert.AreEqual(0, steadyStateAllocations);
         }
 
         private static SimulationResult RunRepresentativeTick(
             FactSimulation simulation,
             EntityRef[] entities)
+        {
+            EmitRepresentativeInputs(simulation, entities);
+            return simulation.RunTick();
+        }
+
+        private static void EmitRepresentativeInputs(FactSimulation simulation, EntityRef[] entities)
         {
             for (var i = 0; i < entities.Length; i++)
             {
@@ -133,7 +142,6 @@ namespace CascadeEngineApi.Tests
                 simulation.Emit(entities[i], new WarmupPairFact(i));
             }
 
-            return simulation.RunTick();
         }
 
         public sealed class WarmupFeature : FactFeature
@@ -320,6 +328,7 @@ namespace CascadeEngineApi.Tests
 
             public bool Equals(WarmupStartFact other)
                 => Value == other.Value;
+            public void Dispose() { }
         }
 
         public readonly struct WarmupPairFact : IFact, IEquatable<WarmupPairFact>
@@ -441,6 +450,7 @@ namespace CascadeEngineApi.Tests
 
             public bool Equals(WarmupNegativeFact other)
                 => Value == other.Value;
+            public void Dispose() { }
         }
     }
 

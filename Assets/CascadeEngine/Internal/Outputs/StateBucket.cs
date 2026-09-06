@@ -13,32 +13,39 @@ namespace CascadeEngineApi
     {
         private readonly CascadeTypeId _stateId;
         private readonly string _debugName;
-        private readonly List<StateMutationRecord<TState>> _mutations = new List<StateMutationRecord<TState>>();
-        private int[] _sparse = Array.Empty<int>();
-        private EntityRef[] _entities = Array.Empty<EntityRef>();
-        private TState[] _values = Array.Empty<TState>();
-        private int _count;
+        private StateMutationRecord<TState>[] _mutations = Array.Empty<StateMutationRecord<TState>>();
+        private int _mutationCount;
+        private static readonly EqualityComparer<TState> Comparer = EqualityComparer<TState>.Default;
+        private readonly EntitySparseSet<TState> _storage = new EntitySparseSet<TState>();
+        private int _preparedInsertions;
+        private int _preparedMutations;
+        private bool _fixedCapacity;
+
+        static StateBucket() { }
 
         internal StateBucket(CascadeTypeId stateId, string debugName)
         {
             _stateId = stateId;
             _debugName = debugName;
+            // Mono records cold generic value construction allocations. Initialize these during registration, without callbacks or state writes.
+            var emptyMutation = new StateMutation<TState>(false, default, false, default);
+            _ = new CommitAction<TState>(this, default, emptyMutation);
         }
 
         public CascadeTypeId StateId => _stateId;
-        public int StateCapacityHint => Math.Min(_sparse.Length, _values.Length);
-        public int MutationCapacity => _mutations.Capacity;
-        public int MutationCount => _mutations.Count;
-        internal int EntityCount => _count;
+        public int StateCapacityHint => Math.Min(_storage.SparseCapacity, _storage.DenseCapacity);
+        public int MutationCapacity => _mutations.Length;
+        public int MutationCount => _mutationCount;
+        internal int EntityCount => _storage.Count;
 
         public bool Has(EntityRef entity)
-            => TryGetDenseIndex(entity, out _);
+            => _storage.TryGetIndex(entity, out _);
 
         internal bool TryGet(EntityRef entity, out TState state)
         {
-            if (TryGetDenseIndex(entity, out var index))
+            if (_storage.TryGetIndex(entity, out var index))
             {
-                state = _values[index];
+                state = _storage.ValueAt(index);
                 return true;
             }
 
@@ -56,90 +63,94 @@ namespace CascadeEngineApi
             throw new KeyNotFoundException($"Entity '{entity}' has no '{_debugName}' output state.");
         }
 
-        internal void Set(EntityRef entity, TState next)
+        internal void FreezeCapacity()
         {
-            EnsureStorageCapacity(entity.StorageIndex + 1, _count + 1);
-            if (TryGetDenseIndex(entity, out var index))
-            {
-                var previous = _values[index];
-                if (EqualityComparer<TState>.Default.Equals(previous, next))
-                {
-                    return;
-                }
+            _fixedCapacity = true;
+            _storage.FreezeCapacity();
+        }
 
-                _values[index] = next;
-                _mutations.Add(new StateMutationRecord<TState>(
-                    entity,
-                    new StateMutation<TState>(true, previous, true, next)));
-                return;
+        /// <summary>
+        /// [INTEGRATION] Range: one decision per entity/output. Condition: unchanged committed snapshot. Output: equality and capacity checked before any durable write.
+        /// </summary>
+        internal bool Prepare(EntityRef entity, CommitDecision<TState> decision, out CommitAction<TState> action)
+        {
+            action = default;
+            var hadPrevious = TryGet(entity, out var previous);
+            var hasNext = decision.Kind == CommitDecisionKind.Set;
+            if (decision.Kind == CommitDecisionKind.Unchanged
+                || (!hasNext && !hadPrevious)
+                || (hasNext && hadPrevious && Comparer.Equals(previous, decision.Next)))
+            {
+                return false;
             }
 
-            AddNew(entity, next);
-            _mutations.Add(new StateMutationRecord<TState>(
-                entity,
-                new StateMutation<TState>(false, default, true, next)));
+            var insertions = _preparedInsertions + (hasNext && !hadPrevious ? 1 : 0);
+            EnsureStorageCapacity(entity.StorageIndex + 1, _storage.Count + insertions);
+            _storage.Prepare(entity, _storage.Count + insertions);
+            EnsureMutationCapacity(_mutationCount + _preparedMutations + 1);
+            _preparedInsertions = insertions;
+            _preparedMutations++;
+            action = new CommitAction<TState>(this, entity,
+                new StateMutation<TState>(hadPrevious, previous, hasNext, decision.Next));
+            return true;
+        }
+
+        internal void ClearPreparation()
+        {
+            _preparedInsertions = 0;
+            _preparedMutations = 0;
+        }
+
+        /// <summary>
+        /// [INTEGRATION] Range: validated plan only. Condition: all outputs prepared. Output: array/index writes and reserved journal append, without callbacks or growth.
+        /// </summary>
+        internal void ApplyPrepared(EntityRef entity, in StateMutation<TState> mutation)
+        {
+            if (mutation.HasNext)
+            {
+                _storage.SetPrepared(entity, mutation.Next);
+            }
+            else
+            {
+                _storage.RemovePrepared(entity);
+            }
+            _mutations[_mutationCount++] = new StateMutationRecord<TState>(entity, mutation);
         }
 
         internal void SetSilently(EntityRef entity, TState next)
         {
-            EnsureStorageCapacity(entity.StorageIndex + 1, _count + 1);
-            if (TryGetDenseIndex(entity, out var index))
-            {
-                _values[index] = next;
-                return;
-            }
-
-            AddNew(entity, next);
+            EnsureStorageCapacity(entity.StorageIndex + 1, _storage.Count + (Has(entity) ? 0 : 1));
+            _storage.Prepare(entity, _storage.Count + (Has(entity) ? 0 : 1));
+            _storage.SetPrepared(entity, next);
         }
 
-        public void Delete(EntityRef entity)
+        private void EnsureMutationCapacity(int required)
         {
-            if (!TryGetDenseIndex(entity, out var index))
-            {
-                return;
-            }
-
-            var previous = _values[index];
-            var lastIndex = _count - 1;
-            var lastEntity = _entities[lastIndex];
-
-            if (index != lastIndex)
-            {
-                _entities[index] = lastEntity;
-                _values[index] = _values[lastIndex];
-                _sparse[lastEntity.StorageIndex] = index + 1;
-            }
-
-            _sparse[entity.StorageIndex] = 0;
-            _entities[lastIndex] = default;
-            _values[lastIndex] = default;
-            _count--;
-
-            _mutations.Add(new StateMutationRecord<TState>(
-                entity,
-                new StateMutation<TState>(true, previous, false, default)));
+            if (_mutations.Length >= required) return;
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed output mutation capacity exceeded.");
+            Array.Resize(ref _mutations, GrowCapacity(_mutations.Length, required));
         }
 
         public void EnsureCapacity(int stateCapacity, int mutationCapacity)
         {
             EnsureStorageCapacity(stateCapacity, stateCapacity);
 
-            if (_mutations.Capacity < mutationCapacity)
-            {
-                _mutations.Capacity = mutationCapacity;
-            }
+            EnsureMutationCapacity(mutationCapacity);
         }
 
         public void ClearMutations()
-            => _mutations.Clear();
+        {
+            Array.Clear(_mutations, 0, _mutationCount);
+            _mutationCount = 0;
+        }
 
         public void DisposeBucket()
         {
             var errors = new CleanupErrors();
-            for (var i = 0; i < _count; i++)
+            for (var i = 0; i < _storage.Count; i++)
             {
-                var state = _values[i];
-                _values[i] = default;
+                var state = _storage.ValueAt(i);
+                _storage.ValueAt(i) = default;
                 try
                 {
                     DisposeIfNeeded(state);
@@ -150,12 +161,9 @@ namespace CascadeEngineApi
                 }
             }
 
-            _sparse = Array.Empty<int>();
-            _entities = Array.Empty<EntityRef>();
-            _values = Array.Empty<TState>();
-            _count = 0;
-            _mutations.Clear();
-            _mutations.Capacity = 0;
+            _storage.DisposeStorage();
+            _mutations = Array.Empty<StateMutationRecord<TState>>();
+            _mutationCount = 0;
             errors.ThrowIfAny();
         }
 
@@ -167,63 +175,30 @@ namespace CascadeEngineApi
 
         internal EntityRef EntityAt(int index)
         {
-            if ((uint)index >= _count)
+            if ((uint)index >= _storage.Count)
             {
                 throw new IndexOutOfRangeException();
             }
 
-            return _entities[index];
+            return _storage.EntityAt(index);
         }
 
         internal void ForEachMutation(StateMutationHandler<TState> handler)
         {
-            for (var i = 0; i < _mutations.Count; i++)
+            for (var i = 0; i < _mutationCount; i++)
             {
                 var mutation = _mutations[i].Mutation;
                 handler(_mutations[i].Entity, in mutation);
             }
         }
 
-        private void AddNew(EntityRef entity, TState state)
-        {
-            var index = _count;
-            _entities[index] = entity;
-            _values[index] = state;
-            _sparse[entity.StorageIndex] = index + 1;
-            _count++;
-        }
-
-        private bool TryGetDenseIndex(EntityRef entity, out int index)
-        {
-            if ((uint)entity.StorageIndex < _sparse.Length)
-            {
-                var stored = _sparse[entity.StorageIndex];
-                if (stored != 0)
-                {
-                    index = stored - 1;
-                    return index < _count && _entities[index].Equals(entity);
-                }
-            }
-
-            index = -1;
-            return false;
-        }
-
         private void EnsureStorageCapacity(int entityCapacity, int stateCapacity)
         {
-            if (entityCapacity > _sparse.Length)
-            {
-                Array.Resize(ref _sparse, GrowCapacity(_sparse.Length, entityCapacity));
-            }
-
-            if (stateCapacity <= _values.Length)
-            {
-                return;
-            }
-
-            var capacity = GrowCapacity(_values.Length, stateCapacity);
-            Array.Resize(ref _entities, capacity);
-            Array.Resize(ref _values, capacity);
+            var sparse = _storage.SparseCapacity;
+            var dense = _storage.DenseCapacity;
+            _storage.EnsureCapacity(
+                entityCapacity > sparse ? (_fixedCapacity ? entityCapacity : GrowCapacity(sparse, entityCapacity)) : sparse,
+                stateCapacity > dense ? (_fixedCapacity ? stateCapacity : GrowCapacity(dense, stateCapacity)) : dense);
         }
 
         private static void DisposeIfNeeded(TState state)

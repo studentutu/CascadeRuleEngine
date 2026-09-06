@@ -10,27 +10,21 @@ namespace CascadeEngineApi
     {
         private readonly StateBucket<TState> _bucket;
         private readonly EntityRef _entity;
-        private readonly CommitDecision<TState> _decision;
+        private readonly StateMutation<TState> _mutation;
 
-        internal CommitAction(StateBucket<TState> bucket, EntityRef entity, CommitDecision<TState> decision)
+        internal CommitAction(StateBucket<TState> bucket, EntityRef entity, StateMutation<TState> mutation)
         {
             _bucket = bucket;
             _entity = entity;
-            _decision = decision;
+            _mutation = mutation;
         }
 
-        public void Apply()
+        internal void Validate(EntityStore entities)
         {
-            if (_decision.Kind == CommitDecisionKind.Set)
-            {
-                _bucket.Set(_entity, _decision.Next);
-                return;
-            }
-
-            if (_decision.Kind == CommitDecisionKind.Delete)
-            {
-                _bucket.Delete(_entity);
-            }
+            if (!entities.TryResolveForStorage(_entity, out var current) || current != _entity)
+                throw new System.InvalidOperationException("Prepared output action targets a stale entity generation.");
         }
+
+        public void Apply() => _bucket.ApplyPrepared(_entity, in _mutation);
     }
 }

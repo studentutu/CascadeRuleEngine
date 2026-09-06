@@ -8,6 +8,9 @@ namespace CascadeEngineApi
     internal interface IFactReduceRoute
     {
         int ReducerCount { get; }
+        int[] TransactionalWaiters { get; }
+        int[] BatchWaiters { get; }
+        void BindWaiters(int[] transactional, int[] batch);
 
         IReducerInvoker ReducerAt(int index);
     }

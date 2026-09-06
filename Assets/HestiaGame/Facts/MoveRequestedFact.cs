@@ -18,5 +18,6 @@ namespace Hestia
 
         public bool Equals(MoveRequestedFact other)
             => Position.Equals(other.Position);
+        public void Dispose() { }
     }
 }

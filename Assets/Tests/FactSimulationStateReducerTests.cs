@@ -453,13 +453,13 @@ namespace CascadeEngineApi.Tests
             }
 
             var options = NoTimeLimit();
-            var firstUseBytes = MeasureAllocatedBytes(() => simulation.RunTick(options));
-            var steadyStateBytes = MeasureAllocatedBytes(() => simulation.RunTick(options));
+            var firstUseAllocations = AllocationProbe.Count(() => simulation.RunTick(options));
+            var steadyStateAllocations = AllocationProbe.Count(() => simulation.RunTick(options));
 
             TestContext.WriteLine(
-                $"State-trigger allocation measurement for {entityCount} entities: first-use={firstUseBytes} bytes, steady-state={steadyStateBytes} bytes.");
-            Assert.GreaterOrEqual(firstUseBytes, 0);
-            Assert.AreEqual(0, steadyStateBytes);
+                $"State-trigger allocation measurement for {entityCount} entities: first-use={firstUseAllocations} events, steady-state={steadyStateAllocations} events.");
+            Assert.GreaterOrEqual(firstUseAllocations, 0);
+            Assert.AreEqual(0, steadyStateAllocations);
         }
 
         private static ReduceOptions NoTimeLimit()
@@ -467,13 +467,6 @@ namespace CascadeEngineApi.Tests
             {
                 MaxMilliseconds = 0
             };
-
-        private static long MeasureAllocatedBytes(Action action)
-        {
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            action();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
-        }
 
         private sealed class NavigationFeature : FactFeature
         {

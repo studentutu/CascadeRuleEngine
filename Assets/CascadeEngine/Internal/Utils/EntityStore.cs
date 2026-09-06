@@ -45,6 +45,14 @@ namespace CascadeEngineApi
         internal int Count => _slotCount;
         internal int PendingDestroyCount => _pendingDestroyed.Count;
 
+        internal int PrepareCreate()
+        {
+            if (_activeCount >= _maxEntities) throw new InvalidOperationException("Concurrent entity limit reached.");
+            var required = _freeSlotCount > 0 ? _slotCount : checked(_slotCount + 1);
+            EnsureCapacity(required);
+            return required;
+        }
+
         internal EntityRef Create(bool stageForActiveTick)
         {
             if (_activeCount >= _maxEntities)
@@ -319,11 +327,17 @@ namespace CascadeEngineApi
                 ? 1L
                 : (long)_status.Length * 2L;
             var capacity = (int)Math.Min(_maxEntities, Math.Max(required, doubled));
-            Array.Resize(ref _status, capacity);
-            Array.Resize(ref _generations, capacity);
-            Array.Resize(ref _freeSlots, capacity);
+            var status = new byte[capacity];
+            var generations = new uint[capacity];
+            var freeSlots = new int[capacity];
+            Array.Copy(_status, status, _status.Length);
+            Array.Copy(_generations, generations, _generations.Length);
+            Array.Copy(_freeSlots, freeSlots, _freeSlotCount);
             _pendingCreated.EnsureCapacity(capacity);
             _pendingDestroyed.EnsureCapacity(capacity);
+            _status = status;
+            _generations = generations;
+            _freeSlots = freeSlots;
         }
 
         private void ClearPending()

@@ -11,6 +11,9 @@ namespace CascadeEngineApi
     {
         private EntityRef[] _items;
 
+        private bool _fixedCapacity;
+        internal void FreezeCapacity() => _fixedCapacity = true;
+
         internal EntityRefBuffer(int initialCapacity)
         {
             _items = new EntityRef[NormalizeCapacity(initialCapacity)];
@@ -33,6 +36,7 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed runtime buffer capacity exceeded.");
             Array.Resize(ref _items, required);
         }
 

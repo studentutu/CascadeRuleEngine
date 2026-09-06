@@ -13,6 +13,9 @@ namespace CascadeEngineApi
         private readonly Func<TValue> _factory;
         private TValue?[] _values;
 
+        private bool _fixedCapacity;
+        internal void FreezeCapacity() => _fixedCapacity = true;
+
         internal DenseEntityObjectStore(Func<TValue> factory, int initialEntityCapacity)
         {
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
@@ -30,6 +33,7 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed runtime buffer capacity exceeded.");
             Array.Resize(ref _values, entityCapacity);
         }
 

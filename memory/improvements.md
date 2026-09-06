@@ -1,6 +1,8 @@
 # CascadeEngine Internal Overhaul
 
-Status: revised proposal against the ownership-hardened baseline, 2026-09-06. The generations below are outstanding work, not a description of implemented behavior.
+Status: implemented against the ownership-hardened baseline, 2026-09-06. The proposal below records the original risks and generation gates; see [implementation results](improvements-results.md) for the final design and verification.
+
+Approved compatibility decision: keep inherited no-op `IFact.Dispose`, but require an explicit implementation on allocation-free fact types because Unity Mono boxes inherited default-interface disposal. No runtime reflection, code generation, or dependencies were added. The old per-thread GC byte measurements were invalid on this Mono runtime; the new positive-controlled Unity recorder supersedes those allocation claims.
 
 Scope: internal transaction boundaries, scheduling, capacity enforcement, and storage ownership. Preserve existing public signatures and valid observable behavior. This refactoring does not establish full Entitas parity.
 

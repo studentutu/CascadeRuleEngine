@@ -21,8 +21,9 @@ Core:
 - reducers only read committed state plus accumulated tick facts, then emit more facts.
 - committers are the only code that writes `IOutputState`.
 - zero memory-allocation on hot path.
-- reducer loop is commutative and idempotent, order of reducers doesn't change output.
-- minimal and clean API (full feature parity to Entitas ECS).
+- reducers and committers must implement commutative, idempotent domain rules; the engine does not make arbitrary callbacks order-independent.
+- minimal public API for the documented ECS migration boundary; see the package parity matrix for exclusions.
+- minimal set of good primitives.
 
 ## The key rule
 
@@ -100,27 +101,26 @@ Do not persist `EntityRef.Value` as durable identity. `TryGetEntity(slotId, out 
 
 ## Stable Type Ids
 
-Every fact and output state type must declare one stable id:
+Fact and output ids are derived from type names during feature registration. Do not add static ids to value types.
 
 ```csharp
-public readonly struct MoveRequestedFact : IFact
+public readonly struct MoveRequestedFact : IFact<MoveRequestedFact>
 {
-    public static readonly CascadeTypeId CascadeId =
-        CascadeTypeId.FromName(nameof(MoveRequestedFact));
-
-    public void Dispose()
-    {
-    }
+    public MoveRequestedFact(float distance) => Distance = distance;
+    public float Distance { get; }
+    public bool Equals(MoveRequestedFact other) => Distance.Equals(other.Distance);
+    public void Dispose() { }
 }
 
-public readonly struct PositionState : IOutputState
+public readonly struct PositionState : IOutputState<PositionState>
 {
-    public static readonly CascadeTypeId CascadeId =
-        CascadeTypeId.FromName(nameof(PositionState));
+    public PositionState(float value) => Value = value;
+    public float Value { get; }
+    public bool Equals(PositionState other) => Value.Equals(other.Value);
 }
 ```
 
-`System.Type` is retained only behind generic construction and diagnostic exception utilities.
+Implement `Dispose()` explicitly, including an empty body for facts without resources, on allocation-free paths. The inherited `IFact` no-op remains source-compatible, but Unity Mono boxes each call. Resource facts retain their existing ownership and disposal behavior.
 
 ## Warmup For 500+ Entities
 
@@ -221,6 +221,16 @@ Folder intent:
 
 - `Public`: public types normal package consumers directly uses.
 - `Internal`: rest of the package with core interfaces, implementation, utilities. These are package implementation details and should be hidden from sample gameplay code.
+
+## Prepared Commit And Continuation
+
+Reconciliation prepares equality, capacity, normal output changes, and lifecycle deletions before applying anything. Application uses validated typed actions and finalizes state, mutation journals, and entity release together. A failed plan leaves the previous committed snapshot unchanged.
+
+Incremental execution retains exact reduction and reconciliation cursors. Accepted late input invalidates an unpublished plan while input is open; terminal `Without` sealing remains in force. Mutation journals still clear at tick start, and final mutation consumption remains replayable.
+
+`MaxWorkItems` continues to count reducer invocations only. Time limits are cooperative: planning can suspend, but callbacks, atomic application, and cleanup cannot be preempted. Settings reserve and freeze engine storage during construction; legacy construction permits growth during preparation.
+
+See [implementation and verification results](memory/improvements-results.md) and the [package README](Assets/CascadeEngine/Readme.md) for primitives, capacity costs, and measured limits.
 
 ## Hestia Sample
 

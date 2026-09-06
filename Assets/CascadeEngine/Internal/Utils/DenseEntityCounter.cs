@@ -11,6 +11,9 @@ namespace CascadeEngineApi
     {
         private int[] _counts;
 
+        private bool _fixedCapacity;
+        internal void FreezeCapacity() => _fixedCapacity = true;
+
         internal DenseEntityCounter(int initialEntityCapacity)
         {
             _counts = new int[NormalizeCapacity(initialEntityCapacity)];
@@ -27,6 +30,7 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed runtime buffer capacity exceeded.");
             Array.Resize(ref _counts, entityCapacity);
         }
 

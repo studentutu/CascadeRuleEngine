@@ -24,6 +24,13 @@ namespace CascadeEngineApi
         internal bool IsNegativeConditionInput { get; private set; }
         public int AffectedOutputCount => _affectedOutputs.Count;
         public int ReducerCount => _reducers.Count;
+        public int[] TransactionalWaiters { get; private set; } = System.Array.Empty<int>();
+        public int[] BatchWaiters { get; private set; } = System.Array.Empty<int>();
+        public void BindWaiters(int[] transactional, int[] batch)
+        {
+            TransactionalWaiters = transactional;
+            BatchWaiters = batch;
+        }
 
         public IOutputRegistration AffectedOutputAt(int index)
             => _affectedOutputs[index];

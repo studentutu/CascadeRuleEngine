@@ -9,6 +9,7 @@ namespace CascadeEngineApi
     {
         CascadeTypeId Id { get; }
         string DebugName { get; }
+        IFactReduceRoute ReduceRoute(FactFeatureRegistry registry);
 
         void Register(CascadeTypeCatalog catalog);
 

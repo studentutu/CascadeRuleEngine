@@ -30,8 +30,9 @@ namespace CascadeEngineApi
         private readonly FiredReducerTracker _firedBatchEntities;
         private readonly PartialSimulation _partial;
         private readonly ReduceOptions _defaultOptions;
-        private int[] _commitOutputMarks = new int[0];
-        private int _commitOutputMark;
+        private readonly ReconciliationPlan _reconciliation;
+        internal long InputRevision { get; private set; }
+        internal SimulationMetrics Metrics { get; } = new SimulationMetrics();
         private int _mutationCount;
         private IOutputRegistration? _activeCommitOutput;
         private EntityRef _activeCommitEntity;
@@ -79,17 +80,19 @@ namespace CascadeEngineApi
             _defaultOptions = settings?.CreateReduceOptions() ?? ReduceOptions.Default();
             _factView = new EntityFactView(_facts, _registry);
             _commitFactView = new EntityFactView(_facts, _registry);
-            _firedTransactional = new FiredReducerTracker(_registry.TransactionalReducers.Count, 64);
-            _firedBatchEntities = new FiredReducerTracker(_registry.BatchTransactionalReducers.Count, 64);
+            _firedTransactional = new FiredReducerTracker(_registry.TransactionalReducers.Count, settings?.MaxEntities ?? 64);
+            _firedBatchEntities = new FiredReducerTracker(_registry.BatchTransactionalReducers.Count, settings?.MaxEntities ?? 64);
             _partial = new PartialSimulation(
                 this,
                 _registry,
                 _entities,
                 _facts,
-                _transactionBuffer,
                 _batchBuffer,
                 _firedTransactional,
-                _firedBatchEntities);
+                _firedBatchEntities,
+                settings?.MaxEntities ?? 64);
+            _reconciliation = new ReconciliationPlan(this, _registry, _facts, _entities);
+            _registry.BindTransactionalRoutes();
             _registry.ValidateStateReducerOutputs();
             CreateRegisteredStateBuckets();
             BindStateReducerBuckets();
@@ -97,6 +100,14 @@ namespace CascadeEngineApi
             if (settings != null)
             {
                 Warmup(settings.CreateWarmupHints());
+                for (var i = 0; i < _registry.Outputs.Count; i++) _registry.Outputs[i].FreezeCapacity();
+                _partial.FreezeCandidateCapacity();
+                _facts.FreezeCapacity(settings.MaxFactsPerEntity, settings.MaxFactsPerTypePerEntity);
+                _queryBuffer.FreezeCapacity();
+                _transactionBuffer.FreezeCapacity();
+                _batchBuffer.FreezeCapacity();
+                _firedTransactional.FreezeCapacity();
+                _firedBatchEntities.FreezeCapacity();
             }
         }
 
@@ -148,6 +159,7 @@ namespace CascadeEngineApi
 
             var entityCapacity = NormalizeCapacity(hints.EntityCapacity);
             _entities.Warmup(entityCapacity);
+            _partial.WarmupCandidates(entityCapacity);
             _facts.Warmup(
                 entityCapacity,
                 NormalizeCapacity(hints.FactQueueCapacity),
@@ -158,7 +170,6 @@ namespace CascadeEngineApi
             _queryBuffer.EnsureCapacity(NormalizeCapacity(hints.QueryEntityCapacity));
             _transactionBuffer.EnsureCapacity(NormalizeCapacity(hints.TransactionEntityCapacity));
             _batchBuffer.EnsureCapacity(NormalizeCapacity(hints.BatchEntityCapacity));
-            EnsureCommitOutputMarkCapacity();
             _firedTransactional.Warmup(_registry.TransactionalReducers.Count, entityCapacity);
             _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, entityCapacity);
 
@@ -174,12 +185,16 @@ namespace CascadeEngineApi
         public EntityRef CreateEntity()
         {
             ThrowIfDisposed();
+            if (_activeCommitOutput != null) throw new InvalidOperationException("Committers cannot submit simulation input.");
             _partial.ValidateHostInput();
 
+            var required = _entities.PrepareCreate();
+            _partial.WarmupCandidates(required);
+            _facts.EnsureEntityCapacity(required);
+            _firedTransactional.Warmup(_registry.TransactionalReducers.Count, required);
+            _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, required);
             var entity = _entities.Create(_partial.IsActive);
-            _facts.EnsureEntityCapacity(_entities.Count);
-            _firedTransactional.Warmup(_registry.TransactionalReducers.Count, _entities.Count);
-            _firedBatchEntities.Warmup(_registry.BatchTransactionalReducers.Count, _entities.Count);
+            InputRevision++;
             return entity;
         }
 
@@ -189,6 +204,7 @@ namespace CascadeEngineApi
         public void DestroyEntity(EntityRef entity)
         {
             ThrowIfDisposed();
+            if (_activeCommitOutput != null) throw new InvalidOperationException("Committers cannot submit simulation input.");
             _partial.ValidateHostInput();
 
             if (_entities.IsDestroyed(entity))
@@ -219,6 +235,7 @@ namespace CascadeEngineApi
             where TFact : struct, IFact
         {
             ThrowIfDisposed();
+            if (_activeCommitOutput != null) throw new InvalidOperationException("Committers cannot submit simulation input.");
             _partial.ValidateHostInput();
             EmitCore(entity, in fact, _partial.CurrentCausalDepth);
         }
@@ -293,7 +310,7 @@ namespace CascadeEngineApi
             {
                 errors.Add(error);
             }
-            _commitOutputMarks = Array.Empty<int>();
+
 
             UnbindRegisteredStateBuckets();
             foreach (var bucket in _stateBuckets.Values)
@@ -320,6 +337,7 @@ namespace CascadeEngineApi
                 errors.Add(error);
             }
             _partial.DisposePartial();
+            _partial.DisposeCandidateStorage();
             _queryBuffer.DisposeStorage();
             _transactionBuffer.DisposeStorage();
             _batchBuffer.DisposeStorage();
@@ -589,6 +607,7 @@ namespace CascadeEngineApi
                     parentDepth,
                     _partial.IsActive ? _partial.CurrentGuardrails : _defaultOptions.Guardrails);
 
+                if (accepted) InputRevision++;
                 if (accepted && route.StagesEntityDeath)
                 {
                     _entities.StageDestroy(resolved);
@@ -608,51 +627,22 @@ namespace CascadeEngineApi
         }
 
         /// <summary>
-        /// Range: closed tick facts. Condition: no pending reduction work. Output: all commit decisions read one unchanged snapshot before any durable write is applied.
+        /// [INTEGRATION] Range: closed facts. Condition: unchanged input revision. Output: resumable preparation against the previous committed snapshot.
         /// </summary>
-        internal void CommitTouchedOutputs()
+        internal bool PrepareOutputs(ReduceOptions options, long startTimestamp)
+            => _reconciliation.TryPrepare(options, startTimestamp);
+
+        /// <summary>
+        /// [INTEGRATION] Range: validated actions only. Condition: preparation complete. Output: atomic state, journal, and lifecycle finalization without user callbacks or growth.
+        /// </summary>
+        internal void ApplyPreparedOutputs()
         {
-            ClearQueuedCommitActions();
-            EnsureTransactionCapacity();
-            EnsureCommitOutputMarkCapacity();
-            _facts.CopyTouchedEntities(_transactionBuffer, out var touchedCount);
-
-            for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
-            {
-                var entity = _transactionBuffer[entityIndex];
-                if (_entities.IsDestroyed(entity))
-                {
-                    continue;
-                }
-
-                QueueAffectedOutputCommits(entity);
-            }
-
-            for (var i = 0; i < _registry.AbsenceOutputs.Count; i++)
-            {
-                _registry.AbsenceOutputs[i].QueueAbsentCommitActions(this);
-            }
-
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             for (var i = 0; i < _registry.Outputs.Count; i++)
-            {
                 _registry.Outputs[i].ApplyQueuedCommitActions();
-            }
-
-            ClearQueuedCommitActions();
-        }
-
-        internal void CommitEntityLifecycle()
-        {
-            for (var entityIndex = 0; entityIndex < _entities.PendingDestroyCount; entityIndex++)
-            {
-                var entity = _entities.PendingDestroyAt(entityIndex);
-                for (var outputIndex = 0; outputIndex < _registry.Outputs.Count; outputIndex++)
-                {
-                    _registry.Outputs[outputIndex].DeleteState(this, entity);
-                }
-            }
-
             _entities.CommitTick();
+            ClearQueuedCommitActions();
+            Metrics.ApplyTicks = System.Diagnostics.Stopwatch.GetTimestamp() - started;
         }
 
         internal void RollbackEntityLifecycle()
@@ -691,6 +681,8 @@ namespace CascadeEngineApi
         }
 
         internal int MutationCountCore => _mutationCount;
+        internal long EligibilityChecks => _partial.EligibilityChecks;
+        internal long CandidateReservedBytes => _partial.CandidateBytes;
 
         /// <summary>
         /// [INTEGRATION] Records publication before fact cleanup so cleanup failures cannot hide a committed tick.
@@ -721,6 +713,7 @@ namespace CascadeEngineApi
 
         internal void ClearQueuedCommitActions()
         {
+            _reconciliation.Clear();
             for (var i = 0; i < _registry.Outputs.Count; i++)
             {
                 _registry.Outputs[i].ClearQueuedCommitActions();
@@ -784,53 +777,6 @@ namespace CascadeEngineApi
         internal void EnsureBatchCapacity(int required)
         {
             _batchBuffer.EnsureCapacity(required);
-        }
-
-        private void EnsureCommitOutputMarkCapacity()
-        {
-            var required = NormalizeCapacity(_registry.Outputs.Count);
-            if (_commitOutputMarks.Length >= required)
-            {
-                return;
-            }
-
-            Array.Resize(ref _commitOutputMarks, required);
-        }
-
-        private void QueueAffectedOutputCommits(EntityRef entity)
-        {
-            var factRoutes = _facts.FactRoutes(entity);
-            var mark = NextCommitOutputMark();
-
-            for (var factIndex = 0; factIndex < factRoutes.Length; factIndex++)
-            {
-                var route = factRoutes[factIndex];
-
-                for (var outputIndex = 0; outputIndex < route.AffectedOutputCount; outputIndex++)
-                {
-                    var output = route.AffectedOutputAt(outputIndex);
-                    if (_commitOutputMarks[output.Index] == mark)
-                    {
-                        continue;
-                    }
-
-                    _commitOutputMarks[output.Index] = mark;
-                    output.QueueCommitAction(this, entity);
-                }
-            }
-        }
-
-        private int NextCommitOutputMark()
-        {
-            _commitOutputMark++;
-            if (_commitOutputMark != int.MaxValue)
-            {
-                return _commitOutputMark;
-            }
-
-            Array.Clear(_commitOutputMarks, 0, _commitOutputMarks.Length);
-            _commitOutputMark = 1;
-            return _commitOutputMark;
         }
 
         private static void ThrowIfOptionsInvalid(ReduceOptions options)

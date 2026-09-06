@@ -11,5 +11,6 @@ namespace Hestia
     {
         public bool Equals(FootstepCueFact other)
             => true;
+        public void Dispose() { }
     }
 }

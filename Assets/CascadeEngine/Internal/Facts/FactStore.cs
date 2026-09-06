@@ -20,6 +20,20 @@ namespace CascadeEngineApi
         private int _factRouteCapacityPerEntity = 4;
         private FactListCapacityMode _factListCapacityMode = FactListCapacityMode.GrowOnDemand;
         private int _queueHead;
+        private bool _fixedCapacity;
+        private int _maxFactsPerEntity = int.MaxValue;
+        private int _maxFactsPerType = int.MaxValue;
+
+        internal void FreezeCapacity(int maxFactsPerEntity, int maxFactsPerType)
+        {
+            _fixedCapacity = true;
+            _maxFactsPerEntity = maxFactsPerEntity;
+            _maxFactsPerType = maxFactsPerType;
+            _touchedEntities.FreezeCapacity();
+            _factCountsByEntity.FreezeCapacity();
+            _factRoutesByEntity.FreezeCapacity();
+            foreach (var bucket in _buckets.Values) bucket.FreezeCapacity();
+        }
 
         internal FactStore()
         {
@@ -32,6 +46,8 @@ namespace CascadeEngineApi
         internal int DeduplicatedFacts { get; private set; }
         internal int RejectedDestroyedEntityFacts { get; private set; }
         internal int TouchedEntityCount => _touchedEntities.Count;
+        internal EntityRef TouchedEntityAt(int index) => _touchedEntities[index];
+        internal int TouchedEntityIndex(EntityRef entity) => _touchedEntities.IndexOf(entity);
         internal int QueueCapacity => _queue.Capacity;
         internal int TouchedEntityCapacity => _touchedEntities.Capacity;
         internal int FactCounterEntityCapacity => _factCountsByEntity.Capacity;
@@ -90,7 +106,6 @@ namespace CascadeEngineApi
                 return;
             }
 
-            _entityCapacity = entityCapacity;
             _touchedEntities.EnsureCapacity(entityCapacity);
             _factCountsByEntity.EnsureCapacity(entityCapacity);
             _factRoutesByEntity.EnsureCapacity(entityCapacity);
@@ -99,6 +114,7 @@ namespace CascadeEngineApi
             {
                 bucket.EnsureEntityCapacity(entityCapacity);
             }
+            _entityCapacity = entityCapacity;
         }
 
         internal int MinimumBucketEntityCapacity()
@@ -173,31 +189,39 @@ namespace CascadeEngineApi
             }
 
             var factCountForType = bucket.CountFor(entity);
-            if (factCountForType >= guardrails.MaxFactsPerTypePerEntity)
+            if (factCountForType >= Math.Min(_maxFactsPerType, guardrails.MaxFactsPerTypePerEntity))
             {
                 throw new InvalidOperationException($"Fact type id '{factId}' exceeded per-entity limit '{guardrails.MaxFactsPerTypePerEntity}' for entity '{entity}'.");
             }
 
             // Validate cardinality and reserve routing/queue storage before accepting the caller's payload.
-            if (_factCountsByEntity.Get(entity) >= guardrails.MaxFactsPerEntity)
+            if (_factCountsByEntity.Get(entity) >= Math.Min(_maxFactsPerEntity, guardrails.MaxFactsPerEntity))
             {
                 throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
             }
 
             _touchedEntities.EnsureCapacity(entity.StorageIndex + 1);
             _factCountsByEntity.EnsureCapacity(entity.StorageIndex + 1);
-            var routes = _factRoutesByEntity.GetOrCreate(entity);
+            if (!_factRoutesByEntity.TryGet(entity, out var routes))
+            {
+                if (_fixedCapacity) throw new InvalidOperationException("Fixed fact route storage was not initialized.");
+                routes = _factRoutesByEntity.GetOrCreate(entity);
+            }
             if (factCountForType == 0)
             {
+                if (_fixedCapacity && routes.Count == routes.Capacity)
+                    throw new InvalidOperationException("Fixed fact route capacity exceeded.");
                 routes.EnsureCapacity(routes.Count + 1);
             }
 
             if (_queue.Count == _queue.Capacity)
             {
+                if (_fixedCapacity) throw new InvalidOperationException("Fixed accepted fact queue capacity exceeded.");
                 _queue.Capacity = Math.Max(4, checked(_queue.Count * 2));
             }
 
-            var factIndex = bucket.Add(entity, in fact);
+            bucket.PrepareAdd(entity);
+            var factIndex = bucket.AddPrepared(entity, in fact);
             AcceptedFacts++;
 
             TrackTouchedEntity(entity);
@@ -352,6 +376,7 @@ namespace CascadeEngineApi
                 return (FactBucket<TFact>)bucket;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed fact bucket was not initialized.");
             var typedBucket = new FactBucket<TFact>(
                 factId,
                 _entityCapacity,
@@ -368,6 +393,7 @@ namespace CascadeEngineApi
                 return bucket;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed fact bucket was not initialized.");
             var typedBucket = factType.CreateBucket(
                 _entityCapacity,
                 _factCapacityPerEntity,

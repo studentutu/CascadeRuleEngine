@@ -18,7 +18,10 @@ namespace CascadeEngineApi
 
         void QueueCommitAction(FactSimulation simulation, EntityRef entity);
 
-        void QueueAbsentCommitActions(FactSimulation simulation);
+        int StateEntityCount { get; }
+        int QueuedActionCount { get; }
+        void ValidateAction(EntityStore entities, int index);
+        void QueueAbsentCommitAction(FactSimulation simulation, int entityIndex);
 
         CascadeTypeId SelectPriorityWinner(FactSimulation simulation, EntityRef entity);
 
@@ -32,7 +35,9 @@ namespace CascadeEngineApi
 
         void UnbindStateBucket(FactSimulation simulation);
 
-        void DeleteState(FactSimulation simulation, EntityRef entity);
+        void QueueDeleteAction(FactSimulation simulation, EntityRef entity);
+
+        void FreezeCapacity();
 
         void Warmup(
             FactSimulation simulation,

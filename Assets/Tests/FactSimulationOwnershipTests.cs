@@ -238,12 +238,10 @@ namespace CascadeEngineApi.Tests
                 resources[i] = new Resource();
             }
             RunResourceTick(simulation, entities, resources);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            RunResourceTick(simulation, entities, resources);
-            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            var allocated = AllocationProbe.Count(() => RunResourceTick(simulation, entities, resources));
             Assert.AreEqual(0, allocated);
             for (var i = 0; i < count; i++) Assert.AreEqual(1, resources[i].Disposals);
-            TestContext.WriteLine($"Resource-owning fact pipeline for 512 entities: steady-state={allocated} bytes.");
+            TestContext.WriteLine($"Resource-owning fact pipeline for 512 entities: steady-state={allocated} allocation events.");
         }
 
         private static void RunResourceTick(FactSimulation simulation, EntityRef[] entities, Resource[] resources)

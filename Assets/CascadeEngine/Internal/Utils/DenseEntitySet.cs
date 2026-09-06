@@ -11,13 +11,16 @@ namespace CascadeEngineApi
     internal sealed class DenseEntitySet
     {
         private readonly List<EntityRef> _entities;
-        private bool[] _contains;
+        private int[] _contains;
+
+        private bool _fixedCapacity;
+        internal void FreezeCapacity() => _fixedCapacity = true;
 
         internal DenseEntitySet(int initialEntityCapacity)
         {
             var capacity = NormalizeCapacity(initialEntityCapacity);
             _entities = new List<EntityRef>(capacity);
-            _contains = new bool[capacity];
+            _contains = new int[capacity];
         }
 
         internal int Count => _entities.Count;
@@ -32,31 +35,36 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_fixedCapacity) throw new InvalidOperationException("Fixed runtime buffer capacity exceeded.");
+            if (_entities.Capacity < entityCapacity) _entities.Capacity = entityCapacity;
             Array.Resize(ref _contains, entityCapacity);
-            if (_entities.Capacity < entityCapacity)
-            {
-                _entities.Capacity = entityCapacity;
-            }
         }
 
         internal bool Add(EntityRef entity)
         {
             EnsureCapacity(entity.StorageIndex + 1);
 
-            if (_contains[entity.StorageIndex])
+            var stored = _contains[entity.StorageIndex];
+            if (stored != 0)
             {
+                if (_entities[stored - 1] != entity)
+                    throw new InvalidOperationException("Entity membership is owned by another generation.");
                 return false;
             }
 
-            _contains[entity.StorageIndex] = true;
+            _contains[entity.StorageIndex] = _entities.Count + 1;
             _entities.Add(entity);
             return true;
         }
 
-        internal bool Contains(EntityRef entity)
+        internal int IndexOf(EntityRef entity)
         {
-            return (uint)entity.StorageIndex < _contains.Length && _contains[entity.StorageIndex];
+            if ((uint)entity.StorageIndex >= _contains.Length) return -1;
+            var stored = _contains[entity.StorageIndex];
+            return stored != 0 && _entities[stored - 1] == entity ? stored - 1 : -1;
         }
+
+        internal bool Contains(EntityRef entity) => IndexOf(entity) >= 0;
 
         internal void CopyTo(EntityRefBuffer destination, out int count)
         {
@@ -72,7 +80,7 @@ namespace CascadeEngineApi
         {
             for (var i = 0; i < _entities.Count; i++)
             {
-                _contains[_entities[i].StorageIndex] = false;
+                _contains[_entities[i].StorageIndex] = 0;
             }
 
             _entities.Clear();
@@ -85,7 +93,7 @@ namespace CascadeEngineApi
         {
             _entities.Clear();
             _entities.Capacity = 0;
-            _contains = Array.Empty<bool>();
+            _contains = Array.Empty<int>();
         }
     }
 }

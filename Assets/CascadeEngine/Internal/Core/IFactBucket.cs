@@ -8,6 +8,7 @@ namespace CascadeEngineApi
     internal interface IFactBucket
     {
         CascadeTypeId FactId { get; }
+        void FreezeCapacity();
         int EntityCapacity { get; }
         int TouchedEntityCapacity { get; }
 

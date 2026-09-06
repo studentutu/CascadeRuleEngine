@@ -1,7 +1,6 @@
 #nullable enable
 
 using System;
-using System.Collections.Generic;
 
 namespace CascadeEngineApi
 {
@@ -15,9 +14,11 @@ namespace CascadeEngineApi
         private readonly int[] _affectedFactPriorities;
         private readonly CascadeTypeId[] _absentFactIds;
         private readonly IOutputCommitter<TState> _committer;
-        private readonly List<CommitAction<TState>> _commitActions = new List<CommitAction<TState>>();
+        private CommitAction<TState>[] _commitActions = Array.Empty<CommitAction<TState>>();
+        private int _commitActionCount;
         private readonly DenseEntitySet _queuedEntities = new DenseEntitySet(64);
         private StateBucket<TState>? _bucket;
+        private bool _fixedCapacity;
 
         internal OutputRegistration(
             OutputState<TState> output,
@@ -42,7 +43,7 @@ namespace CascadeEngineApi
         public bool UsesPrioritySelection =>
             Output.ConflictPolicy == CommitConflictPolicy.PriorityWinnerOrThrowOnTie;
         public bool HasAbsenceReconciliation => _absentFactIds.Length > 0;
-        public int CommitActionCapacity => _commitActions.Capacity;
+        public int CommitActionCapacity => _commitActions.Length;
 
         public void Reindex(int index)
             => Output.Index = index;
@@ -65,12 +66,15 @@ namespace CascadeEngineApi
 
             simulation.BeginOutputCommit(this, entity, selectedFact);
             CommitDecision<TState> decision;
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 decision = _committer.Commit(simulation, entity, in previous);
             }
             finally
             {
+                simulation.Metrics.MaximumCommitterTicks = Math.Max(simulation.Metrics.MaximumCommitterTicks,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - started);
                 simulation.EndOutputCommit();
             }
 
@@ -79,22 +83,18 @@ namespace CascadeEngineApi
                 return;
             }
 
-            _commitActions.Add(new CommitAction<TState>(bucket, entity, decision));
+            QueuePreparedDecision(bucket, entity, decision);
         }
 
-        public void QueueAbsentCommitActions(FactSimulation simulation)
-        {
-            var bucket = RequireBucket();
-            for (var entityIndex = 0; entityIndex < bucket.EntityCount; entityIndex++)
-            {
-                var entity = bucket.EntityAt(entityIndex);
-                if (simulation.IsDestroyed(entity) || HasAnyAbsentFact(simulation, entity))
-                {
-                    continue;
-                }
+        public int StateEntityCount => RequireBucket().EntityCount;
+        public int QueuedActionCount => _commitActionCount;
+        public void ValidateAction(EntityStore entities, int index) => _commitActions[index].Validate(entities);
 
+        public void QueueAbsentCommitAction(FactSimulation simulation, int entityIndex)
+        {
+            var entity = RequireBucket().EntityAt(entityIndex);
+            if (!simulation.IsDestroyed(entity) && !HasAnyAbsentFact(simulation, entity))
                 QueueCommitAction(simulation, entity);
-            }
         }
 
         public CascadeTypeId SelectPriorityWinner(FactSimulation simulation, EntityRef entity)
@@ -139,7 +139,7 @@ namespace CascadeEngineApi
 
         public void ApplyQueuedCommitActions()
         {
-            for (var i = 0; i < _commitActions.Count; i++)
+            for (var i = 0; i < _commitActionCount; i++)
             {
                 _commitActions[i].Apply();
             }
@@ -147,8 +147,10 @@ namespace CascadeEngineApi
 
         public void ClearQueuedCommitActions()
         {
-            _commitActions.Clear();
+            Array.Clear(_commitActions, 0, _commitActionCount);
+            _commitActionCount = 0;
             _queuedEntities.Clear();
+            _bucket?.ClearPreparation();
         }
 
         public IStateBucket CreateStateBucket()
@@ -167,8 +169,28 @@ namespace CascadeEngineApi
             _bucket = null;
         }
 
-        public void DeleteState(FactSimulation simulation, EntityRef entity)
-            => RequireBucket().Delete(entity);
+        public void QueueDeleteAction(FactSimulation simulation, EntityRef entity)
+        {
+            if (!_queuedEntities.Add(entity)) return;
+            QueuePreparedDecision(RequireBucket(), entity, CommitDecision<TState>.Delete());
+        }
+
+        public void FreezeCapacity()
+        {
+            _fixedCapacity = true;
+            RequireBucket().FreezeCapacity();
+            _queuedEntities.FreezeCapacity();
+        }
+
+        private void QueuePreparedDecision(StateBucket<TState> bucket, EntityRef entity, CommitDecision<TState> decision)
+        {
+            if (_commitActionCount == _commitActions.Length)
+            {
+                if (_fixedCapacity) throw new InvalidOperationException("Fixed commit action capacity exceeded.");
+                Array.Resize(ref _commitActions, Math.Max(4, checked(_commitActionCount * 2)));
+            }
+            if (bucket.Prepare(entity, decision, out var action)) _commitActions[_commitActionCount++] = action;
+        }
 
         public void Warmup(
             FactSimulation simulation,
@@ -177,9 +199,10 @@ namespace CascadeEngineApi
             int commitActionCapacity)
         {
             RequireBucket().EnsureCapacity(stateCapacity, mutationCapacity);
-            if (_commitActions.Capacity < commitActionCapacity)
+            if (_commitActions.Length < commitActionCapacity)
             {
-                _commitActions.Capacity = commitActionCapacity;
+                if (_fixedCapacity) throw new InvalidOperationException("Fixed commit action capacity exceeded.");
+                Array.Resize(ref _commitActions, commitActionCapacity);
             }
 
             _queuedEntities.EnsureCapacity(stateCapacity);
@@ -193,8 +216,8 @@ namespace CascadeEngineApi
 
         public void DisposeRegistration()
         {
-            _commitActions.Clear();
-            _commitActions.Capacity = 0;
+            _commitActions = Array.Empty<CommitAction<TState>>();
+            _commitActionCount = 0;
             _queuedEntities.DisposeStorage();
             _bucket = null;
 

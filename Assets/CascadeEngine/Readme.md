@@ -292,7 +292,7 @@ Incomplete incremental results are diagnostic only. Consumers must keep trusting
 
 The parameterless tick methods use the immutable settings snapshot captured by the simulation constructor. Existing overloads accepting `ReduceOptions` remain available for diagnostics and exceptional host-controlled overrides.
 
-`ReduceOptions.MaxFacts` bounds dequeued facts per incremental call. `ReduceOptions.MaxWorkItems` separately bounds reducer invocations per call: immediate reducer invocation, entity transactional/state invocation, or one atomic batch reducer invocation. `MaxMilliseconds` remains the hard elapsed-time slice. Budget suspensions do not consume `MaxPasses`; only completed logical closure passes do.
+`ReduceOptions.MaxFacts` bounds dequeued facts per incremental call. `ReduceOptions.MaxWorkItems` separately bounds reducer invocations per call: immediate reducer invocation, entity transactional/state invocation, or one atomic batch reducer invocation. `MaxMilliseconds` is a cooperative elapsed-time slice, including candidate routing, reconciliation planning, and validation. Callbacks cannot be preempted, and atomic application and fact cleanup can exceed the requested slice. Budget suspensions do not consume `MaxPasses`; only completed logical closure passes do.
 
 If a time or work budget stops dispatch between two reducers registered for the same fact, the simulation preserves the popped fact and next reducer index. Continuation never drops or repeats the remaining reducer invocations.
 
@@ -340,6 +340,8 @@ public readonly struct MoveRequestedFact : IFact<MoveRequestedFact>
 
     public bool Equals(MoveRequestedFact other)
         => Distance.Equals(other.Distance);
+
+    public void Dispose() { }
 }
 
 public readonly struct PositionState : IOutputState<PositionState>
@@ -356,7 +358,7 @@ public readonly struct PositionState : IOutputState<PositionState>
 }
 ```
 
-Use the self-typed `IFact<TFact>` and `IOutputState<TState>` contracts for normal package values. They require only typed equality, which keeps deduplication and state change detection allocation-free. The engine does not hash payloads, so `Equals(object)` and `GetHashCode()` are not required. `IFact` supplies no-op disposal; only resource-owning facts implement `Dispose()` explicitly. The non-generic interfaces remain supported for existing code.
+Use the self-typed `IFact<TFact>` and `IOutputState<TState>` contracts for normal package values. They require only typed equality, which keeps deduplication and state change detection allocation-free. The engine does not hash payloads, so `Equals(object)` and `GetHashCode()` are not required. `IFact` retains its inherited no-op disposal for compatibility. Unity Mono boxes calls to that default: allocation-free fact types must explicitly implement `public void Dispose() { }`, or their actual resource cleanup. This applies to `IFact<TFact>` as well. The engine does not use reflection or code generation to inspect disposal implementations. The non-generic interfaces remain supported for existing code.
 
 Type names must be unique inside one full feature registration, including sub-features. Duplicate names or int-id collisions fail during registration. There is no id-to-type diagnostics map; routing maps use `CascadeTypeId`.
 
@@ -495,7 +497,7 @@ Do not overwrite same-type facts during emit. Overwrite semantics make fact arri
 - `FoldAll`: the committer folds every relevant fact into one durable state write.
 - `CollapseToSingleMarker`: the committer collapses one or more facts into one marker-style output.
 
-`AffectedBy<TFact>()` is shorthand for priority `0`. Priority is scoped to one output registration: the same fact type may have different commit priority for different outputs. Priority never changes reducer scheduling or fact acceptance.
+Use `AffectedBy<TFact>(0)` when no priority distinction is needed. Priority is scoped to one output registration: the same fact type may have different commit priority for different outputs. Priority never changes reducer scheduling or fact acceptance.
 
 The builder defaults to `FoldAll` for backward-compatible pass-through behavior. Use `ConflictPolicy(...)` explicitly in production registrations so the merge contract is visible during review.
 
@@ -503,14 +505,17 @@ The engine cannot automatically merge arbitrary output state. Committers remain 
 
 ## Commit Snapshot Isolation
 
-Every committer in one closing tick reads the same previous committed-state snapshot. The engine first evaluates and buffers every `CommitDecision` for every touched entity and output. Only after all decisions succeed does it apply durable writes.
+Every committer in one closing tick reads the same previous committed-state snapshot. The engine first prepares every changed entity/output, including previous-member absence and pending-destruction deletions. Equality, permitted legacy growth, action/journal capacity, and target-generation validation finish before application. Apply uses typed prepared mutations and reserved array slots, with no callbacks, equality, or resizing. Entity release belongs to the same finalization.
 
 Consequences:
 
 - `previous` and `ICommitContext.GetState/TryGetState/HasState` observe pre-commit state.
 - One committer cannot observe another committer's pending decision, including decisions for another entity.
 - Output registration order and touched-entity order cannot change commit reads.
-- If any committer or conflict check throws, no queued durable write is applied and no partial mutation output is published.
+- If a committer, equality check, conflict check, or capacity preparation throws, no queued durable write is applied and no partial mutation output is published.
+- Incremental planning can suspend. When host input is still open, accepted new facts/create/destroy calls invalidate the unpublished plan and return execution to reduction. Deduplicated input does not invalidate it. Previously fired transactional reducers stay fired.
+- Committers must be deterministic and side-effect-free because abandoned planning can repeat. The engine clears borrowed plan references without disposing copied output snapshots.
+- Journals clear at `BeginTick`, remain empty during suspension, and publish only the completed transaction. Post-publication fact-disposal failures preserve the state, journal, and completed `LastResult`.
 
 ## Transactional Registration Arity
 
@@ -568,6 +573,24 @@ Folder intent:
 
 - `Public`: public types normal package consumers directly uses.
 - `Internal`: rest of the package with core interfaces, implementation, utilities. These are package implementation details and should be hidden from sample gameplay code.
+
+## Internal Primitives And Ownership
+
+| Primitive / owner | Responsibility |
+| --- | --- |
+| `EntitySparseSet<TValue>` | generation-checked membership, compact values, reserved capacity, swap-back removal; no disposal or lifecycle |
+| `FactBucket<TFact>` | typed contiguous payload slab and per-row counts; immutable accepted rows through closure; exactly one cleanup attempt per accepted fact |
+| `StateBucket<TState>` | durable sparse values and typed mutation array; equality/capacity preparation before application |
+| `CommitAction<TState>` | prepared final entity/output mutation; no equality or capacity work during apply |
+| `ReducerCandidates` | packed pending pairs routed from accepted fact types; stage ordering and exact cursors live in `PartialSimulation` |
+| `ReconciliationPlan` | affected, absence, lifecycle, and validation cursors over unpublished typed actions |
+| `CleanupErrors` | exhaustive ownership cleanup while retaining original errors |
+
+The runtime uses one construction-derived fixed/grow choice. Settings freeze fact queues/slabs/routes, entity-related scratch, candidate bits, fired markers, output actions, and journals after initialization. Per-call options cannot relax settings cardinality. Legacy growth is completed before logical fact or entity admission and before durable application.
+
+Pending candidate bit storage is approximately `MaxEntities * (transactional registrations + batch registrations) / 8` bytes, rounded per stage. Existing fired markers remain approximately four bytes per entity/registration. Fact slabs still reserve `MaxEntities * MaxFactsPerTypePerEntity` payload slots per registered fact type; sharing sparse mechanics does not reduce that payload reservation. Membership-only scratch retains its smaller specialized owner instead of carrying an unused values array.
+
+Tests use Unity's synchronous `GC.Alloc` recorder with a positive allocation control. `GC.GetAllocatedBytesForCurrentThread()` returned zero even for new arrays on the tested Mono runtime and is not accepted as evidence. See [measured results](../../memory/improvements-results.md) for allocation, timing, and memory-reservation evidence. These Editor results do not certify IL2CPP throughput or full Entitas parity.
 
 ## Hestia Sample
 

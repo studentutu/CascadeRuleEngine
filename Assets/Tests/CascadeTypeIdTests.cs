@@ -16,7 +16,7 @@ namespace CascadeEngineApi.Tests
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new TypeIdStartFact(12));
-            var result = simulation.RunTick(ReduceOptions.Default());
+            var result = simulation.RunTick(new ReduceOptions { MaxMilliseconds = 0 });
 
             Assert.IsTrue(result.Complete);
             Assert.AreEqual(2, result.AcceptedFacts);

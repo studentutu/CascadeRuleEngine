@@ -13,8 +13,6 @@ namespace CascadeEngineApi
 
         bool Has(EntityRef entity);
 
-        void Delete(EntityRef entity);
-
         void EnsureCapacity(int stateCapacity, int mutationCapacity);
 
         void ClearMutations();

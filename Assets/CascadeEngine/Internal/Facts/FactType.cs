@@ -38,6 +38,9 @@ namespace CascadeEngineApi
             ? _bucketFactory.DebugName
             : _debugName;
 
+        internal IFactReduceRoute ReduceRoute(FactFeatureRegistry registry)
+            => _bucketFactory!.ReduceRoute(registry);
+
         internal void Register(CascadeTypeCatalog catalog)
         {
             _bucketFactory?.Register(catalog);

@@ -5,7 +5,7 @@ using System;
 namespace CascadeEngineApi
 {
     /// <summary>
-    /// Ergonomic allocation-free fact contract. Implement only typed payload equality; no-op disposal is inherited from IFact.
+    /// Typed payload equality. Implement Dispose explicitly for allocation-free cleanup on Mono; the inherited no-op remains supported but boxes.
     /// </summary>
     public interface IFact<TFact> : IFact, IEquatable<TFact>
         where TFact : struct, IFact<TFact>

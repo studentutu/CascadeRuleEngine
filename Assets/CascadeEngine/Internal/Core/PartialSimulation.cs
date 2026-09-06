@@ -14,11 +14,46 @@ namespace CascadeEngineApi
         private readonly FactFeatureRegistry _registry;
         private readonly EntityStore _entities;
         private readonly FactStore _facts;
-        private readonly EntityRefBuffer _transactionBuffer;
         private readonly EntityRefBuffer _batchBuffer;
         private readonly FiredReducerTracker _firedTransactional;
         private readonly FiredReducerTracker _firedBatchEntities;
 
+        private readonly ReducerCandidates _transactionCandidates = new ReducerCandidates();
+        private readonly ReducerCandidates _batchCandidates = new ReducerCandidates();
+        private int _transactionRouteFact;
+        private int _transactionRouteWaiter;
+        private int _batchRouteFact;
+        private int _batchRouteWaiter;
+        private int _candidateEntityCapacity;
+        private int _transactionMinimumKey;
+        private int _transactionEntityLimit;
+        private int _batchMinimumRegistration;
+        private int _batchEntityLimit;
+        private int _batchRegistrationIndex;
+        private int _batchCount;
+        private int _batchEntityCursor;
+        private bool _collectingBatch;
+        internal long EligibilityChecks { get; private set; }
+        internal long CandidateBytes => _transactionCandidates.ReservedBytes + _batchCandidates.ReservedBytes;
+
+        internal void WarmupCandidates(int capacity)
+        {
+            _transactionCandidates.EnsureCapacity(capacity, _registry.TransactionalReducers.Count);
+            // Legacy entity growth preserves pending row keys before a new entity is acquired.
+            if (capacity > _candidateEntityCapacity)
+                _batchCandidates.RepackRows(_candidateEntityCapacity, capacity, _registry.BatchTransactionalReducers.Count);
+            _candidateEntityCapacity = Math.Max(_candidateEntityCapacity, capacity);
+            _batchCandidates.EnsureCapacity(_candidateEntityCapacity, _registry.BatchTransactionalReducers.Count);
+        }
+
+        internal void FreezeCandidateCapacity()
+        {
+            _transactionCandidates.FreezeCapacity();
+            _batchCandidates.FreezeCapacity();
+        }
+
+        private SimulationPhase _phase;
+        private long _plannedInputRevision;
         private int _currentCausalDepth;
         private CascadeTypeId _currentFactId;
         private EntityRef _currentEntity;
@@ -46,6 +81,7 @@ namespace CascadeEngineApi
         private bool _negativePhaseStarted;
         private bool _negativeReducersComplete;
         private bool _reducerInvocationActive;
+        private long _reducerStarted;
         private bool _active;
         private bool _endingTick;
 
@@ -54,19 +90,20 @@ namespace CascadeEngineApi
             FactFeatureRegistry registry,
             EntityStore entities,
             FactStore facts,
-            EntityRefBuffer transactionBuffer,
             EntityRefBuffer batchBuffer,
             FiredReducerTracker firedTransactional,
-            FiredReducerTracker firedBatchEntities)
+            FiredReducerTracker firedBatchEntities,
+            int initialEntityCapacity)
         {
             _simulation = simulation;
             _registry = registry;
             _entities = entities;
             _facts = facts;
-            _transactionBuffer = transactionBuffer;
             _batchBuffer = batchBuffer;
             _firedTransactional = firedTransactional;
             _firedBatchEntities = firedBatchEntities;
+            _candidateEntityCapacity = initialEntityCapacity;
+            WarmupCandidates(initialEntityCapacity);
         }
 
         internal SimulationTick Tick { get; private set; }
@@ -176,6 +213,14 @@ namespace CascadeEngineApi
             ResetNegativePhase();
             _reducerInvocationActive = false;
             _active = false;
+            _transactionCandidates.Clear();
+            _batchCandidates.Clear();
+        }
+
+        internal void DisposeCandidateStorage()
+        {
+            _transactionCandidates.DisposeStorage();
+            _batchCandidates.DisposeStorage();
         }
 
         internal CascadeReductionException CreateReductionException(
@@ -210,6 +255,70 @@ namespace CascadeEngineApi
         {
             budgetReason = string.Empty;
 
+            if (_phase == SimulationPhase.Reconciliation && _plannedInputRevision != _simulation.InputRevision)
+            {
+                _simulation.ClearQueuedCommitActions();
+                _simulation.Metrics.PlanInvalidations++;
+                _phase = SimulationPhase.Immediate;
+            }
+            if (_phase == SimulationPhase.Immediate)
+            {
+                if (!RunImmediate(options, startTimestamp, stepStartProcessedFacts, stepStartProcessedWorkItems, out budgetReason))
+                    return ReductionStepStatus.BudgetExceeded;
+                _transactionMinimumKey = 0;
+                _transactionEntityLimit = _facts.TouchedEntityCount;
+                _phase = SimulationPhase.Transactional;
+            }
+            if (_phase == SimulationPhase.Transactional)
+            {
+                RunReadyTransactionalReducers(options, startTimestamp, stepStartProcessedWorkItems, out budgetReason);
+                if (budgetReason.Length > 0) return ReductionStepStatus.BudgetExceeded;
+                _batchMinimumRegistration = 0;
+                _batchEntityLimit = _facts.TouchedEntityCount;
+                _phase = SimulationPhase.Batch;
+            }
+            if (_phase == SimulationPhase.Batch)
+            {
+                RunReadyBatchReducers(options, startTimestamp, stepStartProcessedWorkItems, out budgetReason);
+                if (budgetReason.Length > 0) return ReductionStepStatus.BudgetExceeded;
+                if (_facts.HasQueuedFacts) return ContinuePositivePass(options);
+                _phase = SimulationPhase.State;
+            }
+            if (_phase == SimulationPhase.State)
+            {
+                RunReadyStateReducers(options, startTimestamp, stepStartProcessedWorkItems, out budgetReason);
+                if (budgetReason.Length > 0) return ReductionStepStatus.BudgetExceeded;
+                if (_facts.HasQueuedFacts) return ContinuePositivePass(options);
+                _phase = SimulationPhase.Negative;
+            }
+            if (_phase == SimulationPhase.Negative)
+            {
+                RunReadyNegativeReducers(options, startTimestamp, stepStartProcessedWorkItems, out budgetReason);
+                if (budgetReason.Length > 0) return ReductionStepStatus.BudgetExceeded;
+                if (_facts.HasQueuedFacts) return ContinuePositivePass(options);
+                CompleteReductionPass(options);
+                _plannedInputRevision = _simulation.InputRevision;
+                _phase = SimulationPhase.Reconciliation;
+            }
+            if (!_simulation.PrepareOutputs(options, startTimestamp))
+            {
+                budgetReason = "maximum millisecond budget exceeded during reconciliation";
+                return ReductionStepStatus.BudgetExceeded;
+            }
+            return ReductionStepStatus.Complete;
+        }
+
+        private ReductionStepStatus ContinuePositivePass(ReduceOptions options)
+        {
+            CompleteReductionPass(options);
+            _phase = SimulationPhase.Immediate;
+            return ReductionStepStatus.Incomplete;
+        }
+
+        private bool RunImmediate(ReduceOptions options, long startTimestamp, int stepStartProcessedFacts,
+            int stepStartProcessedWorkItems, out string budgetReason)
+        {
+            budgetReason = string.Empty;
             while (_hasPendingFact || _facts.HasQueuedFacts)
             {
                 if (!_hasPendingFact)
@@ -221,7 +330,7 @@ namespace CascadeEngineApi
                             stepStartProcessedWorkItems,
                             out budgetReason))
                     {
-                        return ReductionStepStatus.BudgetExceeded;
+                        return false;
                     }
 
                     _facts.TryPop(out _pendingFact);
@@ -253,7 +362,7 @@ namespace CascadeEngineApi
                             stepStartProcessedWorkItems,
                             out budgetReason))
                     {
-                        return ReductionStepStatus.BudgetExceeded;
+                        return false;
                     }
 
                     _reducerInvocations++;
@@ -284,62 +393,7 @@ namespace CascadeEngineApi
                 ClearPendingFactDispatch();
             }
 
-            RunReadyTransactionalReducers(
-                options,
-                startTimestamp,
-                stepStartProcessedWorkItems,
-                out budgetReason);
-            if (budgetReason.Length > 0)
-            {
-                return ReductionStepStatus.BudgetExceeded;
-            }
-
-            RunReadyBatchReducers(
-                options,
-                startTimestamp,
-                stepStartProcessedWorkItems,
-                out budgetReason);
-            if (budgetReason.Length > 0)
-            {
-                return ReductionStepStatus.BudgetExceeded;
-            }
-
-            if (_facts.HasQueuedFacts)
-            {
-                CompleteReductionPass(options);
-                return ReductionStepStatus.Incomplete;
-            }
-
-            RunReadyStateReducers(
-                options,
-                startTimestamp,
-                stepStartProcessedWorkItems,
-                out budgetReason);
-            if (budgetReason.Length > 0)
-            {
-                return ReductionStepStatus.BudgetExceeded;
-            }
-
-            if (_facts.HasQueuedFacts)
-            {
-                CompleteReductionPass(options);
-                return ReductionStepStatus.Incomplete;
-            }
-
-            RunReadyNegativeReducers(
-                options,
-                startTimestamp,
-                stepStartProcessedWorkItems,
-                out budgetReason);
-            if (budgetReason.Length > 0)
-            {
-                return ReductionStepStatus.BudgetExceeded;
-            }
-
-            CompleteReductionPass(options);
-            return _facts.HasQueuedFacts
-                ? ReductionStepStatus.Incomplete
-                : ReductionStepStatus.Complete;
+            return true;
         }
 
         private bool BudgetExceeded(
@@ -401,67 +455,81 @@ namespace CascadeEngineApi
                 return false;
             }
 
-            _simulation.EnsureTransactionCapacity();
-            _facts.CopyTouchedEntities(_transactionBuffer, out var touchedCount);
             var ranAny = false;
-
-            for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
+            while (true)
             {
-                var entity = _transactionBuffer[entityIndex];
-                if (_entities.IsRetired(entity))
-                {
-                    continue;
-                }
-
-                for (var reducerIndex = 0; reducerIndex < _registry.TransactionalReducers.Count; reducerIndex++)
-                {
-                    var registration = _registry.TransactionalReducers[reducerIndex];
-                    if (!_facts.HasAll(entity, registration.RequiredFactIds))
-                    {
-                        continue;
-                    }
-
-                    if (WorkOrTimeBudgetExceeded(
-                            options,
-                            startTimestamp,
-                            stepStartProcessedWorkItems,
-                            out budgetReason))
-                    {
-                        return ranAny;
-                    }
-
-                    if (!_firedTransactional.MarkIfNew(registration.Index, entity))
-                    {
-                        continue;
-                    }
-
-                    _transactionalInvocations++;
-                    _processedWorkItems++;
-                    SetCurrentTransactionalContext(registration.DebugName, registration.RequiredFactIds, entity);
-                    ThrowIfTickWorkLimitExceeded(options);
-                    if (_transactionalInvocations > options.Guardrails.MaxTransactionalReducerInvocationsPerTick)
-                    {
-                        throw CreateReductionException("maximum transactional reducer invocation count exceeded");
-                    }
-
-                    _currentCausalDepth = 1;
-                    BeginReducerInvocation();
-                    try
-                    {
-                        registration.Reduce(_simulation, entity);
-                    }
-                    finally
-                    {
-                        EndReducerInvocation();
-                        _currentCausalDepth = 0;
-                        ClearCurrentFactContext();
-                    }
-
-                    ranAny = true;
-                }
+                if (!RouteCandidates(false, options, startTimestamp, out budgetReason)) return ranAny;
+                if (!_transactionCandidates.TryPeekRange(_transactionMinimumKey,
+                    checked(_transactionEntityLimit * _registry.TransactionalReducers.Count), out var key)) return ranAny;
+                if (WorkOrTimeBudgetExceeded(options, startTimestamp, stepStartProcessedWorkItems, out budgetReason)) return ranAny;
+                _transactionCandidates.Remove(key);
+                _transactionMinimumKey = key + 1;
+                var reducerIndex = key % _registry.TransactionalReducers.Count;
+                var slot = key / _registry.TransactionalReducers.Count;
+                var entity = _facts.TouchedEntityAt(slot);
+                var registration = _registry.TransactionalReducers[reducerIndex];
+                EligibilityChecks++;
+                if (!_facts.HasAll(entity, registration.RequiredFactIds)
+                    || !_firedTransactional.MarkIfNew(registration.Index, entity)) continue;
+                InvokeTransactional(registration, entity, options);
+                ranAny = true;
             }
+        }
 
-            return ranAny;
+        /// <summary>
+        /// Range: accepted queue and bound waiters. Condition: each route cursor retained across pauses. Output: only relevant pending pairs.
+        /// </summary>
+        private bool RouteCandidates(bool batch, ReduceOptions options, long startTimestamp, out string reason)
+        {
+            ref var factIndex = ref (batch ? ref _batchRouteFact : ref _transactionRouteFact);
+            ref var waiterIndex = ref (batch ? ref _batchRouteWaiter : ref _transactionRouteWaiter);
+            var candidates = batch ? _batchCandidates : _transactionCandidates;
+            var fired = batch ? _firedBatchEntities : _firedTransactional;
+            while (factIndex < _facts.QueuedFactCount)
+            {
+                if (TimeBudgetExceeded(options, startTimestamp, out reason)) return false;
+                var fact = _facts.QueuedFactAt(factIndex);
+                var waiters = batch ? fact.ReduceRoute.BatchWaiters : fact.ReduceRoute.TransactionalWaiters;
+                while (waiterIndex < waiters.Length)
+                {
+                    if (TimeBudgetExceeded(options, startTimestamp, out reason)) return false;
+                    var registration = waiters[waiterIndex++];
+                    if (!fired.HasFired(registration, fact.Entity))
+                        candidates.Add(batch
+                            ? checked(registration * _candidateEntityCapacity + _facts.TouchedEntityIndex(fact.Entity))
+                            : checked(_facts.TouchedEntityIndex(fact.Entity) * _registry.TransactionalReducers.Count + registration));
+                }
+                factIndex++;
+                waiterIndex = 0;
+            }
+            reason = string.Empty;
+            return true;
+        }
+
+        private void InvokeTransactional(ITransactionalRegistration registration, EntityRef entity, ReduceOptions options)
+        {
+            BeginTransactionalWork(registration.DebugName, registration.RequiredFactIds, entity, options);
+            try { registration.Reduce(_simulation, entity); }
+            finally { EndTransactionalWork(); }
+        }
+
+        private void BeginTransactionalWork(string name, CascadeTypeId[] required, EntityRef entity, ReduceOptions options)
+        {
+            _transactionalInvocations++;
+            _processedWorkItems++;
+            SetCurrentTransactionalContext(name, required, entity);
+            ThrowIfTickWorkLimitExceeded(options);
+            if (_transactionalInvocations > options.Guardrails.MaxTransactionalReducerInvocationsPerTick)
+                throw CreateReductionException("maximum transactional reducer invocation count exceeded");
+            _currentCausalDepth = 1;
+            BeginReducerInvocation();
+        }
+
+        private void EndTransactionalWork()
+        {
+            EndReducerInvocation();
+            _currentCausalDepth = 0;
+            ClearCurrentFactContext();
         }
 
         private bool RunReadyBatchReducers(
@@ -471,78 +539,45 @@ namespace CascadeEngineApi
             out string budgetReason)
         {
             budgetReason = string.Empty;
-            if (_registry.BatchTransactionalReducers.Count == 0)
-            {
-                return false;
-            }
-
-            _simulation.EnsureTransactionCapacity();
-            _facts.CopyTouchedEntities(_transactionBuffer, out var touchedCount);
             var ranAny = false;
-
-            for (var reducerIndex = 0; reducerIndex < _registry.BatchTransactionalReducers.Count; reducerIndex++)
+            while (true)
             {
-                var registration = _registry.BatchTransactionalReducers[reducerIndex];
-                if (WorkOrTimeBudgetExceeded(
-                        options,
-                        startTimestamp,
-                        stepStartProcessedWorkItems,
-                        out budgetReason))
+                if (TimeBudgetExceeded(options, startTimestamp, out budgetReason)) return ranAny;
+                if (!_collectingBatch)
                 {
-                    return ranAny;
+                    if (!RouteCandidates(true, options, startTimestamp, out budgetReason)) return ranAny;
+                    if (!_batchCandidates.TryPeekRange(checked(_batchMinimumRegistration * _candidateEntityCapacity),
+                        checked(_registry.BatchTransactionalReducers.Count * _candidateEntityCapacity), out var first)) return ranAny;
+                    _batchRegistrationIndex = first / _candidateEntityCapacity;
+                    _batchCount = 0;
+                    _batchEntityCursor = 0;
+                    _collectingBatch = true;
+                    _simulation.EnsureBatchCapacity(_entities.Count);
                 }
-
-                var batchCount = 0;
-                _simulation.EnsureBatchCapacity(touchedCount);
-
-                for (var entityIndex = 0; entityIndex < touchedCount; entityIndex++)
+                var registration = _registry.BatchTransactionalReducers[_batchRegistrationIndex];
+                while (_batchCandidates.TryPeekRange(checked(_batchRegistrationIndex * _candidateEntityCapacity + _batchEntityCursor),
+                    checked(_batchRegistrationIndex * _candidateEntityCapacity + _batchEntityLimit), out var key))
                 {
-                    var entity = _transactionBuffer[entityIndex];
-                    if (_entities.IsRetired(entity) || !_facts.HasAll(entity, registration.RequiredFactIds))
-                    {
-                        continue;
-                    }
-
-                    if (!_firedBatchEntities.MarkIfNew(registration.Index, entity))
-                    {
-                        continue;
-                    }
-
-                    _batchBuffer[batchCount] = entity;
-                    batchCount++;
+                    if (TimeBudgetExceeded(options, startTimestamp, out budgetReason)) return ranAny;
+                    _batchCandidates.Remove(key);
+                    _batchEntityCursor = key % _candidateEntityCapacity + 1;
+                    var entity = _facts.TouchedEntityAt(key % _candidateEntityCapacity);
+                    EligibilityChecks++;
+                    if (!_facts.HasAll(entity, registration.RequiredFactIds)
+                        || !_firedBatchEntities.MarkIfNew(registration.Index, entity)) continue;
+                    _batchBuffer[_batchCount++] = entity;
                 }
-
-                if (batchCount == 0)
+                if (_batchCount > 0)
                 {
-                    continue;
+                    if (WorkOrTimeBudgetExceeded(options, startTimestamp, stepStartProcessedWorkItems, out budgetReason)) return ranAny;
+                    BeginTransactionalWork(registration.DebugName, registration.RequiredFactIds, _batchBuffer[0], options);
+                    try { registration.ReduceBatch(_simulation, _batchBuffer.AsSpan(_batchCount)); }
+                    finally { EndTransactionalWork(); }
+                    ranAny = true;
                 }
-
-                _transactionalInvocations++;
-                _processedWorkItems++;
-                SetCurrentTransactionalContext(registration.DebugName, registration.RequiredFactIds, _batchBuffer[0]);
-                ThrowIfTickWorkLimitExceeded(options);
-                if (_transactionalInvocations > options.Guardrails.MaxTransactionalReducerInvocationsPerTick)
-                {
-                    throw CreateReductionException("maximum transactional reducer invocation count exceeded");
-                }
-
-                _currentCausalDepth = 1;
-                BeginReducerInvocation();
-                try
-                {
-                    registration.ReduceBatch(_simulation, _batchBuffer.AsSpan(batchCount));
-                }
-                finally
-                {
-                    EndReducerInvocation();
-                    _currentCausalDepth = 0;
-                    ClearCurrentFactContext();
-                }
-
-                ranAny = true;
+                _batchMinimumRegistration = _batchRegistrationIndex + 1;
+                _collectingBatch = false;
             }
-
-            return ranAny;
         }
 
         private bool RunReadyStateReducers(
@@ -734,10 +769,16 @@ namespace CascadeEngineApi
             }
 
             _simulation.ClearMutations();
+            _simulation.Metrics.Clear();
             Tick = new SimulationTick(Tick.Value + 1);
             CurrentGuardrails = options.Guardrails;
             _firedTransactional.BeginTick();
             _firedBatchEntities.BeginTick();
+            _phase = SimulationPhase.Immediate;
+            _transactionRouteFact = _transactionRouteWaiter = 0;
+            _batchRouteFact = _batchRouteWaiter = 0;
+            _collectingBatch = false;
+            EligibilityChecks = 0;
             _processedFacts = 0;
             _processedWorkItems = 0;
             _reducerInvocations = 0;
@@ -756,8 +797,7 @@ namespace CascadeEngineApi
 
         private SimulationResult CompleteTick()
         {
-            _simulation.CommitTouchedOutputs();
-            _simulation.CommitEntityLifecycle();
+            _simulation.ApplyPreparedOutputs();
             var result = CreateResult(true, string.Empty);
             _simulation.RecordCompletedResult(result);
             EndActiveTick();
@@ -767,12 +807,14 @@ namespace CascadeEngineApi
         private void EndActiveTick()
         {
             _endingTick = true;
+            var cleanupStarted = Stopwatch.GetTimestamp();
             try
             {
                 _facts.Clear();
             }
             finally
             {
+                _simulation.Metrics.CleanupTicks = Stopwatch.GetTimestamp() - cleanupStarted;
                 DisposePartial();
                 _endingTick = false;
             }
@@ -903,10 +945,15 @@ namespace CascadeEngineApi
             }
 
             _reducerInvocationActive = true;
+            _reducerStarted = Stopwatch.GetTimestamp();
         }
 
         private void EndReducerInvocation()
-            => _reducerInvocationActive = false;
+        {
+            _simulation.Metrics.MaximumReducerTicks = Math.Max(_simulation.Metrics.MaximumReducerTicks,
+                Stopwatch.GetTimestamp() - _reducerStarted);
+            _reducerInvocationActive = false;
+        }
 
         private void ResetNegativePhase()
         {

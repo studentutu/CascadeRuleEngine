@@ -13,14 +13,19 @@ namespace CascadeEngineApi
     {
         private static readonly EqualityComparer<TFact> Comparer = EqualityComparer<TFact>.Default;
 
+        static FactBucket() { }
+
         private readonly CascadeTypeId _factId;
-        private int[] _slabByEntity;
-        private EntityRef[] _entitiesBySlab;
-        private int[] _countsBySlab;
+        private readonly EntitySparseSet<int> _rows = new EntitySparseSet<int>();
         private TFact[] _items;
         private int _factCapacityPerEntity;
-        private int _slabCount;
         private FactListCapacityMode _factListCapacityMode;
+        private bool _fixedStorage;
+        public void FreezeCapacity()
+        {
+            _fixedStorage = true;
+            _rows.FreezeCapacity();
+        }
 
         public FactBucket(
             CascadeTypeId factId,
@@ -32,16 +37,14 @@ namespace CascadeEngineApi
             var normalizedEntityCapacity = NormalizeCapacity(entityCapacity);
             _factCapacityPerEntity = NormalizeCapacity(factCapacityPerEntity);
             _factListCapacityMode = factListCapacityMode;
-            _slabByEntity = new int[normalizedEntityCapacity];
-            _entitiesBySlab = new EntityRef[normalizedEntityCapacity];
-            _countsBySlab = new int[normalizedEntityCapacity];
+            _rows.EnsureCapacity(normalizedEntityCapacity, normalizedEntityCapacity);
             _items = new TFact[PayloadCapacity(normalizedEntityCapacity, _factCapacityPerEntity)];
         }
 
         public CascadeTypeId FactId => _factId;
-        public int EntityCapacity => _slabByEntity.Length;
-        public int TouchedEntityCapacity => _entitiesBySlab.Length;
-        internal int ActiveSlabCount => _slabCount;
+        public int EntityCapacity => _rows.SparseCapacity;
+        public int TouchedEntityCapacity => _rows.DenseCapacity;
+        internal int ActiveSlabCount => _rows.Count;
 
         internal bool Contains(EntityRef entity, in TFact fact)
         {
@@ -50,7 +53,7 @@ namespace CascadeEngineApi
                 return false;
             }
 
-            var count = _countsBySlab[slab];
+            var count = _rows.ValueAt(slab);
             var offset = Offset(slab);
             for (var i = 0; i < count; i++)
             {
@@ -65,29 +68,48 @@ namespace CascadeEngineApi
 
         internal int Add(EntityRef entity, in TFact fact)
         {
+            PrepareAdd(entity);
+            return AddPrepared(entity, in fact);
+        }
+
+        internal int AddPrepared(EntityRef entity, in TFact fact)
+        {
             var slab = GetOrCreateSlab(entity);
-            var count = _countsBySlab[slab];
-            if (count == _factCapacityPerEntity)
-            {
-                GrowForAdd();
-            }
+            var count = _rows.ValueAt(slab);
 
             _items[Offset(slab) + count] = fact;
-            _countsBySlab[slab] = count + 1;
+            _rows.ValueAt(slab) = count + 1;
             return count;
         }
 
+        /// <summary>
+        /// [INTEGRATION] Range: validated, nonduplicate payload. Condition: caller retains ownership. Output: reserve all slab storage without acquiring a row or payload.
+        /// </summary>
+        internal void PrepareAdd(EntityRef entity)
+        {
+            EnsureEntityCapacity(entity.StorageIndex + 1);
+            if (TryGetSlab(entity, out var slab))
+            {
+                if (_rows.ValueAt(slab) == _factCapacityPerEntity) GrowForAdd();
+            }
+            else
+            {
+                EnsureEntityCapacity(_rows.Count + 1);
+                _rows.Prepare(entity, _rows.Count + 1);
+            }
+        }
+
         public bool Has(EntityRef entity)
-            => TryGetSlab(entity, out var slab) && _countsBySlab[slab] > 0;
+            => TryGetSlab(entity, out var slab) && _rows.ValueAt(slab) > 0;
 
         public int CountFor(EntityRef entity)
-            => TryGetSlab(entity, out var slab) ? _countsBySlab[slab] : 0;
+            => TryGetSlab(entity, out var slab) ? _rows.ValueAt(slab) : 0;
 
         internal bool TryGetLatest(EntityRef entity, out TFact fact)
         {
             if (TryGetSlab(entity, out var slab))
             {
-                var count = _countsBySlab[slab];
+                var count = _rows.ValueAt(slab);
                 if (count > 0)
                 {
                     fact = _items[Offset(slab) + count - 1];
@@ -102,13 +124,13 @@ namespace CascadeEngineApi
         internal ReadOnlySpan<TFact> All(EntityRef entity)
         {
             return TryGetSlab(entity, out var slab)
-                ? new ReadOnlySpan<TFact>(_items, Offset(slab), _countsBySlab[slab])
+                ? new ReadOnlySpan<TFact>(_items, Offset(slab), _rows.ValueAt(slab))
                 : ReadOnlySpan<TFact>.Empty;
         }
 
         internal ref readonly TFact Get(EntityRef entity, int index)
         {
-            if (!TryGetSlab(entity, out var slab) || (uint)index >= _countsBySlab[slab])
+            if (!TryGetSlab(entity, out var slab) || (uint)index >= _rows.ValueAt(slab))
             {
                 throw new InvalidOperationException($"Queued fact storage is missing for entity '{entity}'.");
             }
@@ -124,6 +146,7 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_fixedStorage) throw new InvalidOperationException("Fixed fact entity capacity exceeded.");
             ResizeStorage(normalized, _factCapacityPerEntity);
         }
 
@@ -158,10 +181,9 @@ namespace CascadeEngineApi
         {
             // Range: accepted payloads only. Remove ownership before invoking user disposal; visit every payload once.
             var errors = new CleanupErrors();
-            for (var slab = 0; slab < _slabCount; slab++)
+            for (var slab = 0; slab < _rows.Count; slab++)
             {
-                var entity = _entitiesBySlab[slab];
-                var count = _countsBySlab[slab];
+                var count = _rows.ValueAt(slab);
                 var offset = Offset(slab);
                 for (var i = 0; i < count; i++)
                 {
@@ -176,68 +198,17 @@ namespace CascadeEngineApi
                         errors.Add(error);
                     }
                 }
-
-                if ((uint)entity.StorageIndex < _slabByEntity.Length
-                    && _slabByEntity[entity.StorageIndex] == slab + 1)
-                {
-                    _slabByEntity[entity.StorageIndex] = 0;
-                }
-
-                _entitiesBySlab[slab] = default;
-                _countsBySlab[slab] = 0;
             }
 
-            _slabCount = 0;
+            _rows.Clear();
             errors.ThrowIfAny();
         }
 
         private int GetOrCreateSlab(EntityRef entity)
-        {
-            EnsureEntityCapacity(entity.StorageIndex + 1);
-            var stored = _slabByEntity[entity.StorageIndex];
-            if (stored != 0)
-            {
-                var existing = stored - 1;
-                if (_entitiesBySlab[existing].Equals(entity))
-                {
-                    return existing;
-                }
-
-                throw new InvalidOperationException(
-                    $"Fact slab slot '{entity.StorageIndex}' is still owned by entity '{_entitiesBySlab[existing]}'.");
-            }
-
-            var slab = _slabCount;
-            if (slab >= _entitiesBySlab.Length)
-            {
-                EnsureEntityCapacity(slab + 1);
-            }
-
-            _slabCount++;
-            _slabByEntity[entity.StorageIndex] = slab + 1;
-            _entitiesBySlab[slab] = entity;
-            return slab;
-        }
+            => _rows.TryGetIndex(entity, out var slab) ? slab : _rows.SetPrepared(entity, 0);
 
         private bool TryGetSlab(EntityRef entity, out int slab)
-        {
-            if ((uint)entity.StorageIndex < _slabByEntity.Length)
-            {
-                var stored = _slabByEntity[entity.StorageIndex];
-                if (stored != 0)
-                {
-                    var candidate = stored - 1;
-                    if (candidate < _slabCount && _entitiesBySlab[candidate].Equals(entity))
-                    {
-                        slab = candidate;
-                        return true;
-                    }
-                }
-            }
-
-            slab = -1;
-            return false;
-        }
+            => _rows.TryGetIndex(entity, out slab);
 
         private void GrowForAdd()
         {
@@ -257,22 +228,21 @@ namespace CascadeEngineApi
 
         private void ResizeStorage(int entityCapacity, int factCapacityPerEntity)
         {
+            if (_fixedStorage) throw new InvalidOperationException("Fixed fact slab capacity exceeded.");
             var nextItems = new TFact[PayloadCapacity(entityCapacity, factCapacityPerEntity)];
-            for (var slab = 0; slab < _slabCount; slab++)
+            for (var slab = 0; slab < _rows.Count; slab++)
             {
                 Array.Copy(
                     _items,
                     slab * _factCapacityPerEntity,
                     nextItems,
                     slab * factCapacityPerEntity,
-                    _countsBySlab[slab]);
+                    _rows.ValueAt(slab));
             }
 
             if (entityCapacity > EntityCapacity)
             {
-                Array.Resize(ref _slabByEntity, entityCapacity);
-                Array.Resize(ref _entitiesBySlab, entityCapacity);
-                Array.Resize(ref _countsBySlab, entityCapacity);
+                _rows.EnsureCapacity(entityCapacity, entityCapacity);
             }
 
             _items = nextItems;

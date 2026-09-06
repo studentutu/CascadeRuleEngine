@@ -173,6 +173,24 @@ namespace CascadeEngineApi
         internal string Describe(CascadeTypeId id)
             => _typeCatalog.Describe(id);
 
+        /// <summary>
+        /// [INTEGRATION] Binds composed registration indexes to typed accepted-fact routes during construction only.
+        /// </summary>
+        internal void BindTransactionalRoutes()
+        {
+            foreach (var fact in KnownFactTypes)
+            {
+                if (!fact.CanCreateBucket) continue;
+                var transactional = new List<int>();
+                var batch = new List<int>();
+                for (var i = 0; i < _transactionalReducers.Count; i++)
+                    if (Array.IndexOf(_transactionalReducers[i].RequiredFactIds, fact.Id) >= 0) transactional.Add(i);
+                for (var i = 0; i < _batchTransactionalReducers.Count; i++)
+                    if (Array.IndexOf(_batchTransactionalReducers[i].RequiredFactIds, fact.Id) >= 0) batch.Add(i);
+                fact.ReduceRoute(this).BindWaiters(transactional.ToArray(), batch.ToArray());
+            }
+        }
+
         internal void ValidateStateReducerOutputs()
         {
             for (var i = 0; i < _stateReducers.Count; i++)

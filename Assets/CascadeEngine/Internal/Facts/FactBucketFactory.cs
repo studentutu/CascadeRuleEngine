@@ -17,6 +17,9 @@ namespace CascadeEngineApi
         public CascadeTypeId Id => CascadeTypeId.FromName(DebugName);
         public string DebugName => typeof(TFact).Name;
 
+        public IFactReduceRoute ReduceRoute(FactFeatureRegistry registry)
+            => FactEmitRouteCache<TFact>.Require(registry);
+
         public void Register(CascadeTypeCatalog catalog)
             => catalog.Register<TFact>();
 

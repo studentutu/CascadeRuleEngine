@@ -18,5 +18,6 @@ namespace Hestia
 
         public bool Equals(AmmoSpendRequestedFact other)
             => Amount == other.Amount;
+        public void Dispose() { }
     }
 }
