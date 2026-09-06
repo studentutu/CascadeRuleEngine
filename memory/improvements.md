@@ -1,12 +1,12 @@
 # CascadeEngine Internal Overhaul
 
-Status: proposed against the current MVP.
+Status: revised proposal against the ownership-hardened baseline, 2026-09-06. The generations below are outstanding work, not a description of implemented behavior.
 
-Scope: internal storage, incremental execution, reconciliation, and ECS capability parity. Preserve the compiled public API and the behavior documented in `Assets/CascadeEngine/Readme.md`.
+Scope: internal transaction boundaries, scheduling, capacity enforcement, and storage ownership. Preserve existing public signatures and valid observable behavior. This refactoring does not establish full Entitas parity.
 
-## 1. Decision
+## 1. Decision and Expected Benefits
 
-The public model is correct:
+Preserve the public model:
 
 ```text
 facts
@@ -16,218 +16,221 @@ facts
   -> typed mutation journal
 ```
 
-Do not replace it with archetypes, systems, mutable components, or a generic ECS registry.
+The implementation order follows the remaining risks:
 
-The overhaul has four jobs:
+1. Make commit preparation and application one transaction, including lifecycle deletion.
+2. Replace transactional/batch global eligibility scans with fact-routed candidates and exact continuation cursors.
+3. Make reconciliation resumable and enforce capacity before every accepted write.
+4. Consolidate sparse storage only after one state bucket and one fact slab prove the shared primitive.
 
-1. Make fact admission and commit prepare-then-apply operations. Failure must not leave partial state.
-2. Consolidate entity membership around one generation-safe sparse-set implementation.
-3. Make every incremental stage resumable, including transaction scans and reconciliation.
-4. Make the settings-backed path mechanically unable to allocate or grow during an open tick.
+| Change | Expected benefit | Evidence required |
+| --- | --- | --- |
+| Prepared atomic commit | A planning failure cannot leave partially changed durable state | Fault-injection tests across outputs, entities, equality, and lifecycle deletion |
+| Fact-routed candidates plus exact cursors | Less unrelated scheduler work and less repeated work after suspension | Eligibility counts and continuation latency with 512 entities and a large unrelated registry |
+| Budgeted reconciliation | Commit planning no longer forms an unchecked tail after reduction | Suspension tests and separate planning/apply/cleanup timings |
+| Enforced runtime capacity | Capacity exhaustion fails before logical mutation instead of growing during gameplay | Boundary/overflow tests and allocation measurements |
+| Shared generational sparse storage | One tested implementation of membership, generation checks, and capacity rules | Simpler ownership plus no measured performance regression |
+| Inlining small wrappers | Potentially clearer ownership of arrays | Fewer competing invariants at actual call sites, not merely fewer files |
 
-The goal is one storage invariant, not one universal container. Durable state is one value per entity; facts are many values per entity; entity lifecycle is a generational allocator; queues and journals are stage-owned buffers.
+Do not promise a general speedup, lower RAM use, or Entitas throughput parity from this refactor. Current fact storage is already flat and typed. Reserved capacity can improve execution predictability while increasing memory use.
+
+Keep a small set of internal primitives: typed fact slabs, durable state buckets, prepared typed actions, stage-owned buffers/cursors, and the existing cleanup-error collector. A shared sparse set is a candidate storage primitive, not a prerequisite for fixing transactions or scheduling.
 
 ## 2. Preserve the Working Baseline
 
 Already implemented:
 
-- generational, recyclable `EntityRef`;
-- O(1) entity create/current-slot lookup/stale-handle rejection;
-- transactional reducer-side create/destroy;
-- additive `DeadFact` with durable deletion at closure;
+- generational, recyclable entity handles and O(1) current-slot lookup;
+- transactional reducer-side creation and destruction;
+- additive `DeadFact`, pending-dead visibility through closure, and durable deletion at closure;
 - sparse durable output membership and compact queries;
 - sparse typed fact slabs with contiguous per-entity spans;
 - payload deduplication with distinct same-type fact preservation;
-- immediate reducer and state-reducer continuation cursors;
-- previous-snapshot reads for all committers;
-- buffered normal commit decisions;
-- fixed fact capacity and warmed allocation tests.
+- immediate/state reducer continuation and terminal negative-rule continuation;
+- closure-safe direct reducer `Without<TFact>()` with sealed condition types and host input;
+- output `Without<TFact>()` reconciliation over previous committed members;
+- previous-snapshot reads for every committer and buffered normal commit decisions;
+- fixed fact-slab capacity and warmed allocation tests.
 
-Do not reimplement these from scratch. Tighten their ownership and failure behavior.
+The recent ownership slice also implemented:
+
+- total per-entity admission checks and queue/route reservation before payload ownership;
+- construction-time guardrails for idle emissions;
+- fact ownership across incremental pauses and commit planning;
+- one disposal attempt per accepted fact on closure, failure, or teardown;
+- exhaustive cleanup with `CleanupErrors`, retaining original errors alongside cleanup failures;
+- terminal cleanup of registration trees, static routes, and runtime scratch storage, including after prior feature disposal;
+- preservation of committed state, mutations, and completed `LastResult` when post-publication fact cleanup fails;
+- rejection of nested ticks, simulation disposal inside tick callbacks, warmup during open ticks, and new input during fact cleanup.
+
+Verification at this baseline: 83 EditMode tests passed; Unity import and Rider/MSBuild passed; the warmed 512-entity resource-fact, representative pipeline, and state-trigger slices reported 0 B steady-state allocation. These measurements cover their tested shapes, not every capacity boundary or player platform.
+
+Do not redo that ownership work. Preserve its regression tests while tightening the remaining boundaries.
 
 Public contract freeze:
 
-- preserve both constructors and all current public signatures;
-- preserve feature builders, state/fact/query APIs, lifecycle, incremental ticks, mutations, and disposal;
-- preserve fact multiplicity/deduplication and pending-dead visibility;
-- preserve committed-state visibility during incomplete ticks;
-- add no public sparse set, world, scheduler, storage facade, or reflection-based API snapshot.
+- preserve both constructors, all current public signatures, and existing adapters;
+- preserve fact multiplicity, once-per-tick transactional invocation, pending-dead visibility, and previous-state reads;
+- preserve terminal negative-rule sealing and output absence reconciliation;
+- preserve mutation visibility and replayable consumption as defined in section 6;
+- preserve reducer-work accounting: `MaxWorkItems` and `ProcessedWorkItems` count reducer invocations, not internal scans or committer planning;
+- add no public sparse set, scheduler, world, storage facade, or reflection-based API snapshot;
+- remain within C# 8 / Unity 6 and existing dependencies.
 
-Add a compile-only contract fixture before implementation. Internal folder placement does not hide a `public` C# type.
+Add a compile-only contract fixture before implementation. A type declared `public` is part of the compatibility review even when its file lives in `Internal`.
 
 ## 3. ECS Parity Boundary
 
-Cascade needs ECS capabilities, not ECS mutation semantics.
+Cascade needs ECS capabilities within its fact/closure/commit contract.
 
-| ECS capability | Cascade equivalent |
+| ECS capability | Existing Cascade equivalent |
 | --- | --- |
 | create entity | `CreateEntity()` |
-| delete entity | `DestroyEntity()` -> `DeadFact` -> closure |
-| find current entity by runtime id | `TryGetEntity(Id_slot, out entity)` |
-| add transient request/event | `Emit(entity, fact)` |
+| destroy entity | `DestroyEntity()` -> `DeadFact` -> closure |
+| current runtime-slot lookup | `TryGetEntity(slotId, out entity)` |
+| transient request/event | `Emit(entity, fact)` |
 | add/replace durable component | committer returns `Set` |
 | remove durable component | additive removal fact -> committer returns `Delete` |
-| query components | state/fact queries |
-| arbitrary cross-entity reducer logic | `IEntityQuery` plus committed-state reads |
-| reactive changes | typed `StateMutation<TState>` |
-| long-running churn | Id_slot reuse plus generation increment |
+| component queries and cross-entity reads | `IEntityQuery` plus committed-state/fact views |
+| reactive output changes | typed `StateMutation<TState>` |
+| terminal teardown | `FactSimulation.Dispose()` |
+| long-running entity churn | slot reuse with generation increment |
 
-### No physical fact removal
+This overhaul strengthens those capabilities. It does not add stable domain-key indexes, one-to-many indexes, `AnyOf`, live groups, generated listeners, or multi-context transactions. Use the package README parity matrix for the full boundary.
 
-Do not add `RemoveFact<TFact>` for an accepted fact.
-
-A reducer may already have derived consequences from that fact. Removing it later cannot retract those consequences without dependency tracking or replaying the tick. Physical removal makes outcome depend on reducer order.
-
-Model removal and cancellation additively:
+Do not add physical removal of an accepted fact. Derived consequences would remain after its removal, making results depend on reducer order. Cancellation stays additive:
 
 ```text
 RemoveShieldRequestedFact
   -> validation
   -> ShieldRemovalAcceptedFact
   -> ShieldCommitter.Delete()
-  -> one ShieldState delete mutation
+  -> ShieldState delete mutation
 ```
 
-Facts disappear automatically when the tick completes or fails. True retraction is a separate engine design requiring causal dependency tracking or deterministic tick replay.
-
-## 4. Current Failures and Gaps
-
-### P0 - Fact admission is not atomic
-
-`FactStore.Emit` currently writes in this order:
-
-```text
-typed slab
--> accepted count
--> touched entity
--> fact route
--> total entity fact count
--> total-fact guardrail
--> queue
-```
-
-The total per-entity limit is checked after several writes. A failure outside an active tick can leave an accepted-but-unqueued fact because no tick rollback runs.
-
-Required fix:
-
-```text
-Prepare:
-  validate entity/generation/lifecycle
-  resolve pre-bound route and slab
-  detect duplicate
-  calculate new membership/route changes
-  validate causal/cardinality limits
-  validate all fixed capacities
-  complete allowed legacy growth
-
-Apply:
-  write payload
-  update membership/counts/routes
-  enqueue
-  update diagnostics
-```
-
-After prepare succeeds, apply may only perform non-throwing array writes and count changes. Rejected/deduplicated/failed facts remain caller-owned; accepted facts become simulation-owned and are disposed once.
+## 4. Remaining Failures and Gaps
 
 ### P0 - Commit is not one transaction
 
-Normal committer decisions are evaluated before normal output writes, which is correct. The tail is still split across output action lists, lifecycle deletions, entity release, and mutation buffers.
+Committer decisions are buffered, but application still calls `StateBucket.Set`, which can grow storage and invoke user-defined equality. Lifecycle deletion, mutation recording, and slot release follow through separate operations.
 
-If state/mutation capacity growth or another managed failure occurs after one output is applied, `FailActiveTick` cannot restore that durable state.
+Concrete failure:
 
-Do not build a generic rollback framework. Make apply mechanically non-throwing:
+```text
+output A applies its decision
+-> output B's state equality throws
+-> failed-tick cleanup runs
+-> output A is already changed and cannot be restored
+```
 
-- user committers, equality, conflict checks, and legacy growth run during planning;
-- target generations, action uniqueness, and every capacity are prevalidated;
-- lifecycle deletions are part of the same plan;
-- apply contains array/index/count writes only;
-- mutation journals become visible after state and lifecycle finalization;
-- free-slot release is last and cannot grow.
+Move potentially throwing work into preparation:
 
-Bevy explicitly guards against invalid parallel-array state when allocation fails mid-insert. Cascade's fixed path can avoid the problem entirely by preflighting and never allocating during apply.
+- committer callbacks, equality, conflict checks, and permitted legacy growth;
+- target-generation validation and one-action-per-entity/output validation;
+- normal state changes and pending-destruction deletions;
+- state, action, mutation, and free-slot capacity checks.
+
+After validation, apply performs only prepared array/index/count operations. It must not call user code, evaluate equality again, allocate, or resize. Publish the journal after state/lifecycle finalization. Release recyclable slots only after their previous owners can no longer participate.
+
+Do not build a generic rollback framework. Prevent recoverable failures after application starts. Fact disposal remains after publication; its failure reports cleanup errors and must not roll back or hide a committed tick.
+
+### P1 - Transactional and batch eligibility uses global scans
+
+Current scheduling checks touched entities against registrations, including unrelated registrations. After suspension, scans start again; fired trackers prevent duplicate callbacks but do not remove the repeated eligibility work.
+
+Exact cursors alone solve only the repetition. Route accepted fact types to the registrations waiting for them, then evaluate affected entity/registration candidates.
+
+Requirements:
+
+- bind waiters during feature registration;
+- deduplicate pending candidates without losing a candidate when another required fact arrives later;
+- preserve one invocation per entity/registration/tick and batch eligibility at existing logical phase boundaries;
+- preserve candidates and exact cursors across suspension;
+- route newly accepted facts from every reduction stage;
+- keep fired trackers as correctness guards until equivalent coverage proves any replacement;
+- measure eligibility checks separately from public reducer-work counters.
+
+State-presence iteration and output absence reconciliation are intentional membership scans. Profile them separately; do not remove them under the name of fact routing.
 
 ### P1 - Budgeting ends before reconciliation
 
-Current budgets do not cover:
+Eligibility scans, commit planning, conflict/equality work, lifecycle planning, application, and cleanup are not uniformly covered by time checks.
 
-- repeated transactional/batch eligibility scans;
-- committer planning and conflict checks;
-- lifecycle deletion planning;
-- the final apply tail.
+Budget all resumable engine work, including candidate collection and plan validation. Preserve existing public reducer-work accounting; use internal diagnostics for scan/plan work.
 
-`RunTickIncremental` can therefore enter unbounded work after reduction closes.
+Time limits are cooperative. User callbacks cannot be preempted, and final application must remain atomic while committed state is publicly readable. Check time before atomic units and measure the maximum callback, apply tail, and cleanup tail separately. Do not advertise an absolute wall-clock ceiling. A long callback or finalization tail can exceed the requested slice.
 
-Budget every resumable stage. Reducer, batch reducer, and committer callbacks remain atomic. A hard time limit can only be checked between callbacks; arbitrary user C# cannot be preempted. Document the maximum one-callback overshoot.
+Do not introduce double-buffered state or resumable resource cleanup until measurements justify their additional lifetime rules.
 
-Final apply remains atomic because committed state is publicly readable. Measure its declared worst case before considering double-buffered state.
+### P1 - Admission and fixed capacity still need complete preflight
 
-### P1 - Transactional and batch stages rescan
+The original total-fact admission bug is fixed. Full enforcement across all owners is not.
 
-Immediate and state reducers preserve exact cursors. Entity transactional and batch stages restart touched-entity/registration scans after a budget suspension. Fired trackers prevent duplicate callbacks, but time is spent rediscovering old work and small slices can make poor forward progress.
-
-Add exact registration/entity cursors. Keep fired trackers as correctness guards during migration.
-
-### P1 - Fixed capacity is a convention outside fact payloads
-
-The settings-backed constructor warms expected capacity, but state buckets, mutation/action lists, route lists, scratch buffers, and parts of entity/fact storage still expose growth.
-
-Every owner needs an internal fixed/grow policy:
-
-- fixed: fail before mutation;
-- grow: resize during prepare only;
-- no resize/factory/bucket creation is reachable after a settings-backed tick opens.
-
-Keep the legacy constructor and `WarmupCapacityHints` source-compatible.
-
-### P2 - Storage policy is duplicated
-
-The issue is not raw file count. It is duplicated sparse ownership, generation checks, growth rules, and clear behavior.
-
-- `DenseEntityCounter` and `DenseEntityObjectStore<T>` only hide arrays owned by `FactStore`; inline them.
-- `DenseEntitySet` has a different membership rule and does not validate a full owner.
-- `StateBucket<T>` and `FactBucket<T>` each reimplement sparse entity membership.
-- `EntityRefBuffer` is legitimate stage scratch; keep it unless a direct array/count is clearer.
-
-### P2 - Global worst-case fact memory can be large
-
-Every registered fact type reserves:
+The remaining admission target is:
 
 ```text
-MaxEntities * MaxFactsPerTypePerEntity * sizeof(TFact)
+Prepare:
+  validate identity, lifecycle, duplicates, and cardinality
+  validate queue, route, touched-membership, and slab capacities
+  complete permitted legacy growth without acquiring the proposed payload
+
+Apply:
+  write payload, membership, counts, route, and queue
+  report acceptance
 ```
 
-With hundreds of types this can dominate memory. Do not add per-fact public capacity settings speculatively. First report schema counts/capacities at construction and measure production. Per-fact cardinality would be a separate public proposal.
+Preparation failure may reserve larger legacy backing arrays, but must not change logical fact membership, ownership, accepted counts, or queued work. Existing rejection/deduplication diagnostics remain valid.
 
-## 5. Target Storage Model
+Derive one internal fixed/grow policy from construction:
+
+- fixed: reserve known runtime storage before gameplay; fail before logical mutation;
+- grow: permit resize during preparation only;
+- no engine-owned resize, bucket factory, or lazy candidate allocation may be reached during settings-backed execution, including root admission and continuation.
+
+Account for candidate queues, fired markers, commit plans, mutation journals, and lifecycle buffers. Do not choose an unmeasured full entity-by-registration allocation merely to eliminate growth.
+
+A successful 0 B benchmark is evidence for one workload. It does not replace capacity-boundary tests or prove arbitrary user callbacks allocate nothing.
+
+### P2 - Storage rules are duplicated
+
+`StateBucket<T>` and `FactBucket<T>` duplicate parts of sparse membership. `DenseEntitySet` uses a different ownership check. A shared generational primitive can reduce the number of invariants to maintain.
+
+Evaluate `DenseEntityCounter` and `DenseEntityObjectStore<T>` at their call sites. Inline them only if the containing owner becomes clearer without duplicating mechanics elsewhere. Keep `EntityRefBuffer` where it makes stage scratch ownership explicit.
+
+Deleting named helpers is not a completion criterion. Migrate and remove only abstractions superseded by a proven implementation.
+
+### P2 - Fact reservation and output-resource ownership are separate concerns
+
+The current and proposed slabs both reserve approximately:
+
+```text
+sum over registered fact types:
+  MaxEntities * MaxFactsPerTypePerEntity * payload slot size
+```
+
+Metadata and any separately allocated payload resources add to that reservation. Sparse membership consolidation does not remove it. Report schema counts, reserved capacities, and measured memory before proposing per-fact limits or alternate slab layouts.
+
+Disposable output states retain snapshot semantics: terminal teardown disposes current stored states, but replacement, deletion, and abandoned commit decisions do not automatically dispose copied resources. A shared sparse set cannot decide that ownership.
+
+Do not automatically dispose discarded `Set` values or `Previous` mutation payloads. They can alias existing state or other snapshots. Define a separate public lifetime contract before changing this behavior. Facts/views borrow their payload; committers must not retain disposable fact resources in durable state.
+
+Likewise, `void Emit` does not report acceptance. An explicit acceptance-result API would be a separate additive proposal, not an incidental part of internal refactoring.
+
+## 5. Candidate Storage Primitives
+
+Keep the generational entity allocator and the distinct storage shapes:
 
 ```text
 FactSimulation
-|
-+-- EntityStore
-|   +-- status[], generation[], freeSlots[]
-|   +-- EntitySparseSet<byte> pendingCreated/pendingDestroyed
-|
-+-- FactStore
-|   +-- EntitySparseSet<byte> touchedEntities
-|   +-- factCountBySlot[]
-|   +-- routeScratchBySlot[]
-|   +-- FactSlab<TFact> per registered fact type
-|   +-- queuedFact[] + head/count
-|
-+-- StateBucket<TState>
-|   +-- EntitySparseSet<TState> committed values
-|   +-- prepared actions
-|   +-- hidden mutation journal
-|
-+-- PartialSimulation
-    +-- ReductionCursor
-    +-- ReconciliationCursor
-    +-- input revision and plan state
++-- EntityStore: status, generation, free slots, pending lifecycle membership
++-- FactStore: touched membership, counters, accepted routes, typed fact slabs, queue
++-- StateBucket<TState>: committed values, prepared actions, mutation journal
++-- PartialSimulation: phase, exact cursors, pending candidates, unpublished plan
 ```
 
-### `EntitySparseSet<TValue>`
+### EntitySparseSet<TValue>
 
-One reusable internal primitive:
+Candidate internal layout:
 
 ```text
 sparse[entity.Value] -> dense row + 1
@@ -235,255 +238,228 @@ denseEntities[row]   -> complete EntityRef
 denseValues[row]     -> TValue
 ```
 
-It owns only storage mechanics:
+Its responsibility is storage mechanics: full-generation lookup, insertion/replacement, dense iteration, swap-back removal with moved-entry repair, dense-only clearing, and capacity preflight.
 
-- O(1) full-generation lookup;
-- insert/replace;
-- compact dense iteration;
-- swap-back removal and moved-entry repair;
-- dense-only clear;
-- fixed/grow capacity enforcement.
+It must not dispose values, emit mutations, or own entity lifecycle. Owners retain those responsibilities, including the existing exhaustive cleanup behavior.
 
-It does not dispose values, record mutations, understand facts, or own lifecycle policy.
+Membership-only use of `EntitySparseSet<byte>` is an option, not a mandate to add an unused values array everywhere. Compare clarity and metadata cost before migration.
 
-Membership-only consumers use `EntitySparseSet<byte>` rather than a second set implementation.
+### Typed fact slab
 
-### `FactSlab<TFact>`
-
-Facts remain a distinct one-to-many shape:
+Facts remain many values per entity with contiguous spans:
 
 ```text
-EntitySparseSet<int> rows  // value = entity/type fact count
-TFact[] payload            // row * perEntityCapacity + local index
+EntitySparseSet<int> rows  // entity/type count, if the migration proves useful
+TFact[] payload           // row * perEntityCapacity + local index
 ```
 
-Requirements:
+Preserve:
 
-- contiguous zero-copy `All<TFact>()`;
-- dedupe within one entity/type slice;
-- no individual fact deletion;
-- fixed mode never repacks;
-- grow mode repacks during prepare;
-- clear disposes accepted facts, then clears row membership.
+- zero-copy `All<TFact>()`, deduplication, and immutable accepted membership;
+- stable row/payload alignment throughout an open tick;
+- no swap-back row removal while queued fact indices or borrowed spans depend on that row;
+- no fixed-mode repacking; legacy growth only during preparation;
+- one disposal attempt per accepted payload, followed by complete ownership/membership clearing even when callbacks throw.
 
-This reuses sparse membership without pretending facts are one-value components.
+Do not force facts into one-value component storage. Do not add a generalized storage facade around the two shapes.
 
-### `EntityStore`
+### Stage-owned buffers and cursors
 
-Keep the flat generational allocator. Recycled slot ids are bounded by concurrent capacity, so a flat sparse index is simpler than Bevy/EnTT paged storage.
+Queues, candidates, query scratch, action plans, and journals belong to their execution stage. Use typed reusable buffers and explicit cursors. Keep phase as one source of truth; avoid parallel flags that independently encode the same plan status.
 
-Use sparse sets for compact pending membership. Add a live-entity set only when a real state-independent enumeration call site exists; current queries already iterate narrower state/fact membership.
+The existing `CleanupErrors` primitive remains the shared failure collector. Storage consolidation must preserve terminal route unbinding and scratch release.
 
-Queues, query buffers, action plans, and journals remain stage-owned typed buffers, not general stores.
+## 6. Execution, Input, and Publication Contracts
 
-## 6. Execution and Reconciliation Model
-
-Explicit phases:
+Logical flow, with resumable cursors inside each applicable stage:
 
 ```text
 Idle
--> ImmediateFacts
--> EntityTransactions
--> BatchTransactions
--> StateReducers
--> ClosureCheck
+-> PositiveClosure:
+     immediate facts -> entity transactions -> batch transactions -> state reducers
+     repeat applicable work until positive closure
+-> TerminalWithout:
+     seal condition types and host input
+     evaluate deferred negative triggers
+     drain resulting positive consequences to closure
 -> ReconciliationPlan
 -> ReconciliationValidate
 -> AtomicApply
 -> Publish
+-> FactCleanup
 -> Complete
 ```
 
+Skip terminal negative evaluation when no negative rules exist. Preserve existing scheduling semantics for facts derived after negative evaluation: sealed condition facts remain forbidden, and accepted positive consequences still reach closure before commit. Output `Without<TFact>()` belongs to reconciliation over the final fact set, not to the reducer negative stratum.
+
 Rules:
 
-- cursor advances only after one atomic work item succeeds;
-- budget suspension retains facts, lifecycle staging, cursors, and plan;
-- incomplete results expose only previous committed state and previous completed journal;
-- failure clears tick facts once and rolls back staged lifecycle;
-- resumption cannot repeat completed work;
-- planning produces at most one action per entity/output;
-- apply and publish have explicit `Empty/Planning/Validated/Applied/Published` state.
+- suspension retains facts, pending lifecycle changes, candidates, cursors, and any unpublished plan;
+- incomplete execution exposes the previous committed state and no partial new journal;
+- current behavior clears the previous mutation journal at `BeginTick`; preserve that behavior;
+- retaining the previous journal throughout an open tick would be a separate observable-contract change;
+- pre-application failure discards unpublished plans, rolls back staged lifecycle, and attempts all fact cleanup;
+- post-publication cleanup failure retains the committed result, journal, and completed `LastResult`;
+- one final action and at most one mutation exist per entity/output/tick;
+- `ForEachMutation` remains replayable and non-consumptive.
 
-### Late input during an incremental tick
+Use explicit execution phases and cursors without introducing public scheduler APIs. Do not redefine `MaxWorkItems` to count committers or eligibility scans silently.
 
-Facts, create, and destroy calls between reduction steps join the open tick.
+### Late input during incremental execution
 
-If input arrives after reconciliation planning started:
+Preserve the existing input boundary:
 
-1. increment the input revision;
-2. discard the unpublished plan;
-3. return to reduction;
-4. plan again from unchanged committed state.
+- while host input remains open, new facts/create/destroy calls join the current tick;
+- after terminal negative evaluation starts, those calls remain rejected until closure;
+- resuming a sealed tick must never reopen its input.
 
-Committers must be deterministic and side-effect-free because unpublished planning can be invalidated. Durable apply and mutation publication still happen once.
+Resumable reconciliation creates a new externally observable pause. If input is still permitted at that pause:
 
-### Transactional semantic conflict
+1. record the accepted input/lifecycle revision;
+2. invalidate the unpublished plan before resuming;
+3. return to reduction and process routed candidates;
+4. replan from unchanged committed state.
 
-There is one existing conflict:
+Do not invalidate a plan for a deduplicated emission that changed no inputs. Do not rerun already-fired transactional callbacks. For a sealed tick, reject late input rather than restarting negation.
 
-- `CascadeRuleEngineProposal.md` implies a new distinct required fact may create a new transactional frontier;
-- README, progress, code, and tests define one invocation per registration/entity/tick.
+Committers must be deterministic and side-effect-free because unpublished planning may repeat. Plan invalidation must clear borrowed references without inventing disposable-output ownership. Measure invalidation frequency and time to closure under sustained host input; do not silently drop or defer accepted input to avoid starvation.
 
-Preserve the current README behavior in this internal refactor. Add a development diagnostic/test for a required fact arriving after that registration fired. A revision/frontier model can be proposed separately; it changes observable reducer invocation count.
+### Transactional semantics and external effects
 
-### Idempotence boundary
+Preserve one invocation per entity/registration/tick. New distinct required facts do not create another transactional frontier. A frontier/revision model would change observable invocation counts and needs a separate proposal.
 
-Engine guarantees:
-
-- one final durable action per entity/output/tick;
-- no partial visible commit;
-- no duplicate mutation record for one final action;
-- continuation cannot apply/publish twice;
-- equal durable state emits no mutation.
-
-`ForEachMutation` is replayable. Calling it twice invokes the handler twice. The current API cannot guarantee exactly-once external side effects without a consumer cursor/ack contract. Do not claim exactly-once delivery or silently make the journal consumptive.
+A single final mutation is not exactly-once external delivery. Calling `ForEachMutation` twice still invokes the consumer twice. Consumer cursors/acknowledgements are outside this refactor.
 
 ## 7. Implementation Generations
 
-### Generation 1 - Atomic admission: mandatory thin vertical slice
+### Generation 1 - Atomic commit: mandatory thin vertical slice
 
 Tests first:
 
-- total per-entity guardrail failure outside a tick leaves slab, route, count, touch, and queue unchanged;
-- fixed queue/route/slab overflow changes nothing;
-- rejected facts remain caller-owned;
-- accepted facts dispose once;
-- a valid tick after failed admission is clean;
-- warmed 512-entity allocation baseline is unchanged.
+1. Bootstrap two outputs with previous state.
+2. Submit changes to both.
+3. Make the second output's equality throw during what is currently application.
+4. Assert that both outputs retain their previous state and no partial new journal appears.
+5. Repeat across output/entity order, with pending destruction and reducer-created entities.
 
-Then split fact admission into prepare/apply and pre-bind every settings-backed slab.
+Then move equality, state/mutation capacity preparation, and lifecycle deletions into one validated plan. Apply only prepared writes and finalize lifecycle once. Preserve exhaustive fact cleanup on both planning failure and successful publication.
 
-Gate: focused tests, zero-allocation proof, Rider/MSBuild compile, empty Unity compile-error report.
+Include unchanged decisions, no-op deletion, repeated destruction, stale handles, and post-publication disposal failure. Preserve existing admission tests.
 
-### Generation 2 - Consolidate sparse storage
+Gate: no recoverable planning failure produces partial durable state; callbacks/growth are absent from apply; the public fixture and focused tests pass.
 
-Order:
+### Generation 2 - Fact-routed candidates and exact cursors
 
-1. implement/test `EntitySparseSet<TValue>`;
-2. migrate one `StateBucket<TState>` vertical slice;
-3. verify create/update/delete/query/mutation behavior;
-4. migrate pending/touched membership;
-5. layer one fact slab on `EntitySparseSet<int>`;
-6. migrate remaining buckets;
-7. inline fact counters/route scratch into `FactStore`;
-8. delete `DenseEntitySet`, `DenseEntityCounter`, and `DenseEntityObjectStore<T>`.
+- Bind transactional and batch waiters to accepted fact routes.
+- Evaluate only affected entity/registration candidates and preserve required-fact completeness.
+- Retain exact collection/dispatch cursors across every suspension.
+- Preserve batch membership at existing phase boundaries and once-per-entity invocation.
+- Add internal eligibility-check/candidate counters without changing public work accounting.
+- Size reusable candidate storage explicitly and measure its memory cost.
 
-Required proof:
+Thin performance slice: 512 entities, a small relevant rule chain, and hundreds of unrelated registrations. Verify zero unrelated eligibility checks after registration, correct closure under `MaxWorkItems = 1`, late required facts, incremental create/destroy, negative-derived consequences, and 0 B steady-state allocation after warmup.
 
-- insert/replace/remove first-middle-last/swap repair;
-- old generation never aliases a reused slot;
-- clear visits dense members only;
-- one/two-state queries remain compact;
-- fact span/dedupe/disposal behavior is unchanged;
-- high-iteration entity churn does not grow beyond concurrent capacity.
+Gate: scheduler work follows relevant routes; resume does not restart completed scans; callback semantics remain unchanged.
 
-Gate: one sparse membership invariant, no obsolete helper consumer, no public API diff.
+### Generation 3 - Budgeted reconciliation and full capacity enforcement
 
-### Generation 3 - Exact cursors and enforced capacity
+- Plan one entity/output decision at a time, including output absence and lifecycle deletion.
+- Budget candidate collection, planning, and validation with exact cursors.
+- Preserve journal clearing, input sealing, and permitted late-input invalidation.
+- Finish fixed/grow preflight for admission and every runtime buffer.
+- Verify below-capacity, exact-capacity, and overflow cases before logical mutation.
+- Check legacy growth compatibility separately.
+- Measure callback, planning, validation, atomic apply, and cleanup durations independently.
 
-- derive one internal fixed/grow plan from construction mode;
-- block every fixed growth path before write;
-- add transactional and batch cursors;
-- check elapsed time while scanning candidates;
-- preserve current once-per-tick transaction semantics;
-- report exact pending phase/entity/registration.
+Test suspension and input arrival during reconciliation, repeated plan invalidation, tiny time slices, and failures with resource-bearing facts. Final application remains atomic; report its measured cost rather than claiming preemption.
 
-Test `MaxWorkItems = 1`, tiny time slices, new queued facts, batch eligibility, reducer-side create/destroy, cumulative tick guardrails, and no partial commit.
+Gate: every resumable stage makes forward progress without partial publication, and settings-backed engine work cannot grow storage after initialization.
 
-Gate: every reduction phase resumes exactly and settings-backed execution has no reachable growth operation.
+### Generation 4 - Conditional sparse-storage consolidation and lifecycle proof
 
-### Generation 4 - Resumable reconciliation and ECS parity proof
+1. Implement/test the candidate generational sparse primitive.
+2. Migrate one state bucket; verify create/replace/delete, query, mutation, and capacity behavior.
+3. Migrate one fact slab; verify row alignment, multiplicity, spans, disposal, and continuation.
+4. Compare runtime, allocation, reserved metadata, and ownership complexity.
+5. Extend the migration only where those results justify it.
+6. Remove superseded helpers only after their last consumer is migrated.
 
-- plan one entity/output action at a time under step budgets;
-- include lifecycle deletions;
-- invalidate unpublished plans on input revision change;
-- preflight action/mutation capacity;
-- use array-only final apply;
-- expose journals after lifecycle finalization.
+Required storage proof: swap-back first/middle/last removal, moved-entry repair, stale-generation rejection, dense-only clear, bounded entity churn, and failure-safe preparation.
 
-Add one Hestia scenario:
+Final Hestia regression slice:
 
 ```text
-Tick A: reducer queries another entity, creates child, initializes ChildState
+Tick A: reducer reads another entity, creates child, initializes ChildState
 Tick B: removal fact deletes ChildState while child remains live
-Tick C: DeadFact destroys child, stale handle fails, slot reuses with new generation
+Tick C: DeadFact destroys child; old handle fails; slot reuses with a new generation
 ```
 
-It must prove create, destroy, `TryGetEntity`, state add/remove, arbitrary cross-entity read, incremental continuation, and one typed mutation per final change.
+Verify incremental execution, one mutation per final change, accepted fact cleanup, and terminal teardown. This proves the existing migration boundary; it does not certify full Entitas parity.
 
-Gate: planning suspension/failure changes no durable state; apply/publish occurs once; worst-case atomic apply is measured.
+Gate: fewer competing storage invariants without measured performance regression. Reject a generic migration that merely moves the same complexity behind more layers.
 
 ## 8. Verification Matrix
 
 | Invariant | Proof |
 | --- | --- |
-| stale handles | old generation cannot read, emit, query, delete, or target a plan |
-| bounded churn | high-iteration create/destroy causes no capacity growth |
-| atomic admission | every failed prepare leaves all fact structures unchanged |
-| monotonic closure | accepted facts cannot be physically removed |
-| incremental progress | exact phase/cursor after every suspension |
-| snapshot isolation | all committers read pre-commit state |
-| atomic commit | plan failure/suspension changes no durable state |
-| idempotent apply | one action/journal row per entity/output/tick |
-| lifecycle transaction | state deletion and slot release finalize together |
-| zero allocation | warmed full emit/reduce/plan/apply/publish reports 0 B |
-| disposal | accepted facts/runtime resources release once |
-| compatibility | compile-only public API fixture remains unchanged |
+| public compatibility | compile-only fixture plus existing behavioral tests |
+| stale handles | old generation cannot read, emit, query, delete, or target a prepared action |
+| bounded churn | repeated create/destroy stays within concurrent capacity |
+| admission ownership | rejection/failed preparation leaves logical membership and payload ownership unchanged |
+| atomic commit | equality/conflict/capacity failure leaves all durable state unchanged |
+| snapshot isolation | every committer reads the pre-commit snapshot |
+| lifecycle transaction | state deletion and entity release finalize together |
+| routed scheduling | unrelated registry growth does not increase per-tick eligibility work |
+| incremental progress | exact pending phase/cursor without rediscovering completed work |
+| negative sealing | late forbidden input is rejected and negative consequences reach closure |
+| journal visibility | begin-tick clearing and replayable final consumption remain unchanged |
+| disposal | each accepted fact gets one attempt; failures do not strand later owners or hide publication |
+| fixed capacity | exact boundary succeeds; overflow fails before logical mutation |
+| zero allocation | warmed 512-entity engine paths report 0 B, including relevant capacity-boundary shapes |
+| frame cost | callback, planning, apply, and cleanup timings are reported separately |
+| memory cost | schema/candidate/slab reservations are measured before and after migration |
 
-Every generation runs:
-
-1. focused tests;
-2. mandatory compile/rebuild (kiss-unity-mcp)
-3. Running tests (kiss-unity-mcp)
-4. `git diff --check`;
-5. allocation measurement for each changed hot path.
+For each generation run focused tests, appropriate kiss-unity-mcp compilation/import and EditMode tests, allocation measurements for changed hot paths, and `git diff --check`. Retain fresh logs and diagnostic evidence. Editor measurements do not establish IL2CPP/player performance; verify the intended deployment backend before claiming production throughput parity.
 
 ## 9. Explicit Non-Goals
 
-- archetypes, tables, chunks, or system ordering;
-- mutable output access from reducers;
-- physical fact retraction;
-- global facts;
-- runtime reflection or unsafe/type-erased columns;
-- paged sparse arrays without a measured slot-space problem;
-- public per-fact capacities without measured schema memory;
-- generic rollback framework;
-- double-buffered output before apply-tail measurement;
-- exactly-once consumer delivery without cursor/ack;
-- public all-entity enumeration without a production call site;
-- universal repository/pool/storage abstraction.
+- archetypes, chunks, mutable reducer output, ordered gameplay systems, or physical fact retraction;
+- global facts or a universal repository/pool/storage facade;
+- runtime reflection, unsafe/type-erased columns, or new frameworks/packages;
+- full Entitas parity, new matcher/index APIs, or generated listeners;
+- automatic disposal of replaced/deleted/output-plan snapshots;
+- a new acceptance-result API hidden inside admission refactoring;
+- public per-fact capacity settings without measured need;
+- general multi-stratum negation or new transactional frontier semantics;
+- retaining previous journals through open ticks without a separate contract decision;
+- double-buffered state, generic rollback, or resumable cleanup without measured justification;
+- exactly-once external delivery or an absolute wall-clock execution ceiling;
+- mandatory removal of small helpers solely to reduce file count.
 
-## 10. Primary Sources
+## 10. Background References
 
-- Bevy storage overview: <https://docs.rs/bevy_ecs/latest/bevy_ecs/storage/index.html>
-- Bevy sparse-set source: <https://docs.rs/bevy_ecs/latest/src/bevy_ecs/storage/sparse_set.rs.html>
-- Bevy storage tradeoff: <https://docs.rs/bevy_ecs/latest/bevy_ecs/component/enum.StorageType.html>
-- EnTT storage/entity design: <https://github.com/skypjack/entt/wiki/Entity-Component-System>
+Existing proposal references, retained for storage implementation review:
 
-Applicable lessons:
+- [Bevy storage overview](https://docs.rs/bevy_ecs/latest/bevy_ecs/storage/index.html)
+- [Bevy sparse-set source](https://docs.rs/bevy_ecs/latest/src/bevy_ecs/storage/sparse_set.rs.html)
+- [Bevy storage tradeoffs](https://docs.rs/bevy_ecs/latest/bevy_ecs/component/enum.StorageType.html)
+- [EnTT storage/entity design](https://github.com/skypjack/entt/wiki/Entity-Component-System)
 
-- sparse lookup plus dense owner/value arrays fits add/remove state;
-- swap-back removal must repair the moved sparse entry;
-- Cascade must validate full generations in every build because its stores are independently resumable;
-- multi-array writes need one failure policy;
-- sparse sets favor random lookup and structural churn over maximum iteration speed;
-- paged sparse arrays solve large sparse id spaces, which recycled bounded Cascade slots currently avoid.
+Use these as implementation references, not evidence of Cascade performance. Current package contracts and local regression tests take precedence over an external engine's ownership or execution semantics.
 
 ## 11. Done
 
-The overhaul is complete when:
+The required overhaul is complete when:
 
-- fact admission cannot partially mutate tick state;
-- one generation-safe sparse set owns reusable entity membership;
-- facts use one typed multi-value slab layered on that membership;
-- old dense helper clutter is deleted;
-- all reduction and reconciliation stages resume exactly;
-- late open-tick input reaches closure before commit;
-- commit planning can suspend without visible output;
-- durable state, mutation journal, and slot release finalize once;
-- settings-backed ticks cannot allocate or grow;
-- warmed 500+ entity end-to-end tests report 0 B;
-- ECS parity scenario covers lifecycle, lookup, state add/remove, cross-entity query, facts, and mutations;
-- physical fact removal remains outside the core;
-- the existing public API remains source-compatible.
-- minimal set of good quality primitives
+- preparation failure cannot partially accept a fact or change durable state;
+- state writes, mutations, and lifecycle finalization form one validated transaction;
+- transactional/batch work is routed to relevant candidates and resumes exactly;
+- reconciliation can suspend without changing committed state or exposing partial output;
+- negative sealing, permitted late input, and existing mutation visibility are preserved;
+- settings-backed engine execution cannot allocate or grow its runtime storage;
+- accepted facts and terminal resources retain exhaustive, one-attempt cleanup;
+- warmed 512-entity allocation, scheduling, capacity, and lifecycle tests pass;
+- measured callback/apply/cleanup costs and reserved memory are documented;
+- public signatures and valid existing behavior remain compatible.
+
+Sparse consolidation is accepted only where it demonstrably simplifies ownership without performance regression. Full Entitas parity and disposable output-resource ownership remain separate decisions.
