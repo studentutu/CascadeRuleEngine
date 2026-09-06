@@ -188,29 +188,65 @@ namespace CascadeEngineApi
 
         public void Dispose()
         {
+            var errors = new CleanupErrors();
             for (var i = 0; i < _reducers.Count; i++)
             {
-                _reducers[i].DisposeRegistration();
+                try
+                {
+                    _reducers[i].DisposeRegistration();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             for (var i = 0; i < _outputs.Count; i++)
             {
-                _outputs[i].DisposeRegistration();
+                try
+                {
+                    _outputs[i].DisposeRegistration();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             for (var i = 0; i < _transactionalReducers.Count; i++)
             {
-                _transactionalReducers[i].DisposeRegistration();
+                try
+                {
+                    _transactionalReducers[i].DisposeRegistration();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             for (var i = 0; i < _batchTransactionalReducers.Count; i++)
             {
-                _batchTransactionalReducers[i].DisposeRegistration();
+                try
+                {
+                    _batchTransactionalReducers[i].DisposeRegistration();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             for (var i = 0; i < _stateReducers.Count; i++)
             {
-                _stateReducers[i].DisposeRegistration();
+                try
+                {
+                    _stateReducers[i].DisposeRegistration();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             UnbindKnownFactRoutes();
@@ -225,6 +261,7 @@ namespace CascadeEngineApi
             _negativeConditionFactTypes.Clear();
             _negativeReducerCount = 0;
             _typeCatalog.Clear();
+            errors.ThrowIfAny();
         }
 
         internal void AbsorbFrom(FactFeatureRegistry other)

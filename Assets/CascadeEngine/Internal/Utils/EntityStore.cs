@@ -241,6 +241,8 @@ namespace CascadeEngineApi
         internal void DisposeStore()
         {
             ClearPending();
+            _pendingCreated.DisposeStorage();
+            _pendingDestroyed.DisposeStorage();
             _status = Array.Empty<byte>();
             _generations = Array.Empty<uint>();
             _freeSlots = Array.Empty<int>();

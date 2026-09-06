@@ -37,6 +37,7 @@ namespace CascadeEngineApi
         private EntityRef _activeCommitEntity;
         private CascadeTypeId _activeCommitFact;
         private bool _disposed;
+        private bool _executingTick;
 
         /// <summary>
         /// [INTEGRATION] Range: fully constructed feature. Condition: bootstrap. Output: simulation bound to the feature registrations.
@@ -135,6 +136,10 @@ namespace CascadeEngineApi
         public void Warmup(WarmupCapacityHints hints)
         {
             ThrowIfDisposed();
+            if (_executingTick || _partial.IsActive)
+            {
+                throw new InvalidOperationException("Warmup requires a closed tick outside callbacks.");
+            }
 
             if (hints == null)
             {
@@ -222,9 +227,16 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
             ThrowIfOptionsInvalid(options);
-
-            LastResult = _partial.RunTick(options);
-            return LastResult;
+            BeginTickExecution();
+            try
+            {
+                LastResult = _partial.RunTick(options);
+                return LastResult;
+            }
+            finally
+            {
+                _executingTick = false;
+            }
         }
 
         public SimulationResult RunTick()
@@ -237,10 +249,17 @@ namespace CascadeEngineApi
         {
             ThrowIfDisposed();
             ThrowIfOptionsInvalid(options);
-
-            var complete = _partial.RunTickIncremental(options, out result);
-            LastResult = result;
-            return complete;
+            BeginTickExecution();
+            try
+            {
+                var complete = _partial.RunTickIncremental(options, out result);
+                LastResult = result;
+                return complete;
+            }
+            finally
+            {
+                _executingTick = false;
+            }
         }
 
         public bool RunTickIncremental(out SimulationResult result)
@@ -256,25 +275,58 @@ namespace CascadeEngineApi
                 return;
             }
 
+            if (_executingTick)
+            {
+                throw new InvalidOperationException("Cannot dispose the simulation from a running tick callback.");
+            }
+
+            _disposed = true;
+            var errors = new CleanupErrors();
             ClearQueuedCommitActions();
             _firedTransactional.DisposeTracker();
             _firedBatchEntities.DisposeTracker();
-            _facts.DisposeStore();
+            try
+            {
+                _facts.DisposeStore();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
             _commitOutputMarks = Array.Empty<int>();
 
             UnbindRegisteredStateBuckets();
             foreach (var bucket in _stateBuckets.Values)
             {
-                bucket.DisposeBucket();
+                bucket.UnbindStateRoute(this);
+                try
+                {
+                    bucket.DisposeBucket();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             _stateBuckets.Clear();
             _entities.DisposeStore();
-            _feature.Dispose();
+            try
+            {
+                _feature.Dispose();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
             _partial.DisposePartial();
+            _queryBuffer.DisposeStorage();
+            _transactionBuffer.DisposeStorage();
+            _batchBuffer.DisposeStorage();
+            EndOutputCommit();
             _mutationCount = 0;
-            _disposed = true;
             GC.SuppressFinalize(this);
+            errors.ThrowIfAny();
         }
 
         public void ForEachMutation<TState>(
@@ -535,7 +587,7 @@ namespace CascadeEngineApi
                     route,
                     in fact,
                     parentDepth,
-                    _partial.CurrentGuardrails);
+                    _partial.IsActive ? _partial.CurrentGuardrails : _defaultOptions.Guardrails);
 
                 if (accepted && route.StagesEntityDeath)
                 {
@@ -640,6 +692,12 @@ namespace CascadeEngineApi
 
         internal int MutationCountCore => _mutationCount;
 
+        /// <summary>
+        /// [INTEGRATION] Records publication before fact cleanup so cleanup failures cannot hide a committed tick.
+        /// </summary>
+        internal void RecordCompletedResult(SimulationResult result)
+            => LastResult = result;
+
         internal void ClearMutations()
         {
             for (var i = 0; i < _registry.Outputs.Count; i++)
@@ -701,6 +759,15 @@ namespace CascadeEngineApi
             {
                 throw new ObjectDisposedException(nameof(FactSimulation));
             }
+        }
+
+        private void BeginTickExecution()
+        {
+            if (_executingTick)
+            {
+                throw new InvalidOperationException("Simulation ticks cannot be nested inside callbacks.");
+            }
+            _executingTick = true;
         }
 
         private void EnsureQueryCapacity(int required)

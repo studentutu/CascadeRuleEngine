@@ -2,6 +2,16 @@
 
 ## Current State
 
+- Ownership hardening preserves all existing public signatures:
+  - Accepted facts retain their payload through incremental pauses and commit planning, then receive one disposal attempt at closure, rollback cleanup, or terminal teardown.
+  - `CleanupErrors` is the only new internal primitive. It collects errors only on failure; fact slabs, stores, state buckets, registry registrations, and feature trees finish cleanup before reporting them.
+  - A failed disposer no longer strands later facts, causes repeat disposal, prevents static route unbinding, or hides the original reducer/committer exception.
+  - Post-publication fact cleanup errors preserve committed output, the mutation journal, and a completed `LastResult`; they must not trigger replay as if the tick rolled back.
+  - Terminal teardown releases query/transaction/batch buffers, entity pending sets, fact-route scratch, and fired trackers. State route unbinding also works after externally disposing the feature.
+  - Admission checks the total entity fact limit and reserves queue/routing storage before taking payload ownership. Idle emissions use construction-time guardrails instead of stale prior-tick overrides.
+  - Nested ticks, simulation disposal inside tick callbacks, warmup during open ticks, and new input from fact cleanup callbacks are rejected.
+  - `FactSimulationOwnershipTests` covers resource-bearing facts, admission failure, incremental pause, reduction/commit failure, post-commit cleanup errors, registration/state teardown failures, route unbinding, reentrancy, and a warmed 512-entity resource-fact allocation slice.
+
 - CascadeEngine package with full vertical-slice: fact -> reducer -> committer -> typed mutation pipeline.
 - HestiaGame reorganized into Core, Facts, Reducers, Output, and Utils.
 - Hestia facts and output states use the package self-typed equality contracts without object equality or hash boilerplate.
@@ -69,6 +79,10 @@
 
 ## Known Gaps
 
+- The old `memory/improvements.md` overhaul remains a proposal, not an implemented state description. Sparse-store consolidation, fully preflighted atomic commit, resumable reconciliation, and enforced fixed capacity for every owner remain separate work.
+- Output states still have snapshot semantics. Only current stored `IDisposable` states are disposed at terminal teardown; replacement, deletion, and abandoned commit decisions do not establish automatic resource ownership. Do not retain disposable fact resources in output snapshots or independently own one shared resource in several accepted facts.
+- `void Emit` still cannot tell its caller whether an emission was accepted, deduplicated, or rejected for a retired entity. Resource facts should use lease identity for equality and target known live entities; any explicit acceptance-result primitive needs a separate additive API review.
+
 - Negative fact rules intentionally support one terminal stratum. General multi-stratum negation is not available because the current reducer API does not declare emitted fact types; adding dependency sorting would require a separate public rule-head contract.
 - **CRITICAL PERFORMANCE:** Immediate and terminal-negative reducers use direct fact-to-reducer routes, but transactional and batch eligibility do not yet use the specified `FactType -> reducer wait lists` routing.
   - Entity-scoped transactional scheduling currently checks every transactional registration for every touched entity.
@@ -106,4 +120,3 @@
    - Add one small example showing cross-entity query from a reducer.
    - Add one example showing entity creation/deletion during reduction.
    - Review package readme and add section if limitation, examples are missing.
-

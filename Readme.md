@@ -82,7 +82,7 @@ Fact ECS
 
 ```csharp
 var feature = new GameplayFeature();
-var simulation = new FactSimulation(feature);
+using var simulation = new FactSimulation(feature);
 var entity = simulation.CreateEntity();
 
 simulation.Emit(entity, new MoveRequestedFact(12f));
@@ -169,6 +169,10 @@ Ownership rules:
 - `SubFeature` transfers registration ownership into the parent feature. The attached sub-feature is no longer a valid simulation root.
 - `FactSimulation.Dispose()` disposes the bound root `FactFeature`, including attached sub-features. Reducer registrations, output registrations, reducer instances, and committer instances are disposed when they implement `IDisposable`, then registry maps are cleared. A disposed feature cannot be reused to construct another simulation.
 - Future runtime pools or scratch buffers allocated by `FactSimulation`, its stores, or feature registration objects must be released from `Dispose()`.
+
+Facts retain their owned data across incremental pauses and through commit planning. Fact copies/views borrow that data; committers must copy durable values rather than retain disposable fact resources. Cleanup visits every owner even when disposal throws, clears consumed payloads, and never retries them. Multiple failures are aggregated without hiding the original reduction failure. A cleanup error after publication preserves committed state, mutations, and the completed `LastResult`.
+
+The package [ownership documentation](Assets/CascadeEngine/Readme.md#dispose-ownership-rules) includes a pooled-buffer fact example and the existing limits of `void Emit` and disposable output-state snapshots. Terminal disposal also unbinds static routes after callback failures or prior feature disposal.
 
 ## Feature Registration
 

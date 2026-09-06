@@ -18,6 +18,8 @@ namespace CascadeEngineApi
 
         internal int Capacity => _items.Length;
 
+        internal void DisposeStorage() => _items = Array.Empty<EntityRef>();
+
         internal EntityRef this[int index]
         {
             get => _items[index];

@@ -135,9 +135,19 @@ namespace CascadeEngineApi
 
         public void DisposeBucket()
         {
+            var errors = new CleanupErrors();
             for (var i = 0; i < _count; i++)
             {
-                DisposeIfNeeded(_values[i]);
+                var state = _values[i];
+                _values[i] = default;
+                try
+                {
+                    DisposeIfNeeded(state);
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             _sparse = Array.Empty<int>();
@@ -146,7 +156,14 @@ namespace CascadeEngineApi
             _count = 0;
             _mutations.Clear();
             _mutations.Capacity = 0;
+            errors.ThrowIfAny();
         }
+
+        /// <summary>
+        /// [INTEGRATION] Releases the static simulation route independently of the feature registry's lifetime.
+        /// </summary>
+        public void UnbindStateRoute(FactSimulation simulation)
+            => OutputStateRouteCache<TState>.Remove(simulation);
 
         internal EntityRef EntityAt(int index)
         {

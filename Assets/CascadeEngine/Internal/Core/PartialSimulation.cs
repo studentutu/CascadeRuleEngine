@@ -47,6 +47,7 @@ namespace CascadeEngineApi
         private bool _negativeReducersComplete;
         private bool _reducerInvocationActive;
         private bool _active;
+        private bool _endingTick;
 
         internal PartialSimulation(
             FactSimulation simulation,
@@ -76,6 +77,11 @@ namespace CascadeEngineApi
 
         internal void ValidateHostInput()
         {
+            if (_endingTick)
+            {
+                throw new InvalidOperationException("Cannot submit input while tick facts are being disposed.");
+            }
+
             if (_active && _negativePhaseStarted && !_reducerInvocationActive)
             {
                 throw new InvalidOperationException(
@@ -124,9 +130,9 @@ namespace CascadeEngineApi
                     }
                 }
             }
-            catch
+            catch (Exception error)
             {
-                FailActiveTick();
+                FailActiveTick(error);
                 throw;
             }
         }
@@ -155,9 +161,9 @@ namespace CascadeEngineApi
                 result = CreateResult(false, budgetReason);
                 return false;
             }
-            catch
+            catch (Exception error)
             {
-                FailActiveTick();
+                FailActiveTick(error);
                 throw;
             }
         }
@@ -753,28 +759,46 @@ namespace CascadeEngineApi
             _simulation.CommitTouchedOutputs();
             _simulation.CommitEntityLifecycle();
             var result = CreateResult(true, string.Empty);
+            _simulation.RecordCompletedResult(result);
             EndActiveTick();
             return result;
         }
 
         private void EndActiveTick()
         {
-            _facts.Clear();
-            _currentCausalDepth = 0;
-            ClearPendingFactDispatch();
-            ClearCurrentFactContext();
-            ClearDiagnosticContext();
-            ResetNegativePhase();
-            _reducerInvocationActive = false;
-            _active = false;
+            _endingTick = true;
+            try
+            {
+                _facts.Clear();
+            }
+            finally
+            {
+                DisposePartial();
+                _endingTick = false;
+            }
         }
 
-        private void FailActiveTick()
+        private void FailActiveTick(Exception originalError)
         {
+            // Cleanup can fail after publication. A closed tick must retain its durable state and journal.
+            if (!_active)
+            {
+                return;
+            }
             _simulation.ClearQueuedCommitActions();
             _simulation.ClearMutations();
             _simulation.RollbackEntityLifecycle();
-            EndActiveTick();
+            try
+            {
+                EndActiveTick();
+            }
+            catch (Exception cleanupError)
+            {
+                var errors = new CleanupErrors();
+                errors.Add(originalError);
+                errors.Add(cleanupError);
+                errors.ThrowIfAny();
+            }
         }
 
         private SimulationResult CreateResult(bool complete, string budgetReason)

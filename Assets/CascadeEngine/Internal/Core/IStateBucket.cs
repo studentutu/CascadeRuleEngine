@@ -20,6 +20,7 @@ namespace CascadeEngineApi
         void ClearMutations();
 
         void DisposeBucket();
+        void UnbindStateRoute(FactSimulation simulation);
 
         int MutationCount { get; }
     }

@@ -156,6 +156,8 @@ namespace CascadeEngineApi
 
         public void Clear()
         {
+            // Range: accepted payloads only. Remove ownership before invoking user disposal; visit every payload once.
+            var errors = new CleanupErrors();
             for (var slab = 0; slab < _slabCount; slab++)
             {
                 var entity = _entitiesBySlab[slab];
@@ -163,12 +165,16 @@ namespace CascadeEngineApi
                 var offset = Offset(slab);
                 for (var i = 0; i < count; i++)
                 {
-                    _items[offset + i].Dispose();
-                }
-
-                if (count > 0)
-                {
-                    Array.Clear(_items, offset, count);
+                    var fact = _items[offset + i];
+                    _items[offset + i] = default;
+                    try
+                    {
+                        fact.Dispose();
+                    }
+                    catch (Exception error)
+                    {
+                        errors.Add(error);
+                    }
                 }
 
                 if ((uint)entity.StorageIndex < _slabByEntity.Length
@@ -182,6 +188,7 @@ namespace CascadeEngineApi
             }
 
             _slabCount = 0;
+            errors.ThrowIfAny();
         }
 
         private int GetOrCreateSlab(EntityRef entity)

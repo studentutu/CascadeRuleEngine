@@ -178,19 +178,35 @@ namespace CascadeEngineApi
                 throw new InvalidOperationException($"Fact type id '{factId}' exceeded per-entity limit '{guardrails.MaxFactsPerTypePerEntity}' for entity '{entity}'.");
             }
 
+            // Validate cardinality and reserve routing/queue storage before accepting the caller's payload.
+            if (_factCountsByEntity.Get(entity) >= guardrails.MaxFactsPerEntity)
+            {
+                throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
+            }
+
+            _touchedEntities.EnsureCapacity(entity.StorageIndex + 1);
+            _factCountsByEntity.EnsureCapacity(entity.StorageIndex + 1);
+            var routes = _factRoutesByEntity.GetOrCreate(entity);
+            if (factCountForType == 0)
+            {
+                routes.EnsureCapacity(routes.Count + 1);
+            }
+
+            if (_queue.Count == _queue.Capacity)
+            {
+                _queue.Capacity = Math.Max(4, checked(_queue.Count * 2));
+            }
+
             var factIndex = bucket.Add(entity, in fact);
             AcceptedFacts++;
 
             TrackTouchedEntity(entity);
             if (factCountForType == 0)
             {
-                TrackTouchedFactRoute(entity, route);
+                routes.Add(route);
             }
 
-            if (IncrementFactCount(entity) > guardrails.MaxFactsPerEntity)
-            {
-                throw new InvalidOperationException($"Entity '{entity}' exceeded per-tick fact limit '{guardrails.MaxFactsPerEntity}'.");
-            }
+            IncrementFactCount(entity);
 
             _queue.Add(new QueuedFact(
                 entity,
@@ -288,9 +304,17 @@ namespace CascadeEngineApi
 
         internal void Clear()
         {
+            var errors = new CleanupErrors();
             foreach (var bucket in _buckets.Values)
             {
-                bucket.Clear();
+                try
+                {
+                    bucket.Clear();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             _queue.Clear();
@@ -301,14 +325,23 @@ namespace CascadeEngineApi
             AcceptedFacts = 0;
             DeduplicatedFacts = 0;
             RejectedDestroyedEntityFacts = 0;
+            errors.ThrowIfAny();
         }
 
         internal void DisposeStore()
         {
-            Clear();
-            _buckets.Clear();
-            _queue.Clear();
-            _queue.Capacity = 0;
+            try
+            {
+                Clear();
+            }
+            finally
+            {
+                _buckets.Clear();
+                _queue.Capacity = 0;
+                _touchedEntities.DisposeStorage();
+                _factCountsByEntity.DisposeStorage();
+                _factRoutesByEntity.DisposeStorage();
+            }
         }
 
         private FactBucket<TFact> GetOrCreateBucket<TFact>(CascadeTypeId factId)
@@ -346,11 +379,6 @@ namespace CascadeEngineApi
         private void TrackTouchedEntity(EntityRef entity)
         {
             _touchedEntities.Add(entity);
-        }
-
-        private void TrackTouchedFactRoute(EntityRef entity, IFactCommitRoute route)
-        {
-            _factRoutesByEntity.GetOrCreate(entity).Add(route);
         }
 
         private int IncrementFactCount(EntityRef entity)

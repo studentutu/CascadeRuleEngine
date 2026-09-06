@@ -264,7 +264,7 @@ var settings = new CascadeSettings(
     MaxMillisecondsPerStep = 8,
     MaxCausalDepth = 32
 };
-var simulation = new FactSimulation(feature, settings);
+using var simulation = new FactSimulation(feature, settings);
 var entity = simulation.CreateEntity();
 
 simulation.Emit(entity, new MoveRequestedFact(12f));
@@ -428,6 +428,37 @@ Ownership rules:
 - `SubFeature` transfers registration ownership into the parent feature. The attached sub-feature is no longer a valid simulation root.
 - `FactSimulation.Dispose()` disposes the bound root `FactFeature`, including attached sub-features. Reducer registrations, output registrations, reducer instances, and committer instances are disposed when they implement `IDisposable`, then registry maps are cleared. A disposed feature cannot be reused to construct another simulation.
 - Future runtime pools or scratch buffers allocated by `FactSimulation`, its stores, or feature registration objects must be released from `Dispose()`.
+
+Resource ownership lasts through the **entire open tick**, including incremental pauses, negative reduction, and commit planning. It ends only after publication, failed-tick rollback, or terminal disposal. A queue entry, reducer argument, fact view, or span borrows the stored payload; it is not a second owner. Committers must copy durable values out of disposable fact data. Storing the fact's resource in output state leaves that state pointing at a disposed resource after closure.
+
+For example, a project can transfer one rented buffer into an accepted fact:
+
+```csharp
+public readonly struct BufferReceivedFact : IFact<BufferReceivedFact>
+{
+    public BufferReceivedFact(byte[] buffer, int count)
+    {
+        Buffer = buffer;
+        Count = count;
+    }
+
+    public byte[] Buffer { get; }
+    public int Count { get; }
+
+    // Equality identifies this lease; different rented buffers must not deduplicate by contents.
+    public bool Equals(BufferReceivedFact other) => ReferenceEquals(Buffer, other.Buffer);
+
+    public void Dispose() => System.Buffers.ArrayPool<byte>.Shared.Return(Buffer);
+}
+```
+
+Register the fact normally. The producer must stop using an accepted buffer and must not submit the same lease as independently owned facts on multiple entities. The unchanged `void Emit` contract does not report deduplication or retired-entity rejection; use lease identity for resource-fact equality and submit to a known live target. Failed admission leaves the proposed payload caller-owned. Resubmitting a copy of an already accepted lease does not create another owner.
+
+Cleanup is exhaustive: a throwing disposer does not prevent other facts, state buckets, reducers, committers, or sub-features from being visited. Stored payload references are cleared before their disposal callback, and failed callbacks are not retried. One failure is rethrown with its original stack; multiple failures produce `AggregateException`. The original reducer/committer error is retained alongside any cleanup errors. Disposers should still finish their own resource cleanup before throwing; the engine cannot recover resources hidden inside a failed callback.
+
+If disposal fails **after commit**, state and mutation records remain published and `LastResult` identifies that completed tick. This is a cleanup error, not a rolled-back tick; do not blindly replay its input. Terminal `Dispose()` remains terminal and idempotent even when it reports cleanup errors. Static routes and owned scratch storage are released, including when the feature was disposed before its simulation. Tick callbacks cannot recursively tick, dispose the simulation, or warm storage; fact disposers cannot submit new input.
+
+Disposable **output states** retain their existing contract: terminal disposal visits only currently stored states. Replacement, deletion, and abandoned commit decisions do not automatically dispose copied payloads. Use immutable value snapshots and keep shared resource ownership in a domain owner until a separate output-resource lifetime contract is defined.
 
 ## Feature Registration
 

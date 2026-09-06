@@ -80,5 +80,12 @@ namespace CascadeEngineApi
 
         private static int NormalizeCapacity(int capacity)
             => capacity > 0 ? capacity : 1;
+
+        internal void DisposeStorage()
+        {
+            _entities.Clear();
+            _entities.Capacity = 0;
+            _contains = Array.Empty<bool>();
+        }
     }
 }

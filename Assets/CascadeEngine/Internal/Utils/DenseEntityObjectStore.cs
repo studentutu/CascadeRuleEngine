@@ -21,6 +21,8 @@ namespace CascadeEngineApi
 
         internal int Capacity => _values.Length;
 
+        internal void DisposeStorage() => _values = Array.Empty<TValue?>();
+
         internal void EnsureCapacity(int entityCapacity)
         {
             if (entityCapacity <= _values.Length)

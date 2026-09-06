@@ -79,16 +79,32 @@ namespace CascadeEngineApi
                 return;
             }
 
-            _registry.Dispose();
+            _disposed = true;
+            var errors = new CleanupErrors();
+            try
+            {
+                _registry.Dispose();
+            }
+            catch (Exception error)
+            {
+                errors.Add(error);
+            }
 
             for (var i = 0; i < _subFeatures.Count; i++)
             {
-                _subFeatures[i].Dispose();
+                try
+                {
+                    _subFeatures[i].Dispose();
+                }
+                catch (Exception error)
+                {
+                    errors.Add(error);
+                }
             }
 
             _subFeatures.Clear();
-            _disposed = true;
             GC.SuppressFinalize(this);
+            errors.ThrowIfAny();
         }
 
         private void ThrowIfNotMutable()

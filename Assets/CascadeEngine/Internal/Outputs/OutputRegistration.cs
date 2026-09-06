@@ -195,7 +195,8 @@ namespace CascadeEngineApi
         {
             _commitActions.Clear();
             _commitActions.Capacity = 0;
-            _queuedEntities.Clear();
+            _queuedEntities.DisposeStorage();
+            _bucket = null;
 
             if (_committer is IDisposable disposable)
             {
