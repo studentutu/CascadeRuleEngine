@@ -147,6 +147,11 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(6, AbsenceCommitter.InvocationCount);
             Assert.IsFalse(simulation.Has<AbsenceState>(created));
             Assert.IsFalse(simulation.Has<AbsenceState>(unchanged));
+
+            var third = simulation.RunTick(ReduceOptions.Default());
+
+            Assert.AreEqual(0, third.MutationCount);
+            Assert.AreEqual(6, AbsenceCommitter.InvocationCount);
         }
 
         private sealed class RouteFeature : FactFeature

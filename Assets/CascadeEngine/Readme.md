@@ -188,6 +188,67 @@ Fact ECS
   -> dirty output component update
 ```
 
+## Entitas Parity Matrix
+
+This comparison uses the core Entitas entity, component, group, index, collector, system, and feature concepts documented in the Entitas [Components](https://github.com/sschmid/Entitas/wiki/Components) and [Systems](https://github.com/sschmid/Entitas/wiki/Systems) guides. It measures production replacement capability, not API-name compatibility.
+
+Status meanings:
+
+- **Equivalent**: the production capability exists directly.
+- **Pipeline equivalent**: the outcome exists through Cascade's fact -> closure -> commit contract rather than direct component mutation.
+- **Limited**: a deliberately narrower API exists; the stated limit matters during migration.
+- **Not provided**: no package primitive currently exists. Add one only from a measured production slice.
+- **Intentionally unsupported**: providing the Entitas behavior would violate Cascade's deterministic reduction model.
+- **Intentionally replaced**: Cascade solves the production requirement through a different scheduling model and must not preserve the Entitas behavior.
+
+| Entitas capability | CascadeEngine equivalent | Status | Contract and migration consequence |
+| --- | --- | --- | --- |
+| `Context.CreateEntity()` | `FactSimulation.CreateEntity()` / `IReduceContext.CreateEntity()` | **Equivalent** | Returns a live generational `EntityRef`. Reducer-created entities can receive facts in the same open tick. |
+| `Entity.Destroy()` | `DestroyEntity()` -> `DeadFact` -> closure -> state deletion mutations | **Pipeline equivalent** | Destruction is transactional. Committed state remains readable through closure; a failed tick rolls destruction back. |
+| Entity identity with pooled reuse | `EntityRef.Value` plus `EntityRef.Generation` | **Equivalent** | Stale handles cannot alias a reused slot. Preserve the complete handle, not only `Value`. |
+| Find current entity by runtime id | `FactSimulation.TryGetEntity(slotId, out entity)` | **Limited** | Resolves the current generation in a runtime slot. Slot ids are recyclable and are not save-game, network, or domain identity. |
+| Stable or domain-key entity lookup | Domain-owned stable-key state plus a host-owned index | **Not provided** | There is no built-in stable-id index. The package also does not enforce uniqueness for a domain key. |
+| Add or replace a durable component | Committer returns `CommitDecision<TState>.Set(next)` | **Pipeline equivalent** | Reducers cannot write state. All committers read the same previous snapshot, then buffered decisions are applied once. |
+| Remove a durable component | Committer returns `CommitDecision<TState>.Delete()` | **Pipeline equivalent** | Deletion publishes one typed `StateMutation<TState>` when prior state exists. Repeated deletion is idempotent. |
+| Marker component and `hasX` / `isX` | Empty `IOutputState<TState>` plus `Has<TState>()`; tick marker facts plus `Facts(entity).Has<TFact>()` | **Equivalent** | Use output state for durable membership and facts for tick-local membership. They are intentionally different lifetimes. |
+| Direct component read | `GetState<TState>()`, `TryGetState<TState>()`, `Facts(entity).TryGetLatest<TFact>()`, and `All<TFact>()` | **Equivalent** | Reducers and committers receive query-only views. Missing durable state remains explicit. |
+| Request/event component added for one frame | `Emit(entity, fact)`; tick storage clears after closure or failure | **Pipeline equivalent** | No cleanup system is required. Identical payloads deduplicate; distinct same-type payloads remain available through `All<TFact>()`. |
+| Remove an accepted request component during system execution | Add a cancellation/rejection fact and reconcile the durable result | **Intentionally unsupported** | Physical fact removal would leave already-derived consequences behind and make results depend on reducer order. |
+| `AllOf` group over one state | `Query.With<TState>()` | **Equivalent** | Returns an allocation-free `EntityQueryResult` over an engine-owned reusable buffer. |
+| `AllOf` group over two states | `Query.With<TStateA, TStateB>()` | **Equivalent** | Iterates the smaller sparse state set and checks the other membership. Consume the result before another query reuses the buffer. |
+| Arbitrary-arity `AllOf` matcher | Trigger on one narrow state and query other requirements manually | **Limited** | No generic three-or-more-state matcher is exposed. Do not add combinatorial overloads without a measured hot-path use case. |
+| `AnyOf` group matcher | None | **Not provided** | Reducers can issue separate supported queries, but the package has no union query primitive. |
+| `NoneOf` / matcher-level exclusion | Closure-safe reducer `Without<TFact>()` only | **Limited** | Reducer `Without` is fact absence in the terminal negative stratum. It is not a general state/fact query matcher. |
+| Group count and entity enumeration | `EntityQueryResult.Count`, indexer, and `AsSpan()` | **Equivalent** | Available for supported query shapes without `IEnumerable` allocation. |
+| Persistent live `IGroup` with membership events | None | **Not provided** | Cascade evaluates supported sparse queries on demand and does not expose mutable group objects or group callbacks. |
+| `[PrimaryEntityIndex]` one-to-one lookup | None | **Not provided** | `TryGetEntity` is only slot lookup; it is not a primary key index and does not validate domain-key uniqueness. |
+| `[EntityIndex]` one-to-many lookup | None | **Not provided** | Cross-entity reducers can scan supported state queries. Add a typed package index only after a production profile proves scans are insufficient. |
+| `[Unique]` context component | Project-owned singleton/service or explicitly bootstrapped entity | **Not provided** | Uniqueness is not enforced by the package. Missing required services remain setup errors rather than implicit global entities. |
+| `ReactiveSystem` / `Collector` for changed components | Fact-triggered reducers during reduction; `ForEachMutation(output, handler)` after commit | **Pipeline equivalent** | Reducers react to accepted facts. Consumers receive final create/update/delete output mutations, not intermediate component churn. |
+| Generated `[Event]` systems | Typed output mutation stream | **Limited** | There is no generated listener API or added/removed collector matrix. Consumers subscribe operationally by routing the required output after `RunTick`. |
+| Ordered `IExecuteSystem` chain | Fact routing, transactional eligibility, closure, then reconciliation | **Intentionally replaced** | Reducer registration order is not a gameplay priority mechanism. Output conflict policy owns durable conflict resolution. |
+| `IInitializeSystem`, `ICleanupSystem`, and `ITearDownSystem` | Host bootstrap, automatic fact clearing, and `FactSimulation.Dispose()` | **Pipeline equivalent** | Cascade does not reproduce system lifecycle interfaces. The host owns construction and ticking; the simulation owns terminal teardown. |
+| Entitas `Feature` composition | `FactFeature` plus `SubFeature(...)` | **Equivalent** | Sub-feature registration ownership transfers to the parent. Features organize routes; they do not establish execution order. |
+| Multiple generated contexts and multi-context reactive systems | Host-owned coordination across separate simulations/adapters | **Not provided** | One simulation has one entity/state world. Cross-simulation transactions and aggregate queries are host responsibilities. |
+| Generated component, matcher, event, and index APIs | Generic registration and typed runtime routes | **Limited** | Cascade has no code-generation layer. Runtime reflection is banned; only cold-path `typeof`-based registration metadata is used. |
+| Runtime component enumeration and editor visual-debugging APIs | Focused typed queries plus diagnostics in `SimulationResult` | **Not provided** | The package does not expose arbitrary state/fact object enumeration, boxed component arrays, or an Entitas-style entity inspector. |
+
+### Parity verdict
+
+CascadeEngine has the ECS replacement slice required by the documented migration boundary:
+
+```text
+old ECS/input/event
+-> entity-owned facts
+-> same-tick reduction closure
+-> reconciled durable output state
+-> typed mutation consumed by ECS/view/UI adapters
+```
+
+It does **not** have full Entitas API parity. The material missing facilities are stable domain-key indexes, one-to-many indexes, richer matcher shapes, persistent live groups, generated listeners, and multi-context aggregation. These are not implied future work. Each requires a thin production vertical slice, measured cost, and a public-contract review before entering the package.
+
+Physical removal of accepted facts and ordered mutable-system execution are not parity gaps. They are explicitly excluded because they reintroduce partial consequences and hidden temporal ordering—the production failures CascadeEngine exists to remove.
+
 ## Minimal Host Flow
 
 ```csharp

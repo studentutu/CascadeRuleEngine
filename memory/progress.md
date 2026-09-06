@@ -70,6 +70,16 @@
 ## Known Gaps
 
 - Negative fact rules intentionally support one terminal stratum. General multi-stratum negation is not available because the current reducer API does not declare emitted fact types; adding dependency sorting would require a separate public rule-head contract.
+- **CRITICAL PERFORMANCE:** Immediate and terminal-negative reducers use direct fact-to-reducer routes, but transactional and batch eligibility do not yet use the specified `FactType -> reducer wait lists` routing.
+  - Entity-scoped transactional scheduling currently checks every transactional registration for every touched entity.
+  - Batch scheduling currently checks every batch registration against every touched entity, including registrations unrelated to the accepted fact types.
+  - Ineligible registration checks do not invoke user reducer code, but they are still empty scheduler work and are not included in `SimulationResult.ProcessedWorkItems`. This can hide the real cost at the production scale of hundreds of entities and large reducer registries.
+  - `ReduceState` membership iteration and output `Without<TFact>()` reconciliation are intentional tick-wide scans with different semantics. Profile and report them separately; do not remove them as part of transactional routing.
+- Explicit Entitas query/index parity gaps remain:
+  - `AnyOf` query matching is not available. A future slice must provide allocation-free union matching with entity deduplication and clearly separate committed-state membership from tick-local fact membership.
+  - `PrimaryEntityIndex`-style lookup is not available. `FactSimulation.TryGetEntity(int, out EntityRef)` resolves a recyclable runtime storage slot only; it is not a stable domain-id index and does not enforce uniqueness.
+  - The required thin vertical slice is cross-entity damage routing: a damage fact on an enemy/source entity identifies a victim by a domain-owned stable id; the reducer resolves the victim, reads the source weapon/damage model from committed state, and emits the damage-application fact on the victim entity.
+  - Any package-owned primary index must enforce unique keys, return generational `EntityRef` handles, update only through committed state/lifecycle reconciliation, remove destroyed entities, roll back failed ticks, and remain allocation-free in the hot path. Do not add a general indexing framework before this slice proves the minimal API.
 - Legacy manual warmup is only as accurate as the host-provided hints.
   - Underestimated entity count, queue size, output state capacity, or mutation capacity can still grow during gameplay.
   - In fixed fact-slab mode, underestimated per-entity fact count throws instead of allocating.
@@ -77,12 +87,18 @@
 
 ## Next Work
 
-1. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
+1. **Critical performance: replace transactional and batch global eligibility scans with fact-routed candidate scheduling.**
+   - Preserve the public registration API and same-tick closure semantics.
+   - Bind transactional and batch waiters to the accepted fact routes during feature registration, then evaluate only affected reducer/entity candidates.
+   - Add internal eligibility-check diagnostics so scheduler work is measurable instead of hidden from `ProcessedWorkItems`.
+   - Verify one thin vertical slice with 500+ entities and a large unrelated reducer registry: zero unrelated reducer invocations, bounded eligibility checks, correct incremental continuation, and 0 B steady-state allocation after warmup.
+
+2. Budgeting. Profile the state-presence relevance slice before adding priority primitives. Only add Reducer-Loop Priority-per-Entity mode if measured workloads require it:
    - use presence of domain-owned `ActiveState`/equivalent as the first relevance filter.
    - measure starvation and frame-slice latency before designing scheduling metadata.
    - do not add `SimulationMode`, priority flags, or dormant scheduler state speculatively.
 
-2. Prepare production package:
+3. Prepare production package:
    - minimal examples
    - add example of incremental loop where we can specify the hard TimeSpan beyond which we stop the reduction loop and away next frame.
    - move from asset folder to proper unity package (similar to https://github.com/studentutu/FluentPlayableApi)
@@ -90,3 +106,38 @@
    - Add one small example showing cross-entity query from a reducer.
    - Add one example showing entity creation/deletion during reduction.
    - Review package readme and add section if limitation, examples are missing.
+
+
+-------------------------------------------------------------------------------------
+
+## Review
+
+#Task: review the current MVP for the Cascade Rule Engine and propose meaningfull improvement, rewrite Assets\CascadeEngine\Readme.md to suit better design for the usability and cover all current MVP weaknesses:
+1. Read Assets\CascadeEngine\Readme.md to understand it broadly
+2. Read actual implemetation (this is the weakest past right now, as we have way no good way of publish properties, facts and payload are way to junky, overall usability is very low)
+3. Conceptual question: Do we even need a commit phase/complexity? 
+
+## Purpose
+
+Need a good minimal and coherent package cascade core, so that we can pick one folder and drop into any other project ready to be used as is.
+
+Take inspiration from Virtual-DOM and React for the minimal and coherent package core and good set of primitives.
+
+Goal: Replace ECS-style hidden execution order with a small fact-reduction-mutation pipeline.
+
+We need a good set of primitives and clear and rigid pipeline with intuitive usage:
+
+1. Simple enough to understand and walk through the any reducer/properties/fact and clean mutation of the state.
+2. Extendable to add custom reducers/consumers.
+3. We need all major feature parity to ecs: entity and per entity state, queryable entity state from reducers/consumers, zero-allocation in the hot path, performant for 500+ entities.
+4. Easy enough to drop cascade package in and start using instead of ecs:
+
+```text
+old ECS system -> input/event -> Fact
+-> cascade engine Tick
+-> published property -> old ECS/world/unity-ui consumer
+```
+
+## CI/Compilation/Tests/Verification
+
+- See: [vscode.tasks.json](.vscode/tasks.json) and use kiss-unity-mcp.
