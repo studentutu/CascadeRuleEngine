@@ -63,14 +63,14 @@ Cascade needs ECS capabilities, not ECS mutation semantics.
 | --- | --- |
 | create entity | `CreateEntity()` |
 | delete entity | `DestroyEntity()` -> `DeadFact` -> closure |
-| find current entity by runtime id | `TryGetEntity(slot, out entity)` |
+| find current entity by runtime id | `TryGetEntity(Id_slot, out entity)` |
 | add transient request/event | `Emit(entity, fact)` |
 | add/replace durable component | committer returns `Set` |
 | remove durable component | additive removal fact -> committer returns `Delete` |
 | query components | state/fact queries |
 | arbitrary cross-entity reducer logic | `IEntityQuery` plus committed-state reads |
 | reactive changes | typed `StateMutation<TState>` |
-| long-running churn | slot reuse plus generation increment |
+| long-running churn | Id_slot reuse plus generation increment |
 
 ### No physical fact removal
 
@@ -433,12 +433,10 @@ Gate: planning suspension/failure changes no durable state; apply/publish occurs
 Every generation runs:
 
 1. focused tests;
-2. mandatory Rider/MSBuild compile, or full Unity compile when C# files are added;
-3. `CI/CompileErrorsAfterUnityRun.txt` inspection;
+2. mandatory compile/rebuild (kiss-unity-mcp)
+3. Running tests (kiss-unity-mcp)
 4. `git diff --check`;
 5. allocation measurement for each changed hot path.
-
-Run Unity tests through `runTestsFromRoot.sh` and `runParsetests.sh` only when the editor is closed.
 
 ## 9. Explicit Non-Goals
 
@@ -488,3 +486,4 @@ The overhaul is complete when:
 - ECS parity scenario covers lifecycle, lookup, state add/remove, cross-entity query, facts, and mutations;
 - physical fact removal remains outside the core;
 - the existing public API remains source-compatible.
+- minimal set of good quality primitives
