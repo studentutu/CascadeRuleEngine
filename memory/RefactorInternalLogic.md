@@ -4,7 +4,7 @@ Status: design proposal, 2026-09-07. This document does not change runtime code 
 
 The project exists to solve hidden ECS execution dependencies, incremental reduction, and budget enforcement. Maintaining a second general-purpose storage engine is not its objective. Use a proven C# sparse-set ECS for entity/component mechanics; retain a small Cascade layer for facts, execution, and transactional publication.
 
-This proposal supersedes the multiple-fact storage direction in [improvements.md](improvements.md). Preserve the transaction and ownership fixes documented in [improvements-results.md](improvements-results.md). The existing 111-test result is a baseline, not verification of this proposal.
+This is the single active internal refactor plan. The [package README](../Assets/CascadeEngine/Readme.md) describes the current runtime contract; this document defines the target and migration. Preserve existing atomic publication, staged lifecycle, and exhaustive ownership cleanup through the refactor. Verify the target against the executable regression suite rather than historical progress reports.
 
 ## 1. Decisions and compatibility boundary
 
@@ -334,6 +334,6 @@ These are not reasons to continue polishing custom storage indefinitely. They ar
 - [Bevy schedule graph](https://docs.rs/bevy_ecs/latest/bevy_ecs/schedule/struct.ScheduleGraph.html): dependency topology and conflicting access are explicit schedule concepts. This does not establish confluence of user reducers.
 - [Bevy schedule module](https://docs.rs/bevy_ecs/latest/bevy_ecs/schedule/): topologically ordered execution metadata; inspiration for compiling and inspecting the plan.
 - [Entitas component semantics](https://github.com/sschmid/Entitas/wiki/Components): one component per entity/type with add/replace/remove APIs. Cascade deliberately disallows replacing an accepted fact during an open loop.
-- [Current package contract](../Assets/CascadeEngine/Readme.md), [previous overhaul proposal](improvements.md), and [verified baseline](improvements-results.md).
+- [Current package contract](../Assets/CascadeEngine/Readme.md). The tests under `Assets/Tests` define executable compatibility and ownership checks.
 
 External documentation is architectural reference material. Backend-specific compatibility, memory, stepping, and publication behavior must be verified locally before implementation is accepted.

@@ -230,7 +230,7 @@ Incremental execution retains exact reduction and reconciliation cursors. Accept
 
 `MaxWorkItems` continues to count reducer invocations only. Time limits are cooperative: planning can suspend, but callbacks, atomic application, and cleanup cannot be preempted. Settings reserve and freeze engine storage during construction; legacy construction permits growth during preparation.
 
-See [implementation and verification results](memory/improvements-results.md) and the [package README](Assets/CascadeEngine/Readme.md) for primitives, capacity costs, and measured limits.
+See the [package README](Assets/CascadeEngine/Readme.md) for the current API and ownership contract.
 
 ## Hestia Sample
 

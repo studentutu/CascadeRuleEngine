@@ -574,23 +574,9 @@ Folder intent:
 - `Public`: public types normal package consumers directly uses.
 - `Internal`: rest of the package with core interfaces, implementation, utilities. These are package implementation details and should be hidden from sample gameplay code.
 
-## Internal Primitives And Ownership
+## Verification
 
-| Primitive / owner | Responsibility |
-| --- | --- |
-| `EntitySparseSet<TValue>` | generation-checked membership, compact values, reserved capacity, swap-back removal; no disposal or lifecycle |
-| `FactBucket<TFact>` | typed contiguous payload slab and per-row counts; immutable accepted rows through closure; exactly one cleanup attempt per accepted fact |
-| `StateBucket<TState>` | durable sparse values and typed mutation array; equality/capacity preparation before application |
-| `CommitAction<TState>` | prepared final entity/output mutation; no equality or capacity work during apply |
-| `ReducerCandidates` | packed pending pairs routed from accepted fact types; stage ordering and exact cursors live in `PartialSimulation` |
-| `ReconciliationPlan` | affected, absence, lifecycle, and validation cursors over unpublished typed actions |
-| `CleanupErrors` | exhaustive ownership cleanup while retaining original errors |
-
-The runtime uses one construction-derived fixed/grow choice. Settings freeze fact queues/slabs/routes, entity-related scratch, candidate bits, fired markers, output actions, and journals after initialization. Per-call options cannot relax settings cardinality. Legacy growth is completed before logical fact or entity admission and before durable application.
-
-Pending candidate bit storage is approximately `MaxEntities * (transactional registrations + batch registrations) / 8` bytes, rounded per stage. Existing fired markers remain approximately four bytes per entity/registration. Fact slabs still reserve `MaxEntities * MaxFactsPerTypePerEntity` payload slots per registered fact type; sharing sparse mechanics does not reduce that payload reservation. Membership-only scratch retains its smaller specialized owner instead of carrying an unused values array.
-
-Tests use Unity's synchronous `GC.Alloc` recorder with a positive allocation control. `GC.GetAllocatedBytesForCurrentThread()` returned zero even for new arrays on the tested Mono runtime and is not accepted as evidence. See [measured results](../../memory/improvements-results.md) for allocation, timing, and memory-reservation evidence. These Editor results do not certify IL2CPP throughput or full Entitas parity.
+The tests under `Assets/Tests` cover the public contract, incremental execution, atomic publication, lifecycle, and resource ownership. Allocation tests use Unity's synchronous `GC.Alloc` recorder with a positive allocation control; the per-thread GC byte counter is not reliable on the tested Mono runtime. Editor allocation results do not certify IL2CPP throughput or full Entitas parity.
 
 ## Hestia Sample
 

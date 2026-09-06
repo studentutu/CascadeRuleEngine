@@ -1,103 +1,74 @@
-# Progress
+# Progress and decision history
 
-## Current State
+This document records product and public-contract decisions, their status, and unresolved user-facing requirements. [package README](../Assets/CascadeEngine/Readme.md) documents current usage. Do not add internal restructuring notes, implementation changelogs, or benchmark/tests run histories here.
 
-- Ownership hardening preserves all existing public signatures:
-  - Accepted facts retain their payload through incremental pauses and commit planning, then receive one disposal attempt at closure, rollback cleanup, or terminal teardown.
-  - `CleanupErrors` is the only new internal primitive. It collects errors only on failure; fact slabs, stores, state buckets, registry registrations, and feature trees finish cleanup before reporting them.
-  - A failed disposer no longer strands later facts, causes repeat disposal, prevents static route unbinding, or hides the original reducer/committer exception.
-  - Post-publication fact cleanup errors preserve committed output, the mutation journal, and a completed `LastResult`; they must not trigger replay as if the tick rolled back.
-  - Terminal teardown releases query/transaction/batch buffers, entity pending sets, fact-route scratch, and fired trackers. State route unbinding also works after externally disposing the feature.
-  - Admission checks the total entity fact limit and reserves queue/routing storage before taking payload ownership. Idle emissions use construction-time guardrails instead of stale prior-tick overrides.
-  - Nested ticks, simulation disposal inside tick callbacks, warmup during open ticks, and new input from fact cleanup callbacks are rejected.
-  - `FactSimulationOwnershipTests` covers resource-bearing facts, admission failure, incremental pause, reduction/commit failure, post-commit cleanup errors, registration/state teardown failures, route unbinding, reentrancy, and a warmed 512-entity resource-fact allocation slice.
+## Established decisions
 
-- CascadeEngine package with full vertical-slice: fact -> reducer -> committer -> typed mutation pipeline.
-- HestiaGame reorganized into Core, Facts, Reducers, Output, and Utils.
-- Hestia facts and output states use the package self-typed equality contracts without object equality or hash boilerplate.
-- `System.Math` usage under `Assets` was replaced with `Mathf`.
-- Per-tick fact storage was refactored away from dictionary-heavy entity buckets into internal dense storage utilities:
-  - `DenseEntitySet`
-  - `DenseEntityCounter`
-  - `DenseEntityObjectStore<T>`
-  - `EntityRefBuffer`
-- Raw dense storage mechanics are now isolated behind tested utilities instead of being embedded directly in `FactStore`, `FactBucket`, or `FactSimulation`.
-- `IFact` now inherits `IDisposable`; accepted stored facts are disposed when tick-local fact storage clears.
-- `EntityStore` tracks recyclable entity slots with generations, rejecting stale handles in O(1).
-- `FactSimulation.Warmup(WarmupCapacityHints)` now pre-sizes dense fact stores, query/transaction/batch buffers, commit and mutation buffers, the fact queue, and registered fact buckets for expected gameplay load.
-- Fact emit routing now uses per-fact typed routes containing the fact id, so emit avoids type-catalog fact id lookup.
-- Output state routing now binds simulation-owned typed state buckets, so `GetStateBucket<TState>()` and query/state access avoid type-catalog output id lookup.
-- Output registrations now keep their simulation-owned typed state bucket after binding, so commit queuing does not re-fetch the bucket through `OutputStateRouteCache<TState>`.
-- Commit routing now records accepted fact routes per touched entity and reads affected outputs directly from those routes, so commit reconciliation no longer scans fact buckets or looks up affected outputs by fact id.
-- Reducer routing now binds reducer invokers into per-fact typed routes, so the reduction loop no longer performs a reducer dictionary lookup by fact id for each queued fact.
-- No Global facts should exists in package API and storage model. All emitted facts must belong to concrete entities.
-- Commit actions are buffered per output as reusable value-type lists, preserving delayed reconciliation without per-mutation action object allocation.
-- A 512-entity warmup allocation test now measures first-use and steady-state emit/tick execution; result should be (any or zero) bytes first-use and 0 bytes steady-state in edit-mode test output.
-- `FactSimulation.Dispose()` is now the only terminal simulation lifecycle API. It releases simulation-owned tick facts, output state buckets, mutation buffers, entity lifecycle data, commit buffers, fired reducer caches, and the bound feature registry tree exactly once.
-- `SubFeature` transfers registration ownership into the parent feature and drains the child registry. Attached sub-features are not valid simulation roots.
-- `FactFeature.Dispose()` clears its registry and attached sub-features. Reducer and committer instances that implement `IDisposable` are disposed before registration maps are cleared.
-- Transactional reducer semantics are covered by focused edit-mode tests:
-  - two-fact entity-scoped reducer fires once when both required facts exist.
-  - batch transactional reducer receives only eligible entities.
-  - batch transactional reducer fires exactly once per entity when entities become eligible across different passes, while incomplete entities stay excluded.
-  - generic `ReduceWhen` and `ReduceBatchWhen` registrations support two through four facts from one dedicated `FactFeature.TransactionalRegistration.cs` surface.
-  - arities above four chain package-provided `.And<TFact>()` builder extensions without feature inheritance or package changes.
-- Same entity/fact-type multiplicity is intentional: identical fact payloads dedupe, distinct payloads are preserved and exposed through `IEntityFactView.All<TFact>()`.
-- Commit priority conflict handling is declarative and commit-only:
-  - `AffectedBy<TFact>(int priority)` assigns output-scoped priority without changing reducer scheduling.
-  - `PriorityWinnerOrThrowOnTie` exposes only the winning fact type to the committer and rejects multiple distinct winning facts before durable writes.
-  - `IPrioritizedFact`, `IFactConflictComparer<TFact>`, and `FactConflictResolution` were removed from the public API.
-- Committed output state can now drive per-tick work through the minimal `ReduceState<TState, TReducer>()` registration. It reuses `ITransactionalReducer`; no state-specific reducer interface or builder was added.
-- State-trigger membership is a committed tick snapshot. Newly committed state becomes eligible next tick, state reducers run once per eligible live entity, and incremental continuation preserves the registration/entity cursor.
-- `ReduceOptions.MaxWorkItems` is a per-call reducer-invocation budget independent of `MaxFacts`; `SimulationResult.ProcessedWorkItems` reports cumulative tick work.
-- Incremental dispatch now preserves a popped fact and its next reducer index when a budget stops between multiple reducers for the same fact.
-- Reducer-side entity creation/destruction is transactional:
-  - new entities can receive facts in the same open tick.
-  - `DestroyEntity` and direct `DeadFact` emission stage the same additive lifecycle fact.
-  - pending-dead entities continue immediate, transactional, batch, and state reduction through closure; reducers explicitly skip work by querying `DeadFact`.
-  - normal output projection is skipped for pending-dead entities and durable output deletion waits for closure.
-  - failed ticks roll back destruction and invalidate handles created by the failed tick before their slots can be reused.
-- `FactSimulation.TryGetEntity(int, out EntityRef)` resolves the current live generation for a runtime slot without expanding `IFactSimulation`; integer slot ids are not persistent identity.
-- Output state storage now uses compact sparse membership/value arrays instead of per-output dictionaries. One-state queries iterate that state only; two-state queries iterate the smaller state set.
-- Entity lifecycle storage is warmed array state instead of an allocating destroyed-id `HashSet`.
-- The state-trigger vertical slice covers activation/deactivation, dormant filtering, cross-entity state query, incremental work suspension, reducer-side create/destroy, failure rollback, and same-fact multi-reducer continuation.
-- The 512-entity state-trigger allocation test reports 0 bytes for first-use and steady-state measured ticks after warmup.
-- `IFact<TFact>` and `IOutputState<TState>` now reduce normal fact/state equality boilerplate to one typed `Equals` method. `IFact` supplies default no-op disposal; resource-owning facts can still override it.
-- Commit snapshot isolation is covered across both output registration order and touched-entity order: all committers read the previous committed snapshot before any queued durable write is applied.
-- `CascadeSettings` is the recommended single construction-time policy for concurrent entity capacity, fact cardinality, warmup, step/tick work budgets, pass/time limits, and causal depth. Parameterless tick methods reuse its captured policy.
-- `EntityRef` is generational: `Value` is a recyclable runtime slot, `Generation` changes before reuse, and stale handles cannot alias new entities. Slots recycle only after closure or rollback cleanup, keeping dense fact/state/reducer storage bounded by maximum concurrent entities.
-- Per-fact storage now uses sparse flat typed slabs: slot-to-slab mapping, compact touched owners/counts, and one contiguous payload array. Per-entity fact-list objects and arrays were removed while zero-copy `ReadOnlySpan<TFact>` access, disposal ownership, fixed-capacity failure, and grow-on-demand compatibility remain covered.
-- Closure-safe negative fact rules extend the existing direct fact-reducer builder: `Reduce<TFact>().Without<TForbiddenFact>().With<TReducer>()`.
-  - positive immediate, transactional, batch, and state-driven work closes before negative eligibility is evaluated.
-  - each accepted distinct trigger fact retains normal `IFactReducer<TFact>` multiplicity and is invoked only when every declared forbidden fact is absent for its entity.
-  - trigger and forbidden condition fact types are sealed for the terminal negative stratum.
-  - late host input is rejected after negative evaluation starts; resume the incremental tick to closure before submitting next-tick input.
-  - contradictory trigger/forbidden registrations fail during feature construction.
-  - no parallel `ReduceStateWithout`, transactional `Without`, or batch `Without` public surface exists.
-- Output registrations can use `.Without<TFact>()` to reconcile prior output members when the final closed fact set lacks every declared fact. Affected-fact and absence routing deduplicate to one committer decision per entity/output.
-- The warmed 512-entity allocation slice now includes terminal negative reduction and remains expected to report 0 B on the steady-state tick.
+### Product purpose and public API
 
-## Known Gaps
+- Cascade replaces hidden gameplay execution order with facts, reduction to closure, committed state, and typed mutation observation. Incremental execution and explicit budgets are core requirements.
+- Keep a small, portable package with gameplay examples outside it. Hestia demonstrates the complete input-to-output flow and remains the reference integration example.
+- Preserve public signatures and adapters during refactoring. Explicitly approved behavior changes must be documented separately from source compatibility.
+- All facts belong to an entity. Global facts are not part of the public model.
+- Facts last for one full reduction loop. A continuing external condition must be emitted again for the next loop or projected into durable state.
 
-- The old `memory/improvements.md` overhaul remains a proposal, not an implemented state description. Sparse-store consolidation, fully preflighted atomic commit, resumable reconciliation, and enforced fixed capacity for every owner remain separate work.
-- Output states still have snapshot semantics. Only current stored `IDisposable` states are disposed at terminal teardown; replacement, deletion, and abandoned commit decisions do not establish automatic resource ownership. Do not retain disposable fact resources in output snapshots or independently own one shared resource in several accepted facts.
-- `void Emit` still cannot tell its caller whether an emission was accepted, deduplicated, or rejected for a retired entity. Resource facts should use lease identity for equality and target known live entities; any explicit acceptance-result primitive needs a separate additive API review.
+### Reduction, state, and commit behavior
 
-- Negative fact rules intentionally support one terminal stratum. General multi-stratum negation is not available because the current reducer API does not declare emitted fact types; adding dependency sorting would require a separate public rule-head contract.
-- **CRITICAL PERFORMANCE:** Immediate and terminal-negative reducers use direct fact-to-reducer routes, but transactional and batch eligibility do not yet use the specified `FactType -> reducer wait lists` routing.
-  - Entity-scoped transactional scheduling currently checks every transactional registration for every touched entity.
-  - Batch scheduling currently checks every batch registration against every touched entity, including registrations unrelated to the accepted fact types.
-  - Ineligible registration checks do not invoke user reducer code, but they are still empty scheduler work and are not included in `SimulationResult.ProcessedWorkItems`. This can hide the real cost at the production scale of hundreds of entities and large reducer registries.
-  - `ReduceState` membership iteration and output `Without<TFact>()` reconciliation are intentional tick-wide scans with different semantics. Profile and report them separately; do not remove them as part of transactional routing.
-- Explicit Entitas query/index parity gaps remain:
-  - `AnyOf` query matching is not available. A future slice must provide allocation-free union matching with entity deduplication and clearly separate committed-state membership from tick-local fact membership.
-  - `PrimaryEntityIndex`-style lookup is not available. `FactSimulation.TryGetEntity(int, out EntityRef)` resolves a recyclable runtime storage slot only; it is not a stable domain-id index and does not enforce uniqueness.
-  - The required thin vertical slice is cross-entity damage routing: a damage fact on an enemy/source entity identifies a victim by a domain-owned stable id; the reducer resolves the victim, reads the source weapon/damage model from committed state, and emits the damage-application fact on the victim entity.
-  - Any package-owned primary index must enforce unique keys, return generational `EntityRef` handles, update only through committed state/lifecycle reconciliation, remove destroyed entities, roll back failed ticks, and remain allocation-free in the hot path. Do not add a general indexing framework before this slice proves the minimal API.
-- Legacy manual warmup is only as accurate as the host-provided hints.
-  - Underestimated entity count, queue size, output state capacity, or mutation capacity can still grow during gameplay.
-  - In fixed fact-slab mode, underestimated per-entity fact count throws instead of allocating.
-- The legacy constructor intentionally remains grow-on-demand and has no configured concurrent entity cap. Production code must use `FactSimulation(feature, CascadeSettings)`.
+- Reducers read accumulated facts and the last committed state, including other entities' state. They emit facts and may request entity creation/destruction; they do not directly mutate durable state.
+- Every committer reads the same previous committed state. Successful closure publishes the next state together; a failure before publication leaves the previous state unchanged.
+- Accepted facts are immutable during an open loop. Cancellation/removal requests are additive facts; physical retraction is unsupported because derived consequences would remain.
+- Output priority is declared per affected fact type and applies only to commit selection. Priority does not assign gameplay reducer execution order. Ambiguous winning inputs fail rather than silently choose by arrival order.
+- Required-fact transactions run once per eligible entity per loop. Batch callbacks receive eligible entities. State-triggered reducers use committed membership; newly committed state becomes eligible on the next loop.
+- Absence rules evaluate after positive closure. Host input is sealed when terminal negative evaluation starts. Output absence conditions use the final closed fact set.
+- Mutation observation is replayable and non-consumptive. The previous journal clears when the next loop begins; incomplete execution exposes no partial new journal.
+- Deterministic, side-effect-free committers and consistent domain rules remain caller responsibilities. Replaying observations is not exactly-once external delivery, and repeating input in another loop is not automatically idempotent.
+
+### Entity lifecycle and ownership
+
+- Entity handles include a generation. A numeric entity ID identifies a recyclable runtime slot, not a permanent domain identity.
+- Entities created during reduction can receive facts in that loop. Destruction is requested through `DeadFact`; the entity remains visible through reduction and disappears at successful closure.
+- Failed loops roll back requested destruction and invalidate handles created by the failed loop.
+- The simulation owns a fact only after acceptance, through every incremental pause until closure, failure cleanup, or terminal disposal. Rejected and deduplicated payloads do not become additional simulation-owned resources.
+- Each accepted fact receives one disposal attempt. A disposal failure does not prevent attempts to clean up other accepted resources. Cleanup failures after publication preserve the committed result and must not trigger blind input replay.
+- `FactSimulation.Dispose()` is terminal and idempotent. Feature composition transfers ownership to the parent; an attached sub-feature is not an independent simulation root.
+- Disposable facts are borrowed by readers. Their resources must not escape into durable output snapshots without a separate ownership arrangement.
+
+### Budget and capacity contract
+
+- `CascadeSettings` captures construction-time capacity and reduction policy. Parameterless tick calls reuse that policy; per-call options do not relax configured hard limits.
+- `MaxWorkItems` counts reducer invocations, separately from fact counts. `ProcessedWorkItems` reports cumulative work for the open loop.
+- Incremental calls resume the same loop. A pause does not publish incomplete state or release accepted facts. `RunTick` retains its full-closure-or-budget-failure contract.
+- Elapsed-time limits are cooperative between callback units. Synchronous callbacks, publication, and cleanup can exceed a requested time slice; an absolute frame-time ceiling is not an established guarantee.
+
+## Dated decisions
+
+### 2026-09-06 — Disposal compatibility retained
+
+The user chose to retain inherited no-op `IFact.Dispose()` for public compatibility. Fact types requiring allocation-free cleanup on Unity Mono must implement `Dispose()` explicitly, including an empty method when they own no resources. The inherited default remains supported with its documented boxing cost. This decision is reflected in the current API documentation and examples.
+
+### 2026-09-07 — Fact multiplicity decision replaced
+
+The earlier contract intentionally preserved distinct same-type facts on one entity while deduplicating identical payloads. The user replaced that direction with **one accepted fact per entity/type per full loop**, including all incremental calls:
+
+- Identical repeat: no-op.
+- Different payload: throw before acceptance; never overwrite the accepted value.
+
+Status: approved for implementation, not yet the current runtime behavior. Preserve `Emit`, `All<TFact>()`, and existing caller signatures; after migration, `All<TFact>()` returns zero or one value. Applications needing multiple events must represent or aggregate them explicitly.
+
+### 2026-09-07 — Entity ceiling and incremental execution prioritized
+
+The user prioritized exposing an entity-pool ceiling where `0` means no configured limit and a positive integer sets the limit. The user also required incremental execution as the mandatory simulation model, pausing after a completed system/callback when the frame budget is reached.
+
+Status: approved requirements tracked in the active plan; do not present the new zero-limit semantics as already implemented. Existing incremental behavior and public entry points remain the compatibility baseline. An unlimited logical ceiling does not mean unlimited physical memory or unlimited work per loop.
+
+## Open public-contract boundaries
+
+- Direct public writes to durable state would bypass the established commit authority. Any added write API needs an explicit authority, publication, and ownership contract.
+- Replaced, deleted, or abandoned output snapshots are not automatically disposed. Terminal teardown visits currently held disposable output states; shared resource lifetime remains a domain responsibility.
+- `void Emit` does not report acceptance versus deduplication or retired-entity rejection. An acceptance-result API would be a separate additive decision.
+- Stable domain-key lookup and `AnyOf` query matching remain requested ECS-parity gaps. Runtime slot lookup does not satisfy a unique domain index. The retained domain example is cross-entity damage routing: resolve a victim by stable ID, read the source's committed damage state, and emit a fact on the victim.
+- General multi-stratum absence rules, exactly-once external delivery, and full Entitas feature/throughput parity are not established guarantees.
+- A standalone Unity package and concise lifecycle, cross-entity, and incremental examples remain product delivery goals. Their scheduling belongs in the active plan, not a competing historical work list.
 
 ## Next Work
 
