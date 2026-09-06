@@ -203,6 +203,28 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
+        public void ForbiddenFactDerivedByLaterPositiveReducerSuppressesNegativeReducer()
+        {
+            NegativeRuleReducer.InvocationCount = 0;
+            DerivedForbiddenFactReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new DerivedForbiddenFactFeature());
+            var entity = simulation.CreateEntity();
+
+            simulation.Emit(entity, new NegativeLeftFact(4));
+
+            var result = simulation.RunTick(new ReduceOptions
+            {
+                MaxMilliseconds = 0
+            });
+
+            Assert.IsTrue(result.Complete);
+            Assert.AreEqual(1, DerivedForbiddenFactReducer.InvocationCount);
+            Assert.AreEqual(0, NegativeRuleReducer.InvocationCount);
+            Assert.AreEqual(1, result.ReducerInvocations);
+            Assert.IsFalse(simulation.TryGet<NegativeResultState>(entity, out _));
+        }
+
+        [Test]
         public void NegativeReducerPreservesDistinctTriggerFactMultiplicity()
         {
             NegativeRuleReducer.InvocationCount = 0;
@@ -255,6 +277,29 @@ namespace CascadeEngineApi.Tests
 
             Assert.AreEqual(1, NegativeRuleReducer.InvocationCount);
             Assert.AreEqual(4, simulation.Get<NegativeResultState>(entity).Value);
+        }
+
+        [Test]
+        public void WorkBudgetResumesBetweenNegativeReducersWithoutDuplicateInvocation()
+        {
+            CountingNegativeReducer.InvocationCount = 0;
+            var simulation = new FactSimulation(new IncrementalNegativeReducersFeature());
+            var entity = simulation.CreateEntity();
+            simulation.Emit(entity, new NegativeLeftFact(4));
+            var options = new ReduceOptions
+            {
+                MaxFacts = 100,
+                MaxWorkItems = 1,
+                MaxMilliseconds = 0
+            };
+
+            Assert.IsFalse(simulation.RunTickIncremental(options, out var partial));
+            Assert.AreEqual(1, partial.ReducerInvocations);
+            Assert.AreEqual(1, CountingNegativeReducer.InvocationCount);
+
+            Assert.IsTrue(simulation.RunTickIncremental(options, out var complete));
+            Assert.AreEqual(2, complete.ReducerInvocations);
+            Assert.AreEqual(2, CountingNegativeReducer.InvocationCount);
         }
 
         [Test]
@@ -382,6 +427,38 @@ namespace CascadeEngineApi.Tests
             }
         }
 
+        private sealed class DerivedForbiddenFactFeature : FactFeature
+        {
+            public DerivedForbiddenFactFeature()
+            {
+                // Register the negative reducer first to prove registration order cannot bypass positive closure.
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeBlockedFact>()
+                    .With<NegativeRuleReducer>();
+
+                Reduce<NegativeLeftFact>()
+                    .With<DerivedForbiddenFactReducer>();
+
+                Output<NegativeResultState>("DerivedForbiddenNegativeResult")
+                    .AffectedBy<NegativeResolvedFact>(0)
+                    .CommitWith<NegativeResultCommitter>();
+            }
+        }
+
+        private sealed class IncrementalNegativeReducersFeature : FactFeature
+        {
+            public IncrementalNegativeReducersFeature()
+            {
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeBlockedFact>()
+                    .With<CountingNegativeReducer>();
+
+                Reduce<NegativeLeftFact>()
+                    .Without<NegativeBlockedFact>()
+                    .With<CountingNegativeReducer>();
+            }
+        }
+
         private sealed class IncrementalNegativeRuleFeature : FactFeature
         {
             public IncrementalNegativeRuleFeature()
@@ -420,6 +497,33 @@ namespace CascadeEngineApi.Tests
         }
 
         private sealed class NegativeStartReducer : IFactReducer<NegativeLeftFact>
+        {
+            internal static int InvocationCount;
+
+            public void Reduce(
+                IReduceContext ctx,
+                EntityRef entity,
+                in NegativeLeftFact fact)
+            {
+                InvocationCount++;
+            }
+        }
+
+        private sealed class DerivedForbiddenFactReducer : IFactReducer<NegativeLeftFact>
+        {
+            internal static int InvocationCount;
+
+            public void Reduce(
+                IReduceContext ctx,
+                EntityRef entity,
+                in NegativeLeftFact fact)
+            {
+                InvocationCount++;
+                ctx.Emit(entity, new NegativeBlockedFact());
+            }
+        }
+
+        private sealed class CountingNegativeReducer : IFactReducer<NegativeLeftFact>
         {
             internal static int InvocationCount;
 
