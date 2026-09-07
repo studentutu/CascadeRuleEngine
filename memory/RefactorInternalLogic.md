@@ -1,8 +1,11 @@
 # Refactor internal logic: sparse-set ECS and incremental dependency execution
 
-Status: design proposal, 2026-09-07. This document does not change runtime code or install a dependency.
+Status: design proposal. This document does not change public contract.
 
-The project exists to solve hidden ECS execution dependencies, incremental reduction, and budget enforcement. Maintaining a second general-purpose storage engine is not its objective. Use a proven C# sparse-set ECS for entity/component mechanics; retain a small Cascade layer for facts, execution, and transactional publication.
+Goal: to solve hidden ECS execution dependencies, support incremental reduction/incremental simulation and budget enforcement.
+
+Issue:
+Maintaining a second general-purpose storage engine is not optimal. Use a proven C# sparse-set ECS for entity/component mechanics; retain a small Cascade layer for facts, execution, and transactional publication. Ensure feature parity to EntitasECS (which already exists in the reduction loop).
 
 This is the single active internal refactor plan. The [package README](../Assets/CascadeEngine/Readme.md) describes the current runtime contract; this document defines the target and migration. Preserve existing atomic publication, staged lifecycle, and exhaustive ownership cleanup through the refactor. Verify the target against the executable regression suite rather than historical progress reports.
 
