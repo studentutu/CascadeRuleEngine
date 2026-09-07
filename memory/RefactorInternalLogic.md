@@ -331,7 +331,249 @@ Publish the memory inventory, before/after maintenance inventory, graph examples
 
 These are not reasons to continue polishing custom storage indefinitely. They are the boundaries the storage spike and execution refactor must satisfy. Complete the agreed portions without broadening the public contract implicitly.
 
-## 11. Reference material
+## 11. Test suites and support matrix
+
+The refactor is not complete when the old tests pass. The current tests mix three different concerns: the host-visible contract, implementation invariants, and allocation/profiling instrumentation. Split those concerns before migrating storage. A public-contract test must compile against the public package surface and must not inspect `Registry`, route caches, sparse-set rows, slab counts, candidate bytes, eligibility-check counters, or internal metrics. An internal test may use `InternalsVisibleTo` and the internal adapter, but it must not be used as evidence that the public API contract is preserved.
+
+Keep `PublicContractFixture` as a compile-only fixture. It is the minimum source-compatibility check for `IFactSimulation`; it is not a runtime behavior test. The public suite must compile without relying on `Internal/` declarations. Add a separate internal test assembly/fixture for implementation tests instead of weakening the public boundary.
+
+### 11.1 Public API and public-contract suite
+
+These tests remain supported. Preserve their externally observable assertions and rewrite only the assertions that conflict with the approved single-fact or zero-ceiling decisions. Exact reducer-call counters are valid where they are exposed through `SimulationResult`; private reducer probe counters are only valid when they express a documented callback contract such as once-per-eligible-entity.
+
+`OutputStateRouteTests`
+
+- `SameOutputStateTypeUsesSeparateBucketsPerSimulation`
+- `RegistrationPrioritySelectsSameWinnerRegardlessOfFactOrder`
+- `EqualRegistrationPriorityThrowsBeforeDurableWrite`
+- `CommittersReadOnePreviousStateSnapshotRegardlessOfOutputRegistrationOrder`
+- `OutputWithoutReconcilesSetDeleteAndUnchangedOncePerEntity`
+
+`HestiaLifecycleSliceTests`
+
+- `CrossEntityCreationComponentRemovalAndDestructionRemainSeparateTransactions`
+- `PreparationFailureRollsBackReducerCreatedChildAndCleansAcceptedResourceOnce`
+- `FailedSlabPreparationLeavesRejectedResourceCallerOwned`
+
+`HestiaGameContextTests`
+
+- `FireWeaponReducesRequestAndCommitsAmmoOnce`
+- `AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations`
+- `DuplicateFactsAreDeduplicatedWithinOneTick`
+- `MissingAmmoStateSkipsSpendAndCreatesNoDefaultState`
+- `DeadFactSuppressesAmmoSpendRegardlessOfArrivalOrder`
+- `SingleMovePublishesTypedMutation`
+- `PositionWithinEpsilonDoesNotPublishMutation`
+- `RelevantFootstepPublishesMarkerEachTick`
+- `NonRelevantFootstepDoesNotEmitFactOrMutation`
+- `DestroyedSlotIsReusedWithNewGenerationWithoutAcceptingStaleFacts`
+- `ForeignOutputDescriptorIsRejected`
+- `UnknownEntityFactsAreRejectedBeforeEnteringTheQueue`
+- `AcceptedFactsAreDisposedWhenTickFactStoreClears`
+- `DisposeDisposesQueuedFactsExactlyOnce`
+- `DisposeAfterTickDoesNotDisposeFactsAgain`
+- `DisposeDisposesCurrentOutputStateExactlyOnce`
+- `DisposeIsTerminalAndRejectsPublicSimulationUse`
+- `DisposingFeatureExternallyRejectsSimulationUse`
+
+`DistinctAmmoFactsFoldIntoOneOutputMutation` is not supported after the approved contract change. Replace it with `DistinctAmmoFactsConflictBeforeAcceptance`: the second unequal value must throw during `Emit`, remain caller-owned, leave the first value present, and publish no partial state. Replace `DistinctMoveFactsConflictAndDoNotCommit` with the same admission-time assertion for the movement API. A commit-time conflict test remains useful only for distinct accepted fact types or incompatible output decisions; it must not depend on accepting two values of one entity/type.
+
+The old `DisposeClearsFeatureRegistryAndDisposesRegistrations` test is split: its public part remains covered by `DisposeIsTerminalAndRejectsPublicSimulationUse`; registry counts, route-cache invalidation, and registration disposal move to the internal teardown suite below.
+
+`FactSimulationTransactionalReducerTests`
+
+- `EntityScopedTransactionalReducerRunsOnceWhenTwoRequiredFactsExist`
+- `BatchTransactionalReducerReceivesOnlyEligibleEntities`
+- `BatchTransactionalReducerFiresOncePerEntityWhenEntitiesBecomeEligibleOnDifferentPasses`
+- `ForbiddenFactSuppressesNegativeReducerRegardlessOfArrivalOrder`
+- `NegativeReducerRunsAfterPositiveClosureWhenForbiddenFactIsAbsent`
+- `ForbiddenFactDerivedByLaterPositiveReducerSuppressesNegativeReducer`
+- `IncrementalNegativePhaseSealsLateHostInputUntilClosure`
+- `WorkBudgetResumesBetweenNegativeReducersWithoutDuplicateInvocation`
+- `ContradictoryNegativeRegistrationFailsDuringFeatureConstruction`
+- `StaleEntityCannotInjectForbiddenFactIntoReusedSlot`
+- `NegativeReducerCannotMutateAnotherNegativeCondition`
+
+`GenericAndExtendedTransactionalRegistrationStoresRequiredFacts` is internal-only: it tests the shape of registry arrays rather than the builder's public behavior. Replace it with public arity behavior tests that use two-, three-, four-, and `.And<TFact>()` registrations to produce the correct result.
+
+`FactSimulationStateReducerTests`
+
+- `CommittedActiveStateTriggersOnlyEligibleEntityAndCanQueryOtherEntity`
+- `StateReducerRequiresItsTriggerStateToBeRegisteredAsOutput`
+- `StateReducerCanBeRegisteredBeforeTriggerOutputInSeparateSubFeature`
+- `StateCreatedAtCommitTriggersNextTickAndDeletedStateStopsFutureTicks`
+- `WorkBudgetResumesStateReducersWithoutDuplicateInvocationOrPartialCommit`
+- `WorkBudgetResumesRemainingReducersForAlreadyPoppedFact`
+- `FailedFullTickRollsBackReducerSideDestruction`
+- `IncrementalDestructionKeepsCommittedStateUntilClosureThenPublishesOneDelete`
+- `EmittingDeadFactRunsLifecycleReducersBeforeDeletingDurableState`
+- `UnifiedSettingsBoundConcurrentEntitiesAndReuseGenerationalIds`
+- `UnifiedSettingsEnforceCumulativeTickWorkAcrossIncrementalSteps`
+- `ReducerCreatedEntityCanReceiveFactsAndCommitStateInSameTick`
+- `FailedTickInvalidatesReducerCreatedEntityGeneration`
+- `WarmedStateTriggerPathAllocatesZeroBytesAtSteadyState`
+
+`FactSimulationOwnershipTests`
+
+- `AdmissionFailureLeavesPayloadCallerOwnedAndNextTickClean`
+- `ThrowingFactDoesNotPreventOtherFactsFromClearingOrRepeatDisposal`
+- `CleanupFailureAfterCommitPreservesStateAndMutationJournal`
+- `FailedReductionPreservesOriginalErrorAndFinishesCleanup`
+- `IncrementalPauseKeepsFactsAliveUntilTerminalDispose`
+- `TerminalCleanupAttemptsEveryOwnerAndUnbindsStaticRoutesDespiteErrors`
+- `FeatureTeardownVisitsEveryRegistrationAndChildAfterCallbackFailures`
+- `ExternalFeatureDisposalCannotPreventSimulationFromUnbindingStateRoutes`
+- `FailedCommitDisposesFactsAndDiscardsEarlierQueuedDecisions`
+- `FactDisposerCannotEmitOrRecursivelyTickOrTearDownTheSimulation`
+- `DuplicateAndRetiredEntityRejectionsDoNotAcquireAnotherResourceLease`
+- `ResourceFactPipelineAllocatesZeroBytesFor512EntitiesAfterWarmup`
+
+`FactSimulationOverhaulTests`
+
+- `ReconciliationSuspendsWithoutPublicationAndReplansOnlyAcceptedInput`
+- `FullTickReconciliationTimeFailurePreservesSnapshot`
+- `NegativeSealingSurvivesReconciliationPause`
+- `RoutedSchedulingIgnoresUnrelatedRulesAndResumesWithOneWorkItem` — retain the public assertions for relevant reducer/batch invocations and `ProcessedWorkItems`; remove `EligibilityChecks`, `CandidateReservedBytes`, and internal metric assertions from this test.
+- `LateRequiredFactRequeuesIncompleteCandidateWithoutRefiringCompletedEntities`
+- `SettingsLimitsCannotBeRelaxedByPerCallOverrides`
+- `LegacyEntityGrowthPreservesPendingBatchRowsAndMembershipBoundary`
+- `FixedCapacityEntityChurnAllocatesNothingAndKeepsRecycledSlotsBounded` — retain the black-box no-allocation and lifecycle assertions; move exact slot-index bounds to the internal suite.
+- `Fixed512EntityRoutedPipelineHasZeroSteadyStateAllocation` — retain as a black-box performance acceptance test; move diagnostic metric/candidate-byte inspection to the internal suite.
+
+`FactSimulationIncrementalTests`
+
+- `IncrementalTickDoesNotCommitUntilReductionCloses`
+- `FullTickBudgetFailureIncludesActionableContext`
+- `CausalDepthFailureIncludesEmittedFactAndReducerContext`
+
+`FactSimulationAtomicCommitTests`
+
+- `EqualityFailurePreservesEveryOutputAndLifecycle`
+- `ExactCapacityReplacementAndDeletionPublishReplayableFinalChanges`
+
+`FactSimulationWarmupTests`
+
+- `WarmupPreventsCapacityGrowthDuringRepresentativeTick` — retain the public warmup/no-allocation/result behavior; move exact capacity-snapshot field assertions to the internal suite.
+- `WarmupMeasuresFirstUseAndSteadyStateAllocationsForRealisticEntityCount` — retain as the 512-entity black-box allocation gate. Update its input shape and expected counts for one fact per entity/type.
+
+`CascadeTypeIdTests`
+
+- `ValidTypeIdsRouteReducersAndCommitters`
+- `DuplicateFactIdsFailDuringFeatureValidation`
+- `DuplicateOutputIdsFailDuringFeatureValidation`
+
+The current `NameTokensCreateDeterministicNonEmptyIntIds` test locks the hash/token implementation (`ToInt()` and nonzero representation), not the public identity contract. Replace its public coverage with equality/distinctness behavior if needed and move the exact token/hash assertions to the internal suite.
+
+Required new public-contract cases for the approved P0 changes:
+
+- `ZeroMaxEntitiesMeansNoLogicalCeilingWithFiniteInitialReservation`: construct with `MaxEntities == 0`, create entities beyond the initial reservation after an idle explicit reservation increase, and verify that zero does not mean preallocation of `int.MaxValue` or automatic in-loop growth.
+- `PositiveMaxEntitiesRejectsConcurrentLiveAndPendingEntities`: the configured ceiling includes live entities and staged create/destroy reservations; rejection leaves lifecycle state, accepted facts, and ownership unchanged.
+- `ReservationExhaustionIsRejectedBeforeFactAcceptanceOrPublication`: a finite reservation that is full rejects the operation before it can mutate the queue, durable state, lifecycle, or mutation journal.
+- `RecycledEntitySlotDoesNotConsumeLifetimeQuota`: destroy and successfully close an entity, reuse its slot, and verify the new generation while stale handles remain rejected.
+- `AllAndTryGetLatestExposeZeroOrOneAcceptedFact`: an absent fact returns an empty borrowed span/false; an accepted fact returns exactly one value; equal repeats do not add a second value.
+- `EqualFactRepeatIsANoopAcrossIncrementalCalls`: repeat an equal fact after a pause and verify no new work, revision, plan invalidation, or second cleanup owner.
+- `UnequalFactRepeatThrowsBeforeAcceptanceAcrossIncrementalCalls`: repeat an unequal fact after a pause and verify the accepted value remains unchanged and the proposed value remains caller-owned.
+- `PublicMutationJournalIsReplayableAndClearsAtNextLoopBoundary`: incomplete execution exposes no partial new journal, completed mutations can be enumerated repeatedly, and the next loop clears the previous journal at its documented begin boundary.
+- `RunTickAndRunTickIncrementalShareTheSameClosureAndPublicationContract`: the compatibility wrapper reaches the same final state as repeated incremental calls and fails closed when its supplied budget is exhausted.
+
+### 11.2 Internal implementation suite
+
+These tests are still valuable, but they must not be counted as public compatibility tests. Keep them in an internal assembly or under an explicitly named `Internal` test folder.
+
+Existing tests to move or split:
+
+- `EntitySparseSetTests.SparseMetadataReservationMatchesTheFormerThreeArrayLayout`
+- `EntitySparseSetTests.SwapBackRemovalRepairsMovedMembershipAndRejectsOldGeneration`
+- `EntitySparseSetTests.FailedPreparationDoesNotAcquireMembershipOrReplaceValues`
+- `EntitySparseSetTests.MutationCapacityFailureAndStaleActionValidationPrecedeAnyWrite`
+- `EntitySparseSetTests.StateCapacityFailureAfterEarlierPreparationLeavesBothBucketsUnchanged`
+- `DenseEntityStorageTests.DenseEntitySetTracksEachEntityOnceAndClearsMembership`
+- `DenseEntityStorageTests.DenseEntityCounterClearsOnlyTouchedEntities`
+- `DenseEntityStorageTests.DenseEntityObjectStoreCreatesOnceAndRespectsPreCapacity`
+- `DenseEntityStorageTests.EntityRefBufferRespectsPreCapacityAndCreatesQueryResultView`
+- `DenseEntityStorageTests.FactBucketTypedSlabsPreserveSpansAcrossGrowthAndReuse`
+- `DenseEntityStorageTests.FactBucketFixedSlabRejectsUnexpectedGrowthBeforeWrite`
+- `AllocationProbeTests.AllocationRecorderDetectsKnownArrayAndIgnoresEmptyWork`
+- `AllocationProbeTests.DisposalProbeDistinguishesInheritedAndExplicitNoOpImplementations`
+- `AllocationProbeTests.PreparedStorageAllocationDiagnosticsSeparateCreateReplaceAndClear`
+- `CascadeTypeIdTests.NameTokensCreateDeterministicNonEmptyIntIds`
+- Registry counts and route-cache assertions removed from `HestiaGameContextTests.DisposeClearsFeatureRegistryAndDisposesRegistrations`
+- Exact `CaptureCapacitySnapshot` assertions removed from `FactSimulationWarmupTests.WarmupPreventsCapacityGrowthDuringRepresentativeTick`
+- `EligibilityChecks`, `CandidateReservedBytes`, exact slot-index bounds, and internal `Metrics` assertions removed from the public overload tests in `FactSimulationOverhaulTests`
+
+Required new internal cases for the refactor:
+
+1. **Entity backend and reservation**
+
+   - Generational create/find/destroy, stale-handle rejection, generation increment, and retired-slot behavior.
+   - Positive `MaxEntities` reservation rejects live, pending-created, and pending-destroyed capacity exhaustion before any ownership or lifecycle mutation.
+   - `MaxEntities == 0` has no logical ceiling but starts with finite reservation; reservation exhaustion rejects before writing and reports the required capacity.
+   - Explicit idle reservation growth succeeds; growth inside an open loop or reducer callback is rejected when fixed allocation is required.
+   - Recycled slots do not consume a lifetime quota; sparse indexes and dense membership remain coherent after swap-back removal.
+   - Queue, query, transaction, batch, commit, and journal reservation arithmetic detects overflow and does not use `MaxEntities * limit` when the logical ceiling is zero.
+
+2. **Single-fact component storage and ownership**
+
+   - One typed fact slot exists per entity/type/loop; `All<TFact>()` is always length zero or one.
+   - Equal repeats across separate incremental calls are no-ops: no second slot, no new work, no input revision, and no plan invalidation.
+   - Unequal repeats throw before acceptance regardless of producer/order; the accepted payload remains unchanged and the proposed payload remains caller-owned.
+   - Uniqueness survives pauses, negative sealing, pending destruction, and plan invalidation.
+   - Accepted payloads are cleaned once on success, failed reduction, failed preparation, failed apply, terminal disposal, and post-publication cleanup failure; one throwing disposer does not stop the remaining attempts.
+   - Reference-containing fact values and throwing equality are covered without assuming hash identity or reference identity.
+
+3. **Compiled plan and routing**
+
+   - Stable node/type identity, producer-to-reader edges, output ownership, negative seals, closure regions, and opaque external nodes are exported correctly.
+   - Registration order and independent input order do not change successful results; conflicting values fail in both orders before publication.
+   - Positive cycles drain through the supported closure region; unsupported replacement/retraction cycles fail diagnostically.
+   - Negative cycles fail during setup; a negative reducer cannot mutate another sealed negative condition.
+   - Fact-routed candidate indexes visit only affected reducer/entity pairs; unrelated registrations produce zero candidate work and exact eligibility diagnostics remain internal.
+   - Late required facts requeue only unfinished candidates; completed entity transactions do not refire.
+   - Complete collection readers remain behind their declared closure barrier; opaque readers are not silently granted confluence.
+
+4. **Continuation and budget state machine**
+
+   - Every callback kind pauses and resumes from the saved node, entity, fact, batch, planning, validation, and commit cursor without skipping or duplicating work.
+   - Budget counters are cumulative across incremental calls; `MaxWorkItems` counts reducer invocations only, while internal collection/planning/cleanup work is separately measurable.
+   - Time checks happen between atomic units; callback, publication, and cleanup tails record deadline overruns without pretending they are preemptible.
+   - `RunTick` uses the same continuation core and fails closed on budget exhaustion; it never restarts an allowance or leaves an undocumented open loop.
+   - Reentrant emit/create/destroy/tick/warmup/dispose calls are rejected in every executor phase.
+
+5. **Prepared publication and lifecycle mechanics**
+
+   - Preparation validates all generations, equality, capacities, action deduplication, and lifecycle changes before the first durable write.
+   - Prepared apply performs no callbacks, observers, resizing, user equality, or recoverable validation failures.
+   - A failed preparation or apply leaves all output buckets, entity membership, lifecycle state, and mutation journals unchanged; accepted facts are still cleaned.
+   - Pending-created entities can receive facts in the same loop; pending-destroyed entities remain visible through closure and are released only at finalization.
+   - Journal records are replayable and non-consumptive; previous/next snapshots are not additional resource owners.
+   - Feature teardown visits all registration nodes and sub-features after callback failures, clears maps/routes, and remains idempotent.
+
+6. **Internal performance and memory evidence**
+
+   - The allocation recorder has a positive control and reports first-use, steady-state, churn, suspended-loop, commit, cleanup, and teardown allocations separately.
+   - The 512-entity routed workload records candidate storage, invocation guards, worklist, prepared actions, journals, backend pools, and query caches by owner/object count.
+   - The migrated implementation does not recreate the former fired-marker matrix or a second authoritative entity/fact store under a different name.
+   - Exact backend memory shapes are compared against the pre-migration baseline; no speedup or heap reduction is claimed from unit-test results alone.
+
+### 11.3 Cases to delete, not migrate
+
+The following cases validate behavior that is explicitly no longer supported or are duplicate implementation tests with no public value:
+
+- `HestiaGameContextTests.DistinctAmmoFactsFoldIntoOneOutputMutation` — superseded by admission-time single-fact conflict behavior.
+- `FactSimulationTransactionalReducerTests.NegativeReducerPreservesDistinctTriggerFactMultiplicity` — directly contradicts one accepted fact per entity/type/loop.
+- Any duplicate test that only asserts internal registry ordering, slab row placement, route-cache contents, dense row indexes, candidate byte counts, or hash integer values in the public suite.
+
+Do not preserve these under a compatibility category. If a historical behavior is useful for migration documentation, record it as a rejected old contract and add the new test instead.
+
+### 11.4 Verification gates
+
+- **P0:** public single-fact, entity-ceiling, ownership, and incremental compatibility tests pass; internal storage tests may still target the old backend.
+- **P1:** the thin vertical slice passes both public lifecycle/atomicity tests and the internal backend/reservation/borrow tests before broad migration.
+- **P2:** all public behavior tests pass with one runtime source of truth; old sparse/slab tests are either deleted or rewritten against the selected backend adapter's internal contract.
+- **P3:** routing, topology, opaque boundaries, late input, closure, and continuation tests pass; public tests do not inspect scheduler internals.
+- **P4:** compile-only public API verification, Unity import, both test suites, Rider/MSBuild, IL2CPP/player smoke, and the memory/allocation evidence gates pass. A skipped internal test is not evidence of parity.
+
+## 12. Reference material
 
 - [Bevy ECS storage](https://docs.rs/bevy_ecs/latest/bevy_ecs/storage/index.html): distinguishes table storage from sparse sets. Use as a mechanics reference, not evidence of C# allocation behavior.
 - [Bevy schedule graph](https://docs.rs/bevy_ecs/latest/bevy_ecs/schedule/struct.ScheduleGraph.html): dependency topology and conflicting access are explicit schedule concepts. This does not establish confluence of user reducers.
