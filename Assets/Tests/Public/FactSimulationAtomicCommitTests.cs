@@ -5,6 +5,7 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class FactSimulationAtomicCommitTests
     {
         [TestCase(false, false)]

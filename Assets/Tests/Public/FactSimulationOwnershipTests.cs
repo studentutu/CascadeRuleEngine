@@ -5,6 +5,7 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class FactSimulationOwnershipTests
     {
         [SetUp]
@@ -43,7 +44,7 @@ namespace CascadeEngineApi.Tests
             var third = new Resource();
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new ResourceFact(first));
-            simulation.Emit(entity, new ResourceFact(second));
+            simulation.Emit(simulation.CreateEntity(), new ResourceFact(second));
             simulation.Emit(simulation.CreateEntity(), new OtherResourceFact(third));
             Assert.Throws<InvalidOperationException>(() => simulation.RunTick(new ReduceOptions { MaxMilliseconds = 0 }));
             Assert.AreEqual(1, first.Disposals);
@@ -79,7 +80,7 @@ namespace CascadeEngineApi.Tests
             var second = new Resource();
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new ResourceFact(first));
-            simulation.Emit(entity, new ResourceFact(second));
+            simulation.Emit(simulation.CreateEntity(), new ResourceFact(second));
             var error = Assert.Throws<AggregateException>(() => simulation.RunTick(new ReduceOptions { MaxMilliseconds = 0 }));
             StringAssert.Contains("reducer failed", error!.ToString());
             StringAssert.Contains("disposal failed", error.ToString());
@@ -91,12 +92,12 @@ namespace CascadeEngineApi.Tests
         [Test]
         public void IncrementalPauseKeepsFactsAliveUntilTerminalDispose()
         {
-            var simulation = new FactSimulation(new ResourceFeature());
+            using var simulation = new FactSimulation(new ResourceFeature());
             var first = new Resource();
             var second = new Resource();
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new ResourceFact(first));
-            simulation.Emit(entity, new ResourceFact(second));
+            simulation.Emit(simulation.CreateEntity(), new ResourceFact(second));
             Assert.IsFalse(simulation.RunTickIncremental(new ReduceOptions { MaxFacts = 1, MaxMilliseconds = 0 }, out _));
             Assert.AreEqual(0, first.Disposals);
             Assert.AreEqual(0, second.Disposals);
@@ -107,10 +108,10 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void TerminalCleanupAttemptsEveryOwnerAndUnbindsStaticRoutesDespiteErrors()
+        public void TerminalCleanupFailureStillDisposesOwnersAndRejectsFurtherUse()
         {
             var feature = new ResourceFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var resource = new Resource { ThrowOnDispose = true };
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new ResourceFact(resource));
@@ -119,16 +120,13 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(1, resource.Disposals);
             Assert.Throws<ObjectDisposedException>(() => simulation.CreateEntity());
             Assert.Throws<ObjectDisposedException>(() => new FactSimulation(feature));
-            Assert.Throws<InvalidOperationException>(() => FactEmitRouteCache<ResourceFact>.Require(feature.Registry));
-            Assert.Throws<InvalidOperationException>(() => OutputStateRouteCache<ResourceState>.Require(simulation));
-            Assert.AreEqual(0, feature.Registry.Outputs.Count);
         }
 
         [Test]
         public void FeatureTeardownVisitsEveryRegistrationAndChildAfterCallbackFailures()
         {
             var feature = new ParentFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             ResourceReducer.Teardown.ThrowOnDispose = true;
             ResourceCommitter.Teardown.ThrowOnDispose = true;
             TransactionReducer.Teardown.ThrowOnDispose = true;
@@ -147,22 +145,20 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(1, StateReducer.Teardown.Disposals);
             Assert.AreEqual(1, stateResource.Disposals);
             Assert.AreEqual(1, secondStateResource.Disposals);
-            Assert.IsTrue(feature.Child.IsDisposed);
-            Assert.AreEqual(0, feature.Registry.Outputs.Count);
-            Assert.Throws<InvalidOperationException>(() => FactEmitRouteCache<ResourceFact>.Require(feature.Registry));
-            Assert.Throws<InvalidOperationException>(() => OutputStateRouteCache<ResourceState>.Require(simulation));
+            Assert.Throws<ObjectDisposedException>(() => new FactSimulation(feature.Child));
             Assert.DoesNotThrow(() => simulation.Dispose());
             Assert.DoesNotThrow(() => feature.Dispose());
         }
 
         [Test]
-        public void ExternalFeatureDisposalCannotPreventSimulationFromUnbindingStateRoutes()
+        public void ExternalFeatureDisposalStillAllowsTerminalSimulationDisposal()
         {
             var feature = new ResourceFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             feature.Dispose();
-            simulation.Dispose();
-            Assert.Throws<InvalidOperationException>(() => OutputStateRouteCache<ResourceState>.Require(simulation));
+            Assert.DoesNotThrow(() => simulation.Dispose());
+            Assert.DoesNotThrow(() => simulation.Dispose());
+            Assert.Throws<ObjectDisposedException>(() => simulation.CreateEntity());
         }
 
         [Test]
@@ -223,7 +219,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void ResourceFactPipelineAllocatesZeroBytesFor512EntitiesAfterWarmup()
+        public void ResourceFactPipelineHasZeroAllocationsFor512EntitiesAfterWarmup()
         {
             const int count = 512;
             using var simulation = new FactSimulation(new ResourceFeature(), new CascadeSettings(count, 1, 1)

@@ -5,20 +5,21 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class FactSimulationWarmupTests
     {
         [Test]
-        public void WarmupPreventsCapacityGrowthDuringRepresentativeTick()
+        public void ExplicitWarmupSupportsRepresentativeTickWithoutAllocations()
         {
             const int entityCount = 512;
 
             var feature = new WarmupFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var hints = new WarmupCapacityHints
             {
                 EntityCapacity = entityCount,
                 FactQueueCapacity = entityCount * 6,
-                FactsPerEntityPerTypeCapacity = 2,
+                FactsPerEntityPerTypeCapacity = 1,
                 QueryEntityCapacity = entityCount,
                 TransactionEntityCapacity = entityCount,
                 BatchEntityCapacity = entityCount,
@@ -29,34 +30,20 @@ namespace CascadeEngineApi.Tests
             };
 
             simulation.Warmup(hints);
-            var before = simulation.CaptureCapacitySnapshot(entityCount);
-
-            Assert.AreEqual(8, before.FactBucketCount); // Seven feature facts plus built-in DeadFact.
-            Assert.GreaterOrEqual(before.FactQueueCapacity, entityCount * 6);
-            Assert.GreaterOrEqual(before.FactTouchedEntityCapacity, entityCount);
-            Assert.GreaterOrEqual(before.FactCounterEntityCapacity, entityCount);
-            Assert.GreaterOrEqual(before.MinimumFactBucketEntityCapacity, entityCount);
-            Assert.GreaterOrEqual(before.MinimumFactBucketTouchedEntityCapacity, entityCount);
-            Assert.GreaterOrEqual(before.MinimumFactListCapacity, hints.FactsPerEntityPerTypeCapacity);
-            Assert.GreaterOrEqual(before.QueryBufferCapacity, entityCount);
-            Assert.GreaterOrEqual(before.TransactionBufferCapacity, entityCount);
-            Assert.GreaterOrEqual(before.BatchBufferCapacity, entityCount);
-            Assert.GreaterOrEqual(before.CommitActionCapacity, entityCount);
-            Assert.GreaterOrEqual(before.MinimumStateCapacityHint, entityCount);
-            Assert.GreaterOrEqual(before.MinimumMutationCapacity, entityCount);
-
+            var entities = new EntityRef[entityCount];
             for (var i = 0; i < entityCount; i++)
             {
-                var entity = simulation.CreateEntity();
-                simulation.SetStateSilently(entity, new WarmupBootstrapState(i));
-                simulation.Emit(entity, new WarmupStartFact(i));
-                simulation.Emit(entity, new WarmupPairFact(i));
+                entities[i] = simulation.CreateEntity();
+                simulation.SetStateSilently(entities[i], new WarmupBootstrapState(i));
             }
-
-            var result = simulation.RunTick(new ReduceOptions
+            var result = default(SimulationResult);
+            var options = new ReduceOptions { MaxMilliseconds = 0 };
+            var allocations = AllocationProbe.Count(() =>
             {
-                MaxMilliseconds = 0
+                EmitRepresentativeInputs(simulation, entities);
+                result = simulation.RunTick(options);
             });
+            Assert.AreEqual(0, allocations);
 
             Assert.IsTrue(result.Complete);
             Assert.AreEqual(entityCount * 6, result.AcceptedFacts);
@@ -76,7 +63,6 @@ namespace CascadeEngineApi.Tests
                 });
 
             Assert.AreEqual(entityCount, mutations);
-            Assert.AreEqual(before, simulation.CaptureCapacitySnapshot(entityCount));
         }
 
         [Test]
@@ -96,7 +82,7 @@ namespace CascadeEngineApi.Tests
                 MaxMillisecondsPerStep = 0,
                 MaxCausalDepth = 8
             };
-            var simulation = new FactSimulation(feature, settings);
+            using var simulation = new FactSimulation(feature, settings);
 
             var entities = new EntityRef[entityCount];
             for (var i = 0; i < entityCount; i++)

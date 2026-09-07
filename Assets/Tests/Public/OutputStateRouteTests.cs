@@ -5,6 +5,7 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class OutputStateRouteTests
     {
         [Test]
@@ -120,7 +121,7 @@ namespace CascadeEngineApi.Tests
         public void OutputWithoutReconcilesSetDeleteAndUnchangedOncePerEntity()
         {
             AbsenceCommitter.InvocationCount = 0;
-            var simulation = new FactSimulation(new AbsenceFeature());
+            using var simulation = new FactSimulation(new AbsenceFeature());
             var created = simulation.CreateEntity();
             var unchanged = simulation.CreateEntity();
             var deleted = simulation.CreateEntity();

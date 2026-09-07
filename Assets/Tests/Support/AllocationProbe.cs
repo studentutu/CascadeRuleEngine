@@ -8,9 +8,9 @@ namespace CascadeEngineApi.Tests
     /// <summary>
     /// Synchronous Unity allocation-event measurement. Does not depend on Mono's unsupported per-thread byte counter or Unity lifecycle callbacks.
     /// </summary>
-    internal static class AllocationProbe
+    public static class AllocationProbe
     {
-        internal static long Count(Action action)
+        public static long Count(Action action)
         {
             using var recorder = ProfilerRecorder.StartNew(ProfilerCategory.Internal, "GC.Alloc", 1,
                 ProfilerRecorderOptions.SumAllSamplesInFrame | ProfilerRecorderOptions.CollectOnlyOnCurrentThread);

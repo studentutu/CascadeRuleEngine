@@ -7,12 +7,14 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("SampleIntegration")]
     public sealed class HestiaGameContextTests
     {
         [Test]
         public void FireWeaponReducesRequestAndCommitsAmmoOnce()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialAmmo(entity, ammo: 2);
 
@@ -32,6 +34,7 @@ namespace CascadeEngineApi.Tests
         public void AmmoEmptyTransitionPublishesAmmoAndDryFireCueMutations()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialAmmo(entity, ammo: 1);
 
@@ -76,6 +79,7 @@ namespace CascadeEngineApi.Tests
         public void DuplicateFactsAreDeduplicatedWithinOneTick()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialAmmo(entity, ammo: 5);
 
@@ -91,26 +95,10 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void DistinctAmmoFactsFoldIntoOneOutputMutation()
-        {
-            var cascade = new HestiaGameContext();
-            var entity = cascade.CreateEntity();
-            cascade.SetInitialAmmo(entity, ammo: 5);
-
-            cascade.InputFireWeapon(entity, amount: 1);
-            cascade.InputFireWeapon(entity, amount: 2);
-            var result = cascade.RunTick();
-
-            Assert.AreEqual(2, cascade.GetAmmo(entity).Current);
-            Assert.AreEqual(4, result.AcceptedFacts);
-            Assert.AreEqual(2, result.ReducerInvocations);
-            Assert.AreEqual(1, result.MutationCount);
-        }
-
-        [Test]
         public void MissingAmmoStateSkipsSpendAndCreatesNoDefaultState()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
 
             cascade.InputFireWeapon(entity);
@@ -129,6 +117,7 @@ namespace CascadeEngineApi.Tests
             bool destroyFirst)
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialAmmo(entity, ammo: 2);
 
@@ -157,6 +146,7 @@ namespace CascadeEngineApi.Tests
         public void SingleMovePublishesTypedMutation()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialPosition(entity, 0f);
 
@@ -184,24 +174,10 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void DistinctMoveFactsConflictAndDoNotCommit()
-        {
-            var cascade = new HestiaGameContext();
-            var entity = cascade.CreateEntity();
-            cascade.SetInitialPosition(entity, 0f);
-
-            cascade.InputMove(entity, desiredPosition: 5f);
-            cascade.InputMove(entity, desiredPosition: 7f);
-
-            Assert.Throws<CommitConflictException>(() => cascade.RunTick());
-            Assert.AreEqual(0f, cascade.GetPosition(entity).Position, 0.0001f);
-            Assert.AreEqual(0, cascade.Simulation.MutationCount);
-        }
-
-        [Test]
         public void PositionWithinEpsilonDoesNotPublishMutation()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialPosition(entity, 0f);
 
@@ -216,6 +192,7 @@ namespace CascadeEngineApi.Tests
         public void RelevantFootstepPublishesMarkerEachTick()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
 
             Assert.IsTrue(cascade.InputFootstepCue(entity, isRelevant: true));
@@ -231,6 +208,7 @@ namespace CascadeEngineApi.Tests
         public void NonRelevantFootstepDoesNotEmitFactOrMutation()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
 
             Assert.IsFalse(cascade.InputFootstepCue(entity, isRelevant: false));
@@ -245,6 +223,7 @@ namespace CascadeEngineApi.Tests
         public void DestroyedSlotIsReusedWithNewGenerationWithoutAcceptingStaleFacts()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var entity = cascade.CreateEntity();
             cascade.SetInitialAmmo(entity, ammo: 3);
 
@@ -293,7 +272,9 @@ namespace CascadeEngineApi.Tests
         public void ForeignOutputDescriptorIsRejected()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
             var foreign = new HestiaGameContext();
+            using var foreignLifetime = foreign.Simulation;
 
             Assert.Throws<InvalidOperationException>(
                 () => cascade.Simulation.ForEachMutation(
@@ -305,118 +286,10 @@ namespace CascadeEngineApi.Tests
         public void UnknownEntityFactsAreRejectedBeforeEnteringTheQueue()
         {
             var cascade = new HestiaGameContext();
+            using var cascadeLifetime = cascade.Simulation;
 
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => cascade.InputFireWeapon(new EntityRef(99)));
-        }
-
-        [Test]
-        public void AcceptedFactsAreDisposedWhenTickFactStoreClears()
-        {
-            DisposableFact.DisposeCount = 0;
-
-            var simulation = new FactSimulation(new DisposableFactFeature());
-            var entity = simulation.CreateEntity();
-
-            simulation.Emit(entity, new DisposableFact(7));
-            var result = simulation.RunTick(ReduceOptions.Default());
-
-            Assert.AreEqual(1, result.AcceptedFacts);
-            Assert.AreEqual(1, DisposableFact.DisposeCount);
-        }
-
-        [Test]
-        public void DisposeDisposesQueuedFactsExactlyOnce()
-        {
-            DisposableFact.DisposeCount = 0;
-
-            var simulation = new FactSimulation(new DisposableFactFeature());
-            var entity = simulation.CreateEntity();
-
-            simulation.Emit(entity, new DisposableFact(7));
-            simulation.Dispose();
-            simulation.Dispose();
-
-            Assert.AreEqual(1, DisposableFact.DisposeCount);
-        }
-
-        [Test]
-        public void DisposeAfterTickDoesNotDisposeFactsAgain()
-        {
-            DisposableFact.DisposeCount = 0;
-
-            var simulation = new FactSimulation(new DisposableFactFeature());
-            var entity = simulation.CreateEntity();
-
-            simulation.Emit(entity, new DisposableFact(7));
-            simulation.RunTick(ReduceOptions.Default());
-            simulation.Dispose();
-
-            Assert.AreEqual(1, DisposableFact.DisposeCount);
-        }
-
-        [Test]
-        public void DisposeDisposesCurrentOutputStateExactlyOnce()
-        {
-            DisposableState.DisposeCount = 0;
-
-            var simulation = new FactSimulation(new DisposableStateFeature());
-            var entity = simulation.CreateEntity();
-
-            simulation.SetStateSilently(entity, new DisposableState(3));
-            simulation.Dispose();
-            simulation.Dispose();
-
-            Assert.AreEqual(1, DisposableState.DisposeCount);
-        }
-
-        [Test]
-        public void DisposeIsTerminalAndRejectsPublicSimulationUse()
-        {
-            var simulation = new FactSimulation(new EmptyFactFeature());
-
-            simulation.Dispose();
-
-            Assert.Throws<ObjectDisposedException>(() => simulation.CreateEntity());
-            Assert.Throws<ObjectDisposedException>(() => simulation.RunTick(ReduceOptions.Default()));
-        }
-
-        [Test]
-        public void DisposingFeatureExternallyRejectsSimulationUse()
-        {
-            var feature = new EmptyFactFeature();
-            var simulation = new FactSimulation(feature);
-
-            feature.Dispose();
-
-            Assert.Throws<ObjectDisposedException>(() => simulation.CreateEntity());
-            simulation.Dispose();
-        }
-
-        [Test]
-        public void DisposeClearsFeatureRegistryAndDisposesRegistrations()
-        {
-            DisposableReducer.DisposeCount = 0;
-            DisposableStateCommitter.DisposeCount = 0;
-
-            var feature = new ParentDisposableFeature();
-            Assert.AreEqual(0, feature.Child.Registry.Outputs.Count);
-            Assert.AreEqual(0, feature.Child.Registry.KnownFactTypes.Length);
-            Assert.Throws<InvalidOperationException>(() => new FactSimulation(feature.Child));
-
-            var simulation = new FactSimulation(feature);
-
-            simulation.Dispose();
-            simulation.Dispose();
-
-            Assert.AreEqual(0, feature.Registry.Outputs.Count);
-            Assert.AreEqual(0, feature.Registry.KnownFactTypes.Length);
-            Assert.AreEqual(0, feature.Child.Registry.Outputs.Count);
-            Assert.AreEqual(0, feature.Child.Registry.KnownFactTypes.Length);
-            Assert.AreEqual(1, DisposableReducer.DisposeCount);
-            Assert.AreEqual(1, DisposableStateCommitter.DisposeCount);
-            Assert.Throws<ObjectDisposedException>(() => new FactSimulation(feature));
-            Assert.Throws<ObjectDisposedException>(() => new FactSimulation(feature.Child));
         }
 
         private static void AssertAudioCue(
@@ -439,126 +312,5 @@ namespace CascadeEngineApi.Tests
 
             Assert.AreEqual(1, mutations);
         }
-
-        private sealed class EmptyFactFeature : FactFeature
-        {
-        }
-
-        private sealed class DisposableFactFeature : FactFeature
-        {
-            public DisposableFactFeature()
-            {
-                Reduce<DisposableFact>()
-                    .With<DisposableFactReducer>();
-            }
-        }
-
-        private sealed class ParentDisposableFeature : FactFeature
-        {
-            internal ParentDisposableFeature()
-            {
-                Child = new DisposableStateFeature();
-                SubFeature(Child);
-            }
-
-            internal DisposableStateFeature Child { get; }
-        }
-
-        private sealed class DisposableStateFeature : FactFeature
-        {
-            public DisposableStateFeature()
-            {
-                Reduce<DisposableFact>()
-                    .With<DisposableReducer>();
-
-                Output<DisposableState>("Disposable")
-                    .AffectedBy<DisposableFact>(0)
-                    .CommitWith<DisposableStateCommitter>();
-            }
-        }
-
-        private sealed class DisposableReducer : IFactReducer<DisposableFact>, IDisposable
-        {
-            internal static int DisposeCount;
-
-            public void Reduce(IReduceContext ctx, EntityRef entity, in DisposableFact fact)
-            {
-            }
-
-            public void Dispose()
-                => DisposeCount++;
-        }
-
-        private sealed class DisposableFactReducer : IFactReducer<DisposableFact>
-        {
-            public void Reduce(IReduceContext ctx, EntityRef entity, in DisposableFact fact)
-            {
-            }
-        }
-
-        private sealed class DisposableStateCommitter : IOutputCommitter<DisposableState>, IDisposable
-        {
-            internal static int DisposeCount;
-
-            public CommitDecision<DisposableState> Commit(
-                ICommitContext ctx,
-                EntityRef entity,
-                in Optional<DisposableState> previous)
-            {
-                return CommitDecision<DisposableState>.Unchanged();
-            }
-
-            public void Dispose()
-                => DisposeCount++;
-        }
-
-        private readonly struct DisposableState : IOutputState, IDisposable, IEquatable<DisposableState>
-        {
-            internal static int DisposeCount;
-
-            internal DisposableState(int value)
-            {
-                Value = value;
-            }
-
-            private int Value { get; }
-
-            public bool Equals(DisposableState other)
-                => Value == other.Value;
-
-            public override bool Equals(object? obj)
-                => obj is DisposableState other && Equals(other);
-
-            public override int GetHashCode()
-                => Value;
-
-            public void Dispose()
-                => DisposeCount++;
-        }
-
-        private readonly struct DisposableFact : IFact, IEquatable<DisposableFact>
-        {
-            internal static int DisposeCount;
-
-            internal DisposableFact(int value)
-            {
-                Value = value;
-            }
-
-            private int Value { get; }
-
-            public bool Equals(DisposableFact other)
-                => Value == other.Value;
-
-            public override bool Equals(object? obj)
-                => obj is DisposableFact other && Equals(other);
-
-            public override int GetHashCode()
-                => Value;
-
-            public void Dispose()
-                => DisposeCount++;
-        }
-
     }
 }

@@ -6,6 +6,7 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("SampleIntegration")]
     public sealed class HestiaLifecycleSliceTests
     {
         [Test]
@@ -70,7 +71,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void FailedSlabPreparationLeavesRejectedResourceCallerOwned()
+        public void FixedFactCapacityRejectionLeavesPayloadCallerOwned()
         {
             using var simulation = new FactSimulation(new LifecycleFeature());
             simulation.Warmup(new WarmupCapacityHints

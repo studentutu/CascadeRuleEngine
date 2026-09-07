@@ -6,13 +6,14 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class CascadeTypeIdTests
     {
         [Test]
         public void ValidTypeIdsRouteReducersAndCommitters()
         {
             var feature = new TypeIdRoutingFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new TypeIdStartFact(12));
@@ -56,7 +57,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void NameTokensCreateDeterministicNonEmptyIntIds()
+        public void TypeNamesProduceRepeatableDistinctIdentities()
         {
             var first = CascadeTypeId.FromName(nameof(TypeIdStartFact));
             var second = CascadeTypeId.FromName(nameof(TypeIdStartFact));
@@ -65,7 +66,7 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(first, second);
             Assert.AreNotEqual(first, different);
             Assert.IsFalse(first.IsEmpty);
-            Assert.AreNotEqual(0, first.ToInt());
+            Assert.AreEqual(first, new CascadeTypeId(first.ToInt()));
         }
 
         private sealed class TypeIdRoutingFeature : FactFeature

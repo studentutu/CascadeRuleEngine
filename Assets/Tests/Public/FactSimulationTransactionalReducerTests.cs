@@ -5,27 +5,44 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class FactSimulationTransactionalReducerTests
     {
-        [Test]
-        public void GenericAndExtendedTransactionalRegistrationStoresRequiredFacts()
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        public void GenericAndExtendedRegistrationsWaitForEveryRequiredFact(int missing)
         {
-            var feature = new ArityFeature();
-            try
-            {
-                Assert.AreEqual(3, feature.Registry.TransactionalReducers.Count);
-                Assert.AreEqual(3, feature.Registry.TransactionalReducers[0].RequiredFactIds.Length);
-                Assert.AreEqual(4, feature.Registry.TransactionalReducers[1].RequiredFactIds.Length);
-                Assert.AreEqual(5, feature.Registry.TransactionalReducers[2].RequiredFactIds.Length);
+            ArityReducer.Calls = 0;
+            ArityBatchReducer.Entities = 0;
+            using var simulation = new FactSimulation(new ArityFeature());
+            var entity = simulation.CreateEntity();
+            for (var i = 0; i < 5; i++)
+                if (i != missing) EmitArityFact(simulation, entity, i);
+            simulation.RunTick(new ReduceOptions { MaxMilliseconds = 0 });
+            var expected = missing < 3 ? 0 : missing == 3 ? 1 : 2;
+            Assert.AreEqual(expected, ArityReducer.Calls);
+            Assert.AreEqual(expected, ArityBatchReducer.Entities);
 
-                Assert.AreEqual(3, feature.Registry.BatchTransactionalReducers.Count);
-                Assert.AreEqual(3, feature.Registry.BatchTransactionalReducers[0].RequiredFactIds.Length);
-                Assert.AreEqual(4, feature.Registry.BatchTransactionalReducers[1].RequiredFactIds.Length);
-                Assert.AreEqual(5, feature.Registry.BatchTransactionalReducers[2].RequiredFactIds.Length);
-            }
-            finally
+            ArityReducer.Calls = 0;
+            ArityBatchReducer.Entities = 0;
+            for (var i = 0; i < 5; i++) EmitArityFact(simulation, entity, i);
+            simulation.RunTick(new ReduceOptions { MaxMilliseconds = 0 });
+            Assert.AreEqual(3, ArityReducer.Calls);
+            Assert.AreEqual(3, ArityBatchReducer.Entities);
+        }
+
+        private static void EmitArityFact(FactSimulation simulation, EntityRef entity, int index)
+        {
+            switch (index)
             {
-                feature.Dispose();
+                case 0: simulation.Emit(entity, new EntityPairLeftFact(1)); break;
+                case 1: simulation.Emit(entity, new EntityPairRightFact(1)); break;
+                case 2: simulation.Emit(entity, new OnePassInputFact(1)); break;
+                case 3: simulation.Emit(entity, new TwoPassInputFact(1)); break;
+                case 4: simulation.Emit(entity, new DelayedRightMarkerFact(1)); break;
             }
         }
 
@@ -35,7 +52,7 @@ namespace CascadeEngineApi.Tests
             EntityPairReducer.Reset();
 
             var feature = new EntityPairFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new EntityPairLeftFact(4));
@@ -62,7 +79,7 @@ namespace CascadeEngineApi.Tests
             BatchOnlyEligibleReducer.Reset();
 
             var feature = new BatchOnlyFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var first = simulation.CreateEntity();
             var incomplete = simulation.CreateEntity();
             var second = simulation.CreateEntity();
@@ -105,7 +122,7 @@ namespace CascadeEngineApi.Tests
             DelayedRightBatchReducer.Reset();
 
             var feature = new DelayedClosureFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var onePass = simulation.CreateEntity();
             var twoPass = simulation.CreateEntity();
             var incomplete = simulation.CreateEntity();
@@ -154,7 +171,7 @@ namespace CascadeEngineApi.Tests
             bool forbiddenFirst)
         {
             NegativeRuleReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new NegativeRuleFeature());
+            using var simulation = new FactSimulation(new NegativeRuleFeature());
             var entity = simulation.CreateEntity();
 
             if (forbiddenFirst)
@@ -185,7 +202,7 @@ namespace CascadeEngineApi.Tests
         public void NegativeReducerRunsAfterPositiveClosureWhenForbiddenFactIsAbsent()
         {
             NegativeRuleReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new NegativeRuleFeature());
+            using var simulation = new FactSimulation(new NegativeRuleFeature());
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new NegativeLeftFact(4));
@@ -207,7 +224,7 @@ namespace CascadeEngineApi.Tests
         {
             NegativeRuleReducer.InvocationCount = 0;
             DerivedForbiddenFactReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new DerivedForbiddenFactFeature());
+            using var simulation = new FactSimulation(new DerivedForbiddenFactFeature());
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new NegativeLeftFact(4));
@@ -225,32 +242,11 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void NegativeReducerPreservesDistinctTriggerFactMultiplicity()
-        {
-            NegativeRuleReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new NegativeRuleFeature());
-            var entity = simulation.CreateEntity();
-
-            simulation.Emit(entity, new NegativeLeftFact(4));
-            simulation.Emit(entity, new NegativeLeftFact(5));
-
-            var result = simulation.RunTick(new ReduceOptions
-            {
-                MaxMilliseconds = 0
-            });
-
-            Assert.IsTrue(result.Complete);
-            Assert.AreEqual(2, NegativeRuleReducer.InvocationCount);
-            Assert.AreEqual(2, result.ReducerInvocations);
-            Assert.AreEqual(5, simulation.Get<NegativeResultState>(entity).Value);
-        }
-
-        [Test]
         public void IncrementalNegativePhaseSealsLateHostInputUntilClosure()
         {
             NegativeRuleReducer.InvocationCount = 0;
             NegativeStartReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new IncrementalNegativeRuleFeature());
+            using var simulation = new FactSimulation(new IncrementalNegativeRuleFeature());
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new NegativeLeftFact(4));
             var options = new ReduceOptions
@@ -283,7 +279,7 @@ namespace CascadeEngineApi.Tests
         public void WorkBudgetResumesBetweenNegativeReducersWithoutDuplicateInvocation()
         {
             CountingNegativeReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new IncrementalNegativeReducersFeature());
+            using var simulation = new FactSimulation(new IncrementalNegativeReducersFeature());
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new NegativeLeftFact(4));
             var options = new ReduceOptions
@@ -315,7 +311,7 @@ namespace CascadeEngineApi.Tests
         public void StaleEntityCannotInjectForbiddenFactIntoReusedSlot()
         {
             NegativeRuleReducer.InvocationCount = 0;
-            var simulation = new FactSimulation(new NegativeRuleFeature());
+            using var simulation = new FactSimulation(new NegativeRuleFeature());
             var stale = simulation.CreateEntity();
             simulation.DestroyEntity(stale);
             simulation.RunTick(new ReduceOptions
@@ -342,7 +338,7 @@ namespace CascadeEngineApi.Tests
         [Test]
         public void NegativeReducerCannotMutateAnotherNegativeCondition()
         {
-            var simulation = new FactSimulation(new InvalidNegativeEmissionFeature());
+            using var simulation = new FactSimulation(new InvalidNegativeEmissionFeature());
             var entity = simulation.CreateEntity();
             simulation.Emit(entity, new NegativeLeftFact(4));
 
@@ -386,15 +382,19 @@ namespace CascadeEngineApi.Tests
 
         private sealed class ArityReducer : ITransactionalReducer
         {
+            internal static int Calls;
             public void Reduce(IReduceContext ctx, EntityRef entity)
             {
+                Calls++;
             }
         }
 
         private sealed class ArityBatchReducer : IBatchTransactionalReducer
         {
+            internal static int Entities;
             public void ReduceBatch(IReduceContext ctx, ReadOnlySpan<EntityRef> entities)
             {
+                Entities += entities.Length;
             }
         }
 

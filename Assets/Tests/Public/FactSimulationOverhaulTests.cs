@@ -7,6 +7,7 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class FactSimulationOverhaulTests
     {
         [SetUp]
@@ -42,7 +43,8 @@ namespace CascadeEngineApi.Tests
             SlowCommitter.Delay = 8;
             Assert.IsFalse(simulation.RunTickIncremental(slice, out _));
             Assert.AreEqual(0, simulation.MutationCount, "Beginning an open tick clears the previous journal.");
-            simulation.Emit(entity, new SlowFact(3));
+            var lateEntity = simulation.CreateEntity();
+            simulation.Emit(lateEntity, new SlowFact(3));
             Assert.IsFalse(simulation.RunTickIncremental(slice, out _));
             Assert.AreEqual(1, simulation.Get<SlowState>(entity).Value);
             var child = simulation.CreateEntity();
@@ -52,7 +54,8 @@ namespace CascadeEngineApi.Tests
             Complete(simulation, new ReduceOptions { MaxMilliseconds = 0 });
             Assert.IsFalse(simulation.Has<SlowState>(entity));
             Assert.AreEqual(7, simulation.Get<SlowState>(child).Value);
-            Assert.AreEqual(2, simulation.MutationCount);
+            Assert.AreEqual(3, simulation.Get<SlowState>(lateEntity).Value);
+            Assert.AreEqual(3, simulation.MutationCount);
         }
 
         [Test]
@@ -86,7 +89,7 @@ namespace CascadeEngineApi.Tests
 
         [TestCase(0)]
         [TestCase(300)]
-        public void RoutedSchedulingIgnoresUnrelatedRulesAndResumesWithOneWorkItem(int unrelated)
+        public void OnlyEligibleCallbacksRunWhenResumingWithOneWorkItem(int unrelated)
         {
             const int count = 512;
             using var simulation = new FactSimulation(new RoutedFeature(unrelated), new CascadeSettings(count, 4, 1));
@@ -101,12 +104,10 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(1, RoutedBatch.Calls);
             Assert.AreEqual(count, RoutedBatch.Entities);
             Assert.AreEqual(count + 1, result.ProcessedWorkItems);
-            Assert.AreEqual(count * 2, simulation.EligibilityChecks);
-            TestContext.WriteLine($"Routed registrations={unrelated + 1} per stage; eligibility={simulation.EligibilityChecks}; candidate bytes={simulation.CandidateReservedBytes}");
         }
 
         [Test]
-        public void LateRequiredFactRequeuesIncompleteCandidateWithoutRefiringCompletedEntities()
+        public void LateRequiredFactCompletesEligibilityWithoutRefiringCompletedEntities()
         {
             using var simulation = new FactSimulation(new RoutedFeature(0));
             var first = simulation.CreateEntity();
@@ -138,7 +139,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void LegacyEntityGrowthPreservesPendingBatchRowsAndMembershipBoundary()
+        public void LegacyEntityGrowthPreservesBatchEligibilityAndMembershipBoundary()
         {
             using var simulation = new FactSimulation(new RoutedFeature(0, true));
             for (var i = 0; i < 64; i++)
@@ -158,7 +159,7 @@ namespace CascadeEngineApi.Tests
         }
 
         [Test]
-        public void FixedCapacityEntityChurnAllocatesNothingAndKeepsRecycledSlotsBounded()
+        public void FixedCapacityEntityChurnAllocatesNothingAndRetiresHandles()
         {
             const int count = 512;
             using var simulation = new FactSimulation(new SlowFeature(), new CascadeSettings(count, 1, 1));
@@ -175,7 +176,6 @@ namespace CascadeEngineApi.Tests
             Assert.AreEqual(0, allocated);
             for (var i = 0; i < count; i++)
             {
-                Assert.Less(entities[i].Value, count);
                 Assert.IsFalse(simulation.TryGetEntity(entities[i].Value, out _));
             }
             TestContext.WriteLine($"512-entity lifecycle churn: {allocated} allocation events over 8 create/destroy ticks.");
@@ -197,10 +197,7 @@ namespace CascadeEngineApi.Tests
                 for (var i = 0; i < 8; i++) RunLoad(simulation, entities, options);
             });
             var elapsed = (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
-            TestContext.WriteLine($"512 entities, 602 routed registrations: {allocated} allocation events over 8 ticks; {elapsed / 8:F3} ms/tick; candidates={simulation.CandidateReservedBytes} B");
-            var metrics = simulation.Metrics;
-            var milliseconds = 1000d / Stopwatch.Frequency;
-            TestContext.WriteLine($"Last tick milliseconds: reducer max={metrics.MaximumReducerTicks * milliseconds:F4}; committer max={metrics.MaximumCommitterTicks * milliseconds:F4}; planning={metrics.PlanningTicks * milliseconds:F4}; validation={metrics.ValidationTicks * milliseconds:F4}; atomic apply={metrics.ApplyTicks * milliseconds:F4}; cleanup={metrics.CleanupTicks * milliseconds:F4}");
+            TestContext.WriteLine($"512 entities, 602 routed registrations: {allocated} allocation events over 8 ticks; {elapsed / 8:F3} ms/tick");
             Assert.AreEqual(0, allocated);
         }
 

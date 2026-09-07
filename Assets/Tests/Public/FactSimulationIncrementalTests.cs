@@ -5,13 +5,14 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("PublicContract")]
     public sealed class FactSimulationIncrementalTests
     {
         [Test]
         public void IncrementalTickDoesNotCommitUntilReductionCloses()
         {
             var feature = new IncrementalFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var entity = simulation.CreateEntity();
             var options = new ReduceOptions
             {
@@ -44,7 +45,7 @@ namespace CascadeEngineApi.Tests
         public void FullTickBudgetFailureIncludesActionableContext()
         {
             var feature = new IncrementalFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new IncrementalStartFact(3));
@@ -68,7 +69,7 @@ namespace CascadeEngineApi.Tests
         public void CausalDepthFailureIncludesEmittedFactAndReducerContext()
         {
             var feature = new IncrementalFeature();
-            var simulation = new FactSimulation(feature);
+            using var simulation = new FactSimulation(feature);
             var entity = simulation.CreateEntity();
 
             simulation.Emit(entity, new IncrementalStartFact(3));

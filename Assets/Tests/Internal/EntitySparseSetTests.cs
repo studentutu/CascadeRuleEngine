@@ -5,36 +5,9 @@ using NUnit.Framework;
 
 namespace CascadeEngineApi.Tests
 {
+    [Category("Internal")]
     public sealed class EntitySparseSetTests
     {
-        [Test]
-        public void SparseMetadataReservationMatchesTheFormerThreeArrayLayout()
-        {
-            const int count = 512;
-            int[]? sparse = null;
-            EntityRef[]? entities = null;
-            int[]? counts = null;
-            EntitySparseSet<int>? storage = null;
-            var formerEvents = AllocationProbe.Count(() =>
-            {
-                sparse = new int[count];
-                entities = new EntityRef[count];
-                counts = new int[count];
-            });
-            var sharedEvents = AllocationProbe.Count(() =>
-            {
-                storage = new EntitySparseSet<int>();
-                storage.EnsureCapacity(count, count);
-            });
-            GC.KeepAlive(sparse);
-            GC.KeepAlive(entities);
-            GC.KeepAlive(counts);
-            Assert.IsNotNull(storage);
-            TestContext.WriteLine($"512-row metadata construction: former arrays={formerEvents} allocation events; shared primitive plus arrays={sharedEvents} allocation events; reserved element bytes={count * 16} B in both.");
-            Assert.AreEqual(count, storage!.DenseCapacity);
-            Assert.AreEqual(count, storage.SparseCapacity);
-        }
-
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]

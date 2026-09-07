@@ -1,0 +1,11 @@
+{
+    "name": "CascadeEngine.Tests.Support",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ]
+}

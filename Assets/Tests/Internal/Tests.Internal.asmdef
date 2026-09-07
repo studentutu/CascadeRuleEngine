@@ -1,11 +1,11 @@
 {
-    "name": "Tests",
+    "name": "CascadeEngine.Tests.Internal",
     "rootNamespace": "",
     "references": [
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "CascadeEngine.Runtime",
-        "HestiaGame.Runtime"
+        "CascadeEngine.Tests.Support"
     ],
     "includePlatforms": [
         "Editor"
