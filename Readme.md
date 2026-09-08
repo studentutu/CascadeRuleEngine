@@ -1,85 +1,18 @@
 # CascadeEngine
 
-## Overview
+## Overview and goal
 
-`CascadeEngine` is the drop-in package boundary for the Cascade Rule Engine.
-
-The package replaces ECS component with reducer-loop and output state rigid pipeline:
+CascadeEngine is a portable C# package for entity-based gameplay rules. Its goal is to replace hidden ECS execution order with explicit inputs, rules, committed state, and typed changes that an existing game, ECS, or UI can consume.
 
 ```text
-Input or events -> emit facts
-  -> fact work queue
-  -> reducers emit more facts
-  -> reduction reaches closure
-  -> committers project facts into durable output components
-  -> typed output mutations are published
+Input/events -> facts -> gameplay rules -> committed state -> consumers
 ```
 
-Core:
+Facts describe what happened or was requested. Reducers derive consequences. Committers decide durable state. Consumers observe the published result.
 
-- reducers never write durable state.
-- reducers only read committed state plus accumulated tick facts, then emit more facts.
-- committers are the only code that writes `IOutputState`.
-- zero memory-allocation on hot path.
-- reducers and committers must implement commutative, idempotent domain rules; the engine does not make arbitrary callbacks order-independent.
-- minimal public API for the documented ECS migration boundary; see the package parity matrix for exclusions.
-- minimal set of good primitives.
+### Minimal flow example
 
-## The key rule
-
-The commit stage is not optional glue. It is the reconciliation layer.
-
-The concept:
-
-```text
-Facts are what happened or what was requested.
-Reducers derive consequences.
-Committers decide durable truth.
-OutputState is the only thing consumers trust and consume.
-```
-
-## Fact Lifetime Rule
-
-Facts exist for one reduction loop. Anything expected to remain observable after closure must be committed state.
-
-A continuous condition owned by an external domain is still a tick input, not a persistent fact. Emit it again at the start of each reduction loop while that external condition is true:
-
-```csharp
-if (weatherDomain.IsWet(entity))
-{
-    simulation.Emit(entity, new WetEnvironmentObservedFact());
-}
-
-simulation.RunTick(ReduceOptions.Default());
-```
-
-`WetEnvironmentObservedFact` participates in that loop's closure only. If later reducers, committers, UI, or old ECS consumers must observe wetness after closure, commit a durable output:
-
-```text
-WetEnvironmentObservedFact
--> reducers derive wet consequences
--> WetStatusCommitter writes WetStatusState
-```
-
-Do not keep facts alive with cleanup markers or reducer-owned lifetime conventions. That creates a second durable state source and makes unordered reduction semantics harder to reason about.
-
-That is the closest ECS equivalent to React-style reconciliation:
-
-```text
-React event/action
-  -> reducers/state derivation
-  -> virtual result
-  -> reconciliation
-  -> dirty DOM update
-
-Fact ECS
-  -> reducers/fact derivation
-  -> fact closure
-  -> committers
-  -> dirty output component published
-```
-
-## Minimal Host Flow
+With a project-defined `GameplayFeature`, movement fact, and mutation handler:
 
 ```csharp
 var feature = new GameplayFeature();
@@ -93,163 +26,21 @@ SimulationResult result = simulation.RunTick(ReduceOptions.Default());
 simulation.ForEachMutation(feature.Position, OnPositionChanged);
 ```
 
-## Generational Entity Lifecycle
+See the [package usage guide](Assets/CascadeEngine/Readme.md) for capacity settings and incremental execution. The [Hestia sample](Assets/HestiaGame) provides a complete movement and ammo integration.
 
-`EntityRef` is a complete runtime identity: `Value` is a recyclable slot and `Generation` prevents stale handles from resolving after that slot is reused. Slots recycle only after committed tick closure or failed-tick rollback cleanup, never while the old entity can still participate in the open reduction.
+## Problems solved
 
-Do not persist `EntityRef.Value` as durable identity. `TryGetEntity(slotId, out entity)` finds the current live entity occupying a runtime slot; save data and network references need a domain-owned stable key.
+- Express gameplay dependencies through facts and explicit conflict policies instead of system registration order.
+- Publish completed state changes together, so consumers do not observe intermediate writes.
+- Resume unfinished work across frames with explicit work and time budgets.
+- Integrate entity creation, state changes, and destruction with existing ECS, world, and UI consumers.
 
-## Stable Type Ids
+## Usage policies and scope
 
-Fact and output ids are derived from type names during feature registration. Do not add static ids to value types.
+- Facts last for one full tick, including incremental calls. Emit continuing external conditions again next tick; keep lasting values in committed state.
+- Reducers read state and emit facts. Committers own durable writes; domain rules must resolve conflicts consistently.
+- Time budgets are cooperative. Individual callbacks and tick completion can exceed a requested slice.
+- Allocation-free gameplay requires sufficient capacity and allocation-free callbacks. Full Entitas feature and throughput parity remain goals, not guarantees.
+- The host owns simulation construction, ticking, and disposal.
 
-```csharp
-public readonly struct MoveRequestedFact : IFact<MoveRequestedFact>
-{
-    public MoveRequestedFact(float distance) => Distance = distance;
-    public float Distance { get; }
-    public bool Equals(MoveRequestedFact other) => Distance.Equals(other.Distance);
-    public void Dispose() { }
-}
-
-public readonly struct PositionState : IOutputState<PositionState>
-{
-    public PositionState(float value) => Value = value;
-    public float Value { get; }
-    public bool Equals(PositionState other) => Value.Equals(other.Value);
-}
-```
-
-Implement `Dispose()` explicitly, including an empty body for facts without resources, on allocation-free paths. The inherited `IFact` no-op remains source-compatible, but Unity Mono boxes each call. Resource facts retain their existing ownership and disposal behavior.
-
-## Warmup For 500+ Entities
-
-Warmup is a capacity phase only. It does not create entities, emit facts, run reducers, commit output state, or publish mutations.
-
-```csharp
-var feature = new GameplayFeature();
-var simulation = new FactSimulation(feature);
-
-const int expectedEntities = 512;
-simulation.Warmup(new WarmupCapacityHints
-{
-    EntityCapacity = expectedEntities,
-    FactQueueCapacity = expectedEntities * 4,
-    FactsPerEntityPerTypeCapacity = 4,
-    QueryEntityCapacity = expectedEntities,
-    TransactionEntityCapacity = expectedEntities,
-    BatchEntityCapacity = expectedEntities,
-    CommitActionCapacity = expectedEntities,
-    OutputStateCapacityPerOutput = expectedEntities,
-    MutationCapacityPerOutput = expectedEntities
-});
-
-for (var i = 0; i < expectedEntities; i++)
-{
-    EntityRef entity = simulation.CreateEntity();
-    // Bootstrap committed output state here when the domain requires it.
-}
-```
-
-Keep the hints honest. If one gameplay tick can enqueue two input facts and two derived facts per entity, size `FactQueueCapacity` for that shape instead of assuming entity count is enough.
-
-Warmup pre-creates buckets for fact types known from feature registration: reducer triggers, transactional requirements, batch transactional requirements, and output affected-fact declarations. Facts emitted only from reducer code and never declared in the feature cannot be warmed.
-
-## Dispose Ownership Rules
-
-`FactSimulation` owns runtime data and the feature registry tree passed into it.
-
-`Dispose()` is terminal and idempotent: call it during scene unload, domain replacement, or editor-session cleanup. After disposal, public simulation APIs throw `ObjectDisposedException`.
-
-Ownership rules:
-
-- Tick-local facts are owned by the `FactStore` only after `Emit` accepts them. Accepted facts are disposed when tick-local storage clears after a tick, after a failed tick, or during `Dispose()`. Rejected or deduplicated facts are not owned by the simulation.
-- Output state buckets are owned by the simulation. `Dispose()` clears every bucket and disposes current stored output states that implement `IDisposable`. Output states should still be immutable value snapshots; do not hide shared resource ownership in copied mutation payloads.
-- Mutation buffers are simulation-owned last-result records. They do not own `Previous` or `Next` state payloads and are cleared without disposing those copies.
-- `SubFeature` transfers registration ownership into the parent feature. The attached sub-feature is no longer a valid simulation root.
-- `FactSimulation.Dispose()` disposes the bound root `FactFeature`, including attached sub-features. Reducer registrations, output registrations, reducer instances, and committer instances are disposed when they implement `IDisposable`, then registry maps are cleared. A disposed feature cannot be reused to construct another simulation.
-- Future runtime pools or scratch buffers allocated by `FactSimulation`, its stores, or feature registration objects must be released from `Dispose()`.
-
-Facts retain their owned data across incremental pauses and through commit planning. Fact copies/views borrow that data; committers must copy durable values rather than retain disposable fact resources. Cleanup visits every owner even when disposal throws, clears consumed payloads, and never retries them. Multiple failures are aggregated without hiding the original reduction failure. A cleanup error after publication preserves committed state, mutations, and the completed `LastResult`.
-
-The package [ownership documentation](Assets/CascadeEngine/Readme.md#dispose-ownership-rules) includes a pooled-buffer fact example and the existing limits of `void Emit` and disposable output-state snapshots. Terminal disposal also unbinds static routes after callback failures or prior feature disposal.
-
-## Feature Registration
-
-```csharp
-public sealed class GameplayFeature : FactFeature
-{
-    public GameplayFeature()
-    {
-        Reduce<MoveRequestedFact>()
-            .With<MoveRequestReducer>();
-
-        Position = Output<PositionState>("Position")
-            .AffectedBy<MoveResolvedFact>(priority: 100)
-            .AffectedBy<TeleportResolvedFact>(priority: 1000)
-            .ConflictPolicy(CommitConflictPolicy.PriorityWinnerOrThrowOnTie)
-            .CommitWith<PositionCommitter>();
-    }
-
-    public OutputState<PositionState> Position { get; }
-}
-```
-
-Transactional registration provides generic `ReduceWhen` and `ReduceBatchWhen` overloads for two through four facts. Higher arities chain the package-provided `.And<TFact>()` builder extension without additional inheritance.
-
-## Public API contract
-
-| Type | Role |
-| --- | --- |
-| `EntityRef` | generational entity handle with a recyclable runtime slot and stale-handle protection |
-| `CascadeTypeId` | stable fact/output-state identity used by runtime routing |
-| `IFact` | transient input or derived consequence for one tick; accepted facts are disposed when tick-local storage clears |
-| `IFactReducer<TFact>` | fact-triggered reducer; emits facts only |
-| `IOutputState` | durable committed state consumers can trust |
-| `IOutputCommitter<TState>` | folds closed facts into one durable state decision |
-| `FactFeature` | registration hub for reducers and outputs |
-| `FactSimulation` | entity lifecycle, fact queue, reduction, commit, mutation routing, terminal disposal |
-| `WarmupCapacityHints` | host-provided capacity hints for pre-sizing simulation stores before gameplay ticks |
-| `OutputState<TState>` | typed mutation stream descriptor |
-| `StateMutation<TState>` | create/update/delete diff for one output state |
-
-## Package Boundary
-
-Use `FactSimulation` as the concrete runtime entry point and lifecycle owner. Do not add a second public facade until there is a real host-facing capability to hide. `IFactSimulation` exists for adapters that only need entity lifecycle, fact emission, ticks, and mutation routing; concrete owners should dispose `FactSimulation` directly.
-
-Folder intent:
-
-- `Public`: public types normal package consumers directly uses.
-- `Internal`: rest of the package with core interfaces, implementation, utilities. These are package implementation details and should be hidden from sample gameplay code.
-
-## Prepared Commit And Continuation
-
-Reconciliation prepares equality, capacity, normal output changes, and lifecycle deletions before applying anything. Application uses validated typed actions and finalizes state, mutation journals, and entity release together. A failed plan leaves the previous committed snapshot unchanged.
-
-Incremental execution retains exact reduction and reconciliation cursors. Accepted late input invalidates an unpublished plan while input is open; terminal `Without` sealing remains in force. Mutation journals still clear at tick start, and final mutation consumption remains replayable.
-
-`MaxWorkItems` continues to count reducer invocations only. Time limits are cooperative: planning can suspend, but callbacks, atomic application, and cleanup cannot be preempted. Settings reserve and freeze engine storage during construction; legacy construction permits growth during preparation.
-
-See the [package README](Assets/CascadeEngine/Readme.md) for the current API and ownership contract.
-
-## Hestia Sample
-
-`Assets/HestiaGame` shows the thin vertical slice:
-
-```text
-AmmoSpendRequestedFact
--> HestiaAmmoSpendRequestReducer
--> AmmoSpendAcceptedFact
--> HestiaAmmoCommitter writes HestiaAmmoState once
--> HestiaAudioCueCommitter may publish a marker-style DryFire cue
-```
-
-Movement demonstrates commit conflict handling:
-
-```text
-MoveRequestedFact
--> MoveResolvedFact
--> commit phase rejects multiple distinct resolutions before HestiaPositionCommitter writes state
-```
-
-The tests under `Assets/Tests` are the executable API examples.
+Use the folder at [Assets/CascadeEngine](Assets/CascadeEngine) in your project. Gameplay examples remain outside the package. The [contract tests](Assets/Tests) provide further executable usage examples.
